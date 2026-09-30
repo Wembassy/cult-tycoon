@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.wembassy.culttycoon",
+  "productName": "Cult Tycoon",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*"
+  ],
+  "mac": {
+    "category": "public.app-category.strategy-games",
+    "target": ["dmg"],
+    "icon": "assets/icons/icon.icns"
+  },
+  "win": {
+    "target": ["nsis"],
+    "icon": "assets/icons/icon.ico"
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "category": "Game",
+    "icon": "assets/icons/icon.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  },
+  "steam": {
+    "steamAppId": "PLACEHOLDER_STEAM_APP_ID"
+  }
+}
