@@ -16,8 +16,10 @@ export interface WorldGenConfig {
 
 export class WorldGen {
   private rng: () => number;
+  private seedValue: number;
 
   constructor(seed: number = Date.now()) {
+    this.seedValue = seed;
     let state = seed;
     this.rng = () => {
       state = (state * 1664525 + 1013904223) % 4294967296;
@@ -36,25 +38,26 @@ export class WorldGen {
       waterPools = 2,
       stonePatches = 3,
       dirtPatches = 4,
-      seed = Date.now(),
     } = config;
 
+    // Use the seed from config if provided, otherwise use constructor seed
+    const seed = config.seed ?? this.seedValue;
     const map = new TileMap(width, height);
     const gen = new WorldGen(seed);
 
     // Generate water pools
     for (let i = 0; i < waterPools; i++) {
-      gen.drawBlob(map, gen.rng() * width | 0, gen.rng() * height | 0, 2 + gen.rng() * 2 | 0, 'water');
+      gen.drawBlob(map, Math.floor(gen.rng() * width), Math.floor(gen.rng() * height), 2 + Math.floor(gen.rng() * 2), 'water');
     }
 
     // Generate stone patches
     for (let i = 0; i < stonePatches; i++) {
-      gen.drawBlob(map, gen.rng() * width | 0, gen.rng() * height | 0, 1 + gen.rng() * 2 | 0, 'stone');
+      gen.drawBlob(map, Math.floor(gen.rng() * width), Math.floor(gen.rng() * height), 1 + Math.floor(gen.rng() * 2), 'stone');
     }
 
     // Generate dirt patches
     for (let i = 0; i < dirtPatches; i++) {
-      gen.drawBlob(map, gen.rng() * width | 0, gen.rng() * height | 0, 1 + gen.rng() * 3 | 0, 'dirt');
+      gen.drawBlob(map, Math.floor(gen.rng() * width), Math.floor(gen.rng() * height), 1 + Math.floor(gen.rng() * 3), 'dirt');
     }
 
     return map;
