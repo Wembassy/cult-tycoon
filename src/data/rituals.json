@@ -1,1 +1,61 @@
-{}
+{
+  "rituals": [
+    {
+      "id": "morning_prayer",
+      "name": "Morning Prayer",
+      "duration": 60,
+      "minFollowers": 1,
+      "faithCost": 0,
+      "influenceGain": 5,
+      "faithGain": 15,
+      "requirements": ["prayer_room"],
+      "description": "Daily group prayer to strengthen faith"
+    },
+    {
+      "id": "offerings",
+      "name": "Offerings",
+      "duration": 90,
+      "minFollowers": 2,
+      "faithCost": 10,
+      "wealthCost": 20,
+      "influenceGain": 15,
+      "faithGain": 25,
+      "requirements": ["ritual_room"],
+      "description": "Sacrifice wealth for divine favor"
+    },
+    {
+      "id": "moonlit_ritual",
+      "name": "Moonlit Ritual",
+      "duration": 120,
+      "minFollowers": 3,
+      "faithCost": 20,
+      "influenceGain": 30,
+      "faithGain": 35,
+      "notorietyGain": 5,
+      "requirements": ["ritual_room", "advanced_rituals"],
+      "description": "A powerful nighttime ritual under the moon"
+    },
+    {
+      "id": "initiation",
+      "name": "Initiation Ceremony",
+      "duration": 180,
+      "minFollowers": 4,
+      "faithCost": 30,
+      "influenceGain": 50,
+      "requirements": ["ritual_room"],
+      "description": "Welcome new followers into the cult"
+    },
+    {
+      "id": "communion",
+      "name": "Divine Communion",
+      "duration": 240,
+      "minFollowers": 5,
+      "faithCost": 50,
+      "influenceGain": 100,
+      "faithGain": 50,
+      "notorietyGain": 10,
+      "requirements": ["ritual_room", "divine_intervention"],
+      "description": "Ultimate ritual to commune with the divine"
+    }
+  ]
+}
