@@ -1,82 +1,225 @@
-import * as THREE from 'three';
-import { IsoCamera } from './engine/IsoCamera';
+/**
+ * Cult Tycoon — Main entry point.
+ * Wires together all engine systems into a playable game.
+ */
+
+import { Renderer } from './engine/Renderer';
+import { SceneManager } from './engine/SceneManager';
+import { InputManager } from './engine/InputManager';
+import { TileMap } from './world/TileMap';
+import { WorldGen } from './world/WorldGen';
+import { Pathfinder } from './world/Pathfinder';
+import { World } from './ecs/World';
+import { System } from './ecs/System';
+import { Needs } from './components/Needs';
+import { FollowerAI } from './components/FollowerAI';
+import { NeedsSystem } from './systems/NeedsSystem';
+import { JobSystem } from './systems/JobSystem';
+import { AISystem } from './systems/AISystem';
+import { BuildingSystem } from './systems/BuildingSystem';
+import { RenderSystem } from './systems/RenderSystem';
+import { FollowerFactory } from './systems/FollowerFactory';
+import { HUDManager, ResourceBarData } from './ui/HUDManager';
+
+class CultTycoonGame {
+  private renderer: Renderer;
+  private sceneMgr: SceneManager;
+  private input: InputManager;
+  private hud: HUDManager;
+  private world: World;
+  private map: TileMap;
+  private pathfinder: Pathfinder;
+  private buildingSystem: BuildingSystem;
+  private needsSystem: NeedsSystem;
+  private jobSystem: JobSystem;
+  private aiSystem: AISystem;
+  private renderSystem: RenderSystem;
+  private factory: FollowerFactory;
+  private systems: System[] = [];
+  private lastTime = 0;
+  private accumulator = 0;
+  private readonly tickDuration = 1 / 30;
+  private timeScale = 1;
+  private running = true;
+
+  constructor() {
+    const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
+    if (!canvas) throw new Error('Canvas #game-canvas not found');
+    canvas.tabIndex = 0;
+    canvas.style.outline = 'none';
+
+    // Core engine
+    this.renderer = new Renderer(canvas);
+    this.world = new World();
+
+    // World generation
+    const worldGen = new WorldGen(12345);
+    this.map = worldGen.generate({ width: 24, height: 24, waterPools: 2, stonePatches: 3, dirtPatches: 4 });
+    this.pathfinder = new Pathfinder(this.map);
+
+    // Scene manager builds tile meshes
+    this.sceneMgr = new SceneManager(this.renderer.threeScene, this.world, this.map);
+    this.sceneMgr.buildTiles();
+
+    // Systems
+    this.needsSystem = new NeedsSystem();
+    this.jobSystem = new JobSystem();
+    this.aiSystem = new AISystem(this.map, this.pathfinder);
+    this.buildingSystem = new BuildingSystem(this.map);
+    this.renderSystem = new RenderSystem(this.sceneMgr);
+    this.factory = new FollowerFactory(42);
+
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem];
+
+    // Input
+    this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
+
+    // HUD
+    const hudContainer = document.createElement('div');
+    hudContainer.id = 'hud';
+    document.body.appendChild(hudContainer);
+    this.hud = new HUDManager({ container: hudContainer });
+
+    // Spawn initial followers
+    this.spawnFollowers(3);
+
+    // Set up HUD
+    this.updateHUD();
+    this.hud.setTimeMode('play');
+    this.hud.updateTime(6, 1);
+    this.hud.logEvent('Welcome to Cult Tycoon!', 'success');
+    this.hud.logEvent('Your cult begins with 3 followers.', 'info');
+
+    // Input callbacks
+    this.input.onTileClick = (tile) => this.onTileClick(tile.x, tile.y);
+    this.input.onTileHover = (tile) => this.sceneMgr.highlightTile(tile.x, tile.y);
+
+    canvas.focus();
+    window.addEventListener('resize', this.onResize);
+  }
+
+  private spawnFollowers(count: number): void {
+    // Find a grass tile near center
+    let spawnX = 12, spawnY = 12;
+    for (let y = 10; y < 14; y++) {
+      for (let x = 10; x < 14; x++) {
+        const tile = this.map.getTile(x, y);
+        if (tile && tile.terrain === 'grass' && !tile.occupied) {
+          spawnX = x;
+          spawnY = y;
+          break;
+        }
+      }
+    }
+
+    this.factory.spawnGroup(this.world, count, spawnX, spawnY);
+    this.sceneMgr.syncEntities();
+  }
+
+  private onTileClick(x: number, y: number): void {
+    const tile = this.map.getTile(x, y);
+    if (!tile) return;
+
+    if (this.input.getMode() === 'build') {
+      const result = this.buildingSystem.placeWall(x, y);
+      if (result.success) {
+        this.hud.logEvent(`Wall placed at (${x}, ${y})`, 'info');
+        this.sceneMgr.buildTiles();
+        this.pathfinder.invalidateCache();
+      } else {
+        this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
+      }
+    } else if (this.input.getMode() === 'demolish') {
+      const result = this.buildingSystem.demolish(x, y);
+      if (result.success) {
+        this.hud.logEvent(`Demolished at (${x}, ${y})`, 'info');
+        this.sceneMgr.buildTiles();
+        this.pathfinder.invalidateCache();
+      }
+    } else {
+      // Select mode — show info
+      this.hud.logEvent(`Tile (${x}, ${y}): ${tile.terrain}${tile.occupied ? ' [occupied]' : ''}`, 'info');
+    }
+  }
+
+  private updateHUD(): void {
+    const entities = this.world.query([Needs, FollowerAI]);
+    let totalFaith = 0;
+    let totalFun = 0;
+    let totalSanity = 0;
+    for (const e of entities) {
+      const n = this.world.getComponent(e, Needs)!;
+      totalFaith += n.faith;
+      totalFun += n.fun;
+      totalSanity += n.sanity;
+    }
+    const pop = entities.length;
+    const data: ResourceBarData = {
+      influence: 50,
+      wealth: 100,
+      notoriety: 5,
+      faith: pop > 0 ? totalFaith / pop : 100,
+      morale: pop > 0 ? (totalFun + totalSanity) / (2 * pop) : 100,
+      population: pop,
+      maxPopulation: 10,
+    };
+    this.hud.updateResourceBar(data);
+  }
+
+  private onResize = (): void => {
+    // Renderer handles its own resize
+  };
+
+  start(): void {
+    this.lastTime = performance.now();
+    this.gameLoop();
+  }
+
+  private gameLoop = (): void => {
+    if (!this.running) return;
+    requestAnimationFrame(this.gameLoop);
+
+    const now = performance.now();
+    const frameTime = Math.min((now - this.lastTime) / 1000, 0.25);
+    this.lastTime = now;
+
+    // Fixed timestep simulation
+    this.accumulator += frameTime * this.timeScale;
+    while (this.accumulator >= this.tickDuration) {
+      this.simulate(this.tickDuration);
+      this.accumulator -= this.tickDuration;
+    }
+
+    // Render
+    this.renderSystem.update(this.world, 0);
+    this.renderer.camera.update(frameTime);
+    this.renderer.render();
+  };
+
+  private simulate(dt: number): void {
+    for (const system of this.systems) {
+      system.update(this.world, dt);
+    }
+
+    // Update HUD periodically (every 30 ticks = 1 second)
+    if (Math.floor(performance.now() / 1000) !== Math.floor((performance.now() - dt * 1000) / 1000)) {
+      this.updateHUD();
+    }
+  }
+
+  dispose(): void {
+    this.running = false;
+    window.removeEventListener('resize', this.onResize);
+    this.input.dispose();
+    this.hud.destroy();
+    this.sceneMgr.dispose();
+    this.renderer.dispose();
+  }
+}
 
 function init(): void {
-  const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-  if (!canvas) throw new Error('Canvas element #game-canvas not found');
-  canvas.tabIndex = 0;
-  canvas.style.outline = 'none';
-
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1a2e);
-
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(10, 20, 15);
-  scene.add(dirLight);
-
-  const gridSize = 20;
-  scene.add(new THREE.GridHelper(gridSize, gridSize, 0x444466, 0x2a2a44));
-  const plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(gridSize, gridSize),
-    new THREE.MeshStandardMaterial({ color: 0x222238, transparent: true, opacity: 0.8 }),
-  );
-  plane.rotation.x = -Math.PI / 2;
-  plane.position.y = -0.01;
-  scene.add(plane);
-
-  const tileColors = [0x3a5a8a, 0x5a3a8a, 0x8a3a5a, 0x3a8a5a];
-  const corners = [
-    { x: 0, z: 0 }, { x: gridSize - 1, z: 0 },
-    { x: 0, z: gridSize - 1 }, { x: gridSize - 1, z: gridSize - 1 },
-  ];
-  corners.forEach((c, i) => {
-    const tile = new THREE.Mesh(
-      new THREE.BoxGeometry(0.9, 0.1, 0.9),
-      new THREE.MeshStandardMaterial({ color: tileColors[i] }),
-    );
-    tile.position.set(c.x - gridSize / 2 + 0.5, 0.05, c.z - gridSize / 2 + 0.5);
-    scene.add(tile);
-  });
-
-  const centerMarker = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 0.5, 1),
-    new THREE.MeshStandardMaterial({ color: 0xdaa520 }),
-  );
-  centerMarker.position.set(0, 0.25, 0);
-  scene.add(centerMarker);
-
-  const isoCamera = new IsoCamera(canvas);
-  canvas.focus();
-
-  const hud = document.createElement('div');
-  Object.assign(hud.style, {
-    position: 'fixed', top: '10px', left: '10px', color: '#ccc',
-    fontFamily: 'monospace', fontSize: '14px', pointerEvents: 'none', zIndex: '10',
-  });
-  hud.innerHTML = '<div>Isometric Camera Demo</div><div style="margin-top:4px;opacity:0.7"><b>WASD</b> — Pan | <b>Q/E</b> — Rotate | <b>Wheel</b> — Zoom</div><div id="cam-info" style="margin-top:6px;opacity:0.6"></div>';
-  document.body.appendChild(hud);
-  const camInfo = hud.querySelector('#cam-info') as HTMLDivElement;
-
-  const mouse = new THREE.Vector2();
-  window.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; });
-
-  let lastTime = performance.now();
-  function animate(): void {
-    requestAnimationFrame(animate);
-    const now = performance.now();
-    const dt = Math.min((now - lastTime) / 1000, 0.25);
-    lastTime = now;
-    isoCamera.update(dt);
-    const tile = isoCamera.screenToTile(mouse.x, mouse.y);
-    camInfo.textContent = `Zoom: ${isoCamera.getZoom().toFixed(2)}x | Rotation: ${isoCamera.getRotationStep() * 90}° | Tile: (${tile.x}, ${tile.y})`;
-    renderer.render(scene, isoCamera.camera);
-  }
-  animate();
+  const game = new CultTycoonGame();
+  game.start();
 }
 
 if (document.readyState === 'loading') {
