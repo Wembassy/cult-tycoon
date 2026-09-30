@@ -1,1 +1,94 @@
-{}
+{
+  "tech": [
+    {
+      "id": "basic_rituals",
+      "name": "Basic Rituals",
+      "cost": 50,
+      "tier": 1,
+      "description": "Unlock prayer room rituals",
+      "unlocks": ["morning_prayer", "offerings"]
+    },
+    {
+      "id": "stone_buildings",
+      "name": "Stone Construction",
+      "cost": 80,
+      "tier": 1,
+      "description": "Unlock stone walls and advanced building types",
+      "unlocks": ["stone_wall", "stone_floor"]
+    },
+    {
+      "id": "recruitment_ii",
+      "name": "Expanded Recruitment",
+      "cost": 100,
+      "tier": 1,
+      "description": "Increase max population by 10",
+      "unlocks": [],
+      "effects": { "maxPopulationBonus": 10 }
+    },
+    {
+      "id": "advanced_rituals",
+      "name": "Advanced Rituals",
+      "cost": 200,
+      "tier": 2,
+      "requires": ["basic_rituals"],
+      "description": "Higher faith generation and new rituals",
+      "unlocks": ["moonlit_ritual", "initiation"]
+    },
+    {
+      "id": "follower_education",
+      "name": "Follower Education",
+      "cost": 150,
+      "tier": 2,
+      "description": "Followers gain skills 2x faster",
+      "unlocks": [],
+      "effects": { "skillGainMult": 2.0 }
+    },
+    {
+      "id": "improved_housing",
+      "name": "Improved Housing",
+      "cost": 120,
+      "tier": 2,
+      "description": "Dormitories house 4 followers instead of 2",
+      "unlocks": [],
+      "effects": { "dormCapacityBonus": 2 }
+    },
+    {
+      "id": "agriculture",
+      "name": "Agriculture",
+      "cost": 100,
+      "tier": 2,
+      "description": "Food generation +50%",
+      "unlocks": ["farm_plot"],
+      "effects": { "foodGenMult": 1.5 }
+    },
+    {
+      "id": "divine_intervention",
+      "name": "Divine Intervention",
+      "cost": 500,
+      "tier": 3,
+      "requires": ["advanced_rituals"],
+      "description": "Random positive divine events",
+      "unlocks": ["communion"],
+      "effects": { "positiveEventMult": 1.5 }
+    },
+    {
+      "id": "fortified_walls",
+      "name": "Fortified Walls",
+      "cost": 250,
+      "tier": 3,
+      "requires": ["stone_buildings"],
+      "description": "Walls are stronger against investigator raids",
+      "unlocks": ["reinforced_wall"],
+      "effects": { "wallStrength": 3 }
+    },
+    {
+      "id": "propaganda",
+      "name": "Propaganda Network",
+      "cost": 300,
+      "tier": 3,
+      "description": "Recruitment success rate doubled",
+      "unlocks": [],
+      "effects": { "recruitmentMult": 2.0 }
+    }
+  ]
+}

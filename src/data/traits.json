@@ -1,1 +1,52 @@
-{}
+{
+  "traits": [
+    {
+      "id": "insomniac",
+      "name": "Insomniac",
+      "description": "Sleeps less, sanity decays faster",
+      "effects": { "sanityDecayMult": 1.3, "sleepDuration": 0.5 }
+    },
+    {
+      "id": "zealous",
+      "name": "Zealous",
+      "description": "Strong faith, resists doubt",
+      "effects": { "faithDecayMult": 0.5, "prayerBonus": 1.5 }
+    },
+    {
+      "id": "doubter",
+      "name": "Doubter",
+      "description": "Faith decays rapidly",
+      "effects": { "faithDecayMult": 1.5 }
+    },
+    {
+      "id": "charismatic",
+      "name": "Charismatic",
+      "description": "Boosts morale of nearby followers",
+      "effects": { "moraleBonusRadius": 2, "moraleBonus": 5 }
+    },
+    {
+      "id": "lazy",
+      "name": "Lazy",
+      "description": "Works slower, eats more",
+      "effects": { "workSpeedMult": 0.7, "hungerDecayMult": 1.3 }
+    },
+    {
+      "id": "scholar",
+      "name": "Scholar",
+      "description": "Gains skills faster, research bonus",
+      "effects": { "skillGainMult": 2.0, "researchBonus": 1.5 }
+    },
+    {
+      "id": "hardy",
+      "name": "Hardy",
+      "description": "Resilient, slower needs decay",
+      "effects": { "hungerDecayMult": 0.8, "sanityDecayMult": 0.8 }
+    },
+    {
+      "id": "fragile",
+      "name": "Fragile",
+      "description": "Needs decay faster, prone to breakdowns",
+      "effects": { "sanityDecayMult": 1.5, "hungerDecayMult": 1.2 }
+    }
+  ]
+}

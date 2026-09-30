@@ -1,1 +1,76 @@
-{}
+{
+  "objects": [
+    {
+      "id": "bed",
+      "name": "Bed",
+      "category": "furniture",
+      "cost": 8,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_bed",
+      "effects": { "sleepQuality": 2 }
+    },
+    {
+      "id": "altar",
+      "name": "Altar",
+      "category": "ritual",
+      "cost": 25,
+      "size": { "w": 2, "h": 1 },
+      "meshId": "object_altar",
+      "effects": { "prayerBonus": 3, "influenceGen": 0.5 }
+    },
+    {
+      "id": "cookpot",
+      "name": "Cooking Pot",
+      "category": "kitchen",
+      "cost": 15,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_cookpot",
+      "effects": { "foodGen": 2 }
+    },
+    {
+      "id": "research_desk",
+      "name": "Research Desk",
+      "category": "research",
+      "cost": 20,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_desk",
+      "effects": { "researchGen": 1.5 }
+    },
+    {
+      "id": "storage_box",
+      "name": "Storage Box",
+      "category": "storage",
+      "cost": 5,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_box",
+      "effects": { "storageCap": 20 }
+    },
+    {
+      "id": "torch",
+      "name": "Torch",
+      "category": "decor",
+      "cost": 3,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_torch",
+      "effects": { "lightRadius": 3, "moraleBonus": 1 }
+    },
+    {
+      "id": "offering_bowl",
+      "name": "Offering Bowl",
+      "category": "ritual",
+      "cost": 10,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_bowl",
+      "effects": { "faithGen": 1 }
+    },
+    {
+      "id": "meditation_mat",
+      "name": "Meditation Mat",
+      "category": "wellness",
+      "cost": 6,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_mat",
+      "effects": { "sanityGen": 2 }
+    }
+  ]
+}

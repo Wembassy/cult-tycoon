@@ -1,1 +1,94 @@
-{}
+{
+  "events": [
+    {
+      "id": "new_recruit",
+      "name": "New Recruit Arrives",
+      "type": "positive",
+      "probability": 0.05,
+      "minDay": 2,
+      "description": "A wanderer arrives, drawn by your cult's reputation",
+      "effects": { "spawnFollower": 1 }
+    },
+    {
+      "id": "donation",
+      "name": "Generous Donation",
+      "type": "positive",
+      "probability": 0.03,
+      "minDay": 3,
+      "description": "A wealthy sympathizer donates to your cause",
+      "effects": { "wealth": 50 }
+    },
+    {
+      "id": "sickness",
+      "name": "Sickness Outbreak",
+      "type": "negative",
+      "probability": 0.02,
+      "minDay": 5,
+      "description": "Several followers fall ill",
+      "effects": { "healthDamage": 20, "affectedCount": 2 }
+    },
+    {
+      "id": "doubt_spreads",
+      "name": "Doubt Spreads",
+      "type": "negative",
+      "probability": 0.04,
+      "minDay": 4,
+      "description": "Questions about the cult's teachings arise",
+      "effects": { "faithDamage": 15, "affectedCount": 3 }
+    },
+    {
+      "id": "investigator_visit",
+      "name": "Investigator Arrives",
+      "type": "danger",
+      "probability": 0.01,
+      "minDay": 10,
+      "description": "A government investigator comes to inspect your compound",
+      "effects": { "notorietyCheck": true, "investigatorSpawn": true }
+    },
+    {
+      "id": "inspiration",
+      "name": "Divine Inspiration",
+      "type": "positive",
+      "probability": 0.04,
+      "minDay": 3,
+      "description": "A follower receives a vision from the divine",
+      "effects": { "influenceGain": 10, "faithGain": 20, "affectedCount": 1 }
+    },
+    {
+      "id": "crop_failure",
+      "name": "Crop Failure",
+      "type": "negative",
+      "probability": 0.03,
+      "minDay": 5,
+      "description": "Your food stores dwindle unexpectedly",
+      "effects": { "foodLoss": 30 }
+    },
+    {
+      "id": "wanderer_gift",
+      "name": "Wanderer's Gift",
+      "type": "positive",
+      "probability": 0.02,
+      "minDay": 5,
+      "description": "A passing stranger shares knowledge with your cult",
+      "effects": { "influenceGain": 15, "skillBonus": 1 }
+    },
+    {
+      "id": "rival_cult",
+      "name": "Rival Cult Activity",
+      "type": "danger",
+      "probability": 0.02,
+      "minDay": 8,
+      "description": "A rival cult is poaching your followers",
+      "effects": { "faithDamage": 10, "followerRisk": 1 }
+    },
+    {
+      "id": "festival",
+      "name": "Festival of Faith",
+      "type": "positive",
+      "probability": 0.03,
+      "minDay": 7,
+      "description": "A spontaneous celebration breaks out",
+      "effects": { "moraleBoost": 30, "faithGain": 15 }
+    }
+  ]
+}
