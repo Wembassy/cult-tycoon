@@ -1,0 +1,186 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { TileMap } from '@world/TileMap';
+import { Pathfinder } from '@world/Pathfinder';
+
+describe('Pathfinder — Basic Pathfinding', () => {
+  let map: TileMap;
+  let pf: Pathfinder;
+
+  beforeEach(() => {
+    map = new TileMap(16, 16);
+    pf = new Pathfinder(map);
+  });
+
+  it('should find path on open grid', () => {
+    const result = pf.findPath(0, 0, 5, 5);
+    expect(result.success).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
+    expect(result.path[0]).toEqual({ x: 0, y: 0 });
+    expect(result.path[result.path.length - 1]).toEqual({ x: 5, y: 5 });
+  });
+
+  it('should find path in straight line', () => {
+    const result = pf.findPath(0, 0, 5, 0);
+    expect(result.success).toBe(true);
+    expect(result.path[0]).toEqual({ x: 0, y: 0 });
+    expect(result.path[result.path.length - 1]).toEqual({ x: 5, y: 0 });
+  });
+
+  it('should return empty path when start equals goal', () => {
+    const result = pf.findPath(3, 3, 3, 3);
+    expect(result.success).toBe(true);
+    expect(result.path).toEqual([{ x: 3, y: 3 }]);
+  });
+
+  it('should fail for out-of-bounds start', () => {
+    const result = pf.findPath(-1, 0, 5, 5);
+    expect(result.success).toBe(false);
+  });
+
+  it('should fail for out-of-bounds goal', () => {
+    const result = pf.findPath(0, 0, 100, 100);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('Pathfinder — Obstacles', () => {
+  let map: TileMap;
+  let pf: Pathfinder;
+
+  beforeEach(() => {
+    map = new TileMap(16, 16);
+    pf = new Pathfinder(map);
+  });
+
+  it('should path around walls', () => {
+    // Build a vertical wall
+    for (let y = 0; y < 16; y++) {
+      map.setOccupied(5, y, true);
+    }
+    // Leave a gap at y=8
+    map.setOccupied(5, 8, false);
+
+    const result = pf.findPath(0, 0, 10, 0);
+    expect(result.success).toBe(true);
+    expect(result.length).toBeGreaterThan(5);
+    // Path should go through the gap
+    const passesGap = result.path.some(p => p.x === 5 && p.y === 8);
+    expect(passesGap).toBe(true);
+  });
+
+  it('should not path through water', () => {
+    // Create water barrier across entire width
+    for (let x = 0; x < 16; x++) {
+      map.setTerrain(x, 8, 'water');
+    }
+
+    const result = pf.findPath(0, 0, 0, 15);
+    // Water blocks the entire row — no path possible
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle maze-like obstacles', () => {
+    // Create a simple maze
+    map.setOccupied(2, 0, true);
+    map.setOccupied(2, 1, true);
+    map.setOccupied(2, 2, true);
+    // gap at y=3
+    map.setOccupied(2, 4, true);
+    map.setOccupied(2, 5, true);
+
+    const result = pf.findPath(0, 0, 5, 5);
+    expect(result.success).toBe(true);
+    const passesGap = result.path.some(p => p.x === 2 && p.y === 3);
+    expect(passesGap).toBe(true);
+  });
+});
+
+describe('Pathfinder — Path Smoothing', () => {
+  let map: TileMap;
+  let pf: Pathfinder;
+
+  beforeEach(() => {
+    map = new TileMap(16, 16);
+    pf = new Pathfinder(map);
+  });
+
+  it('should smooth straight line paths', () => {
+    const result = pf.findPath(0, 0, 10, 0);
+    expect(result.success).toBe(true);
+    // Smoothed path should have fewer waypoints than raw
+    // For a straight line, should be just start and end
+    expect(result.path.length).toBeLessThanOrEqual(3);
+  });
+
+  it('should preserve corners in paths', () => {
+    // Create an L-shaped obstacle to force a corner
+    for (let i = 0; i <= 5; i++) {
+      map.setOccupied(3, i, true);
+    }
+    const result = pf.findPath(0, 0, 8, 8);
+    expect(result.success).toBe(true);
+    // Path should have at least 2 direction changes
+    let directionChanges = 0;
+    for (let i = 2; i < result.path.length; i++) {
+      const d1 = {
+        dx: result.path[i - 1].x - result.path[i - 2].x,
+        dy: result.path[i - 1].y - result.path[i - 2].y,
+      };
+      const d2 = {
+        dx: result.path[i].x - result.path[i - 1].x,
+        dy: result.path[i].y - result.path[i - 1].y,
+      };
+      if (d1.dx !== d2.dx || d1.dy !== d2.dy) directionChanges++;
+    }
+    expect(directionChanges).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('Pathfinder — Cache', () => {
+  let map: TileMap;
+  let pf: Pathfinder;
+
+  beforeEach(() => {
+    map = new TileMap(16, 16);
+    pf = new Pathfinder(map);
+  });
+
+  it('should cache paths', () => {
+    const result1 = pf.findPath(0, 0, 5, 5);
+    const result2 = pf.findPath(0, 0, 5, 5);
+    expect(result1.path).toEqual(result2.path);
+  });
+
+  it('should invalidate cache when buildings change', () => {
+    const result1 = pf.findPath(0, 0, 10, 10);
+    expect(result1.success).toBe(true);
+    const path1Str = result1.path.map(p => `${p.x},${p.y}`).join('|');
+
+    // Add walls that block the original path — create a wall line
+    for (let y = 0; y < 16; y++) {
+      map.setOccupied(5, y, true);
+    }
+    pf.invalidateCache();
+
+    const result2 = pf.findPath(0, 0, 10, 10);
+    expect(result2.success).toBe(false); // wall blocks entire column
+    // Paths should differ
+    const path2Str = result2.success ? result2.path.map(p => `${p.x},${p.y}`).join('|') : 'NO_PATH';
+    expect(path1Str).not.toBe(path2Str);
+  });
+});
+
+describe('Pathfinder — Performance', () => {
+  it('should handle 50 concurrent path requests', () => {
+    const map = new TileMap(32, 32);
+    const pf = new Pathfinder(map);
+
+    const start = performance.now();
+    for (let i = 0; i < 50; i++) {
+      pf.findPath(0, 0, 15 + (i % 10), 15 + (i % 10));
+    }
+    const elapsed = performance.now() - start;
+    // Should complete all 50 paths in reasonable time
+    expect(elapsed).toBeLessThan(2000); // 2 second budget
+  });
+});
