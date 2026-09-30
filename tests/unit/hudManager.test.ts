@@ -1,0 +1,165 @@
+// @vitest-environment jsdom
+import { describe, it, expect, beforeEach } from 'vitest';
+import { HUDManager, ResourceBarData, BuildPanelEntry, InspectorData } from '@ui/HUDManager';
+
+function mockContainer(): HTMLElement {
+  const div = document.createElement('div');
+  document.body.appendChild(div);
+  return div;
+}
+
+describe('HUDManager — Resource Bar', () => {
+  let hud: HUDManager;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = mockContainer();
+    hud = new HUDManager({ container });
+  });
+
+  it('should create HUD elements on init', () => {
+    expect(container.children.length).toBeGreaterThan(0);
+  });
+
+  it('should update resource bar with stats', () => {
+    const data: ResourceBarData = {
+      influence: 100, wealth: 250, notoriety: 15,
+      faith: 80, morale: 75, population: 8, maxPopulation: 15,
+    };
+    hud.updateResourceBar(data);
+    const bar = container.querySelector('.hud-resource-bar');
+    expect(bar).not.toBeNull();
+    expect(bar!.textContent).toContain('100');
+    expect(bar!.textContent).toContain('250');
+    expect(bar!.textContent).toContain('8/15');
+  });
+});
+
+describe('HUDManager — Build Panel', () => {
+  let hud: HUDManager;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = mockContainer();
+    hud = new HUDManager({ container });
+  });
+
+  it('should populate build panel', () => {
+    const entries: BuildPanelEntry[] = [
+      { id: 'wall', label: 'Wall', icon: '🧱', cost: 5, category: 'walls' },
+      { id: 'floor', label: 'Floor', icon: '⬜', cost: 2, category: 'floors' },
+    ];
+    hud.setBuildPanel(entries);
+    const panel = container.querySelector('.hud-build-panel');
+    expect(panel).not.toBeNull();
+    expect(panel!.querySelectorAll('.hud-build-entry').length).toBe(2);
+  });
+});
+
+describe('HUDManager — Inspector', () => {
+  let hud: HUDManager;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = mockContainer();
+    hud = new HUDManager({ container });
+  });
+
+  it('should show inspector with follower data', () => {
+    const data: InspectorData = {
+      name: 'Alice', role: 'Follower', health: 90,
+      needs: { hunger: 60, faith: 80, fun: 70, sanity: 85 },
+      job: 'cleaning', traits: ['zealous', 'hardy'],
+    };
+    hud.showInspector(data);
+    const inspector = container.querySelector('.hud-inspector');
+    expect(inspector).not.toBeNull();
+    expect(inspector!.textContent).toContain('Alice');
+    expect(inspector!.textContent).toContain('zealous');
+  });
+
+  it('should hide inspector', () => {
+    const data: InspectorData = {
+      name: 'Bob', role: 'Follower', health: 100,
+      needs: { hunger: 100, faith: 100, fun: 100, sanity: 100 },
+      job: 'idle', traits: [],
+    };
+    hud.showInspector(data);
+    hud.hideInspector();
+    const inspector = container.querySelector('.hud-inspector') as HTMLElement;
+    expect(inspector.style.display).toBe('none');
+  });
+});
+
+describe('HUDManager — Event Log', () => {
+  let hud: HUDManager;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = mockContainer();
+    hud = new HUDManager({ container });
+  });
+
+  it('should log events', () => {
+    hud.logEvent('Test event', 'info');
+    hud.logEvent('Warning event', 'warning');
+    expect(hud.getEventLog()).toHaveLength(2);
+  });
+
+  it('should render events in DOM', () => {
+    hud.logEvent('Test event', 'info');
+    const log = container.querySelector('.hud-event-log');
+    expect(log).not.toBeNull();
+    expect(log!.querySelectorAll('.hud-log-entry').length).toBe(1);
+  });
+
+  it('should limit log entries to max', () => {
+    for (let i = 0; i < 25; i++) {
+      hud.logEvent(`Event ${i}`, 'info');
+    }
+    expect(hud.getEventLog().length).toBeLessThanOrEqual(20);
+  });
+
+  it('should clear event log', () => {
+    hud.logEvent('Test', 'info');
+    hud.clearEventLog();
+    expect(hud.getEventLog()).toHaveLength(0);
+  });
+});
+
+describe('HUDManager — Time Controls', () => {
+  let hud: HUDManager;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = mockContainer();
+    hud = new HUDManager({ container });
+  });
+
+  it('should default to play mode', () => {
+    expect(hud.timeMode).toBe('play');
+  });
+
+  it('should set time mode', () => {
+    hud.setTimeMode('pause');
+    expect(hud.timeMode).toBe('pause');
+  });
+
+  it('should update time display', () => {
+    hud.updateTime(14, 3);
+    expect(hud.currentHour).toBe(14);
+    expect(hud.currentDay).toBe(3);
+    const tc = container.querySelector('.hud-time-controls');
+    expect(tc!.textContent).toContain('Day 3');
+  });
+});
+
+describe('HUDManager — Destroy', () => {
+  it('should clean up DOM on destroy', () => {
+    const container = mockContainer();
+    const hud = new HUDManager({ container });
+    hud.logEvent('test', 'info');
+    hud.destroy();
+    expect(container.innerHTML).toBe('');
+  });
+});
