@@ -19,7 +19,6 @@
     "noEmit": true,
     "outDir": "./dist",
     "sourceMap": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@engine/*": ["./src/engine/*"],

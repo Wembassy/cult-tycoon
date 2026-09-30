@@ -1,8 +1,12 @@
 /**
- * System — placeholder scaffold.
- * Implementation will be added in a future issue.
+ * System — Base class for ECS systems.
+ * Systems contain logic and operate on entities with matching components.
+ * Each system's update() is called during the fixed simulation tick.
  */
 
-export class System {
-  // TODO: Implement in future issue
+import { World } from './World';
+
+export abstract class System {
+  /** Called at each fixed simulation step. Override in subclasses. */
+  abstract update(dt: number, world: World): void;
 }
