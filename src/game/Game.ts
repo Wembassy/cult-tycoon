@@ -95,7 +95,7 @@ export class Game {
 
     // Run all registered ECS systems
     for (const system of this.systems) {
-      system.update(fixedDt, this.world);
+      system.update(this.world, fixedDt);
     }
   }
 
