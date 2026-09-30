@@ -1,1 +1,37 @@
-{}
+{
+  "patrons": [
+    {
+      "id": "mysterious_benefactor",
+      "name": "Mysterious Benefactor",
+      "tier": 1,
+      "giftInterval": 300,
+      "description": "An anonymous supporter who sends occasional gifts",
+      "gifts": [
+        { "type": "wealth", "amount": 50 },
+        { "type": "influence", "amount": 20 }
+      ]
+    },
+    {
+      "id": "rich_devotee",
+      "name": "Rich Devotee",
+      "tier": 2,
+      "giftInterval": 600,
+      "description": "A wealthy follower who donates regularly",
+      "gifts": [
+        { "type": "wealth", "amount": 100 },
+        { "type": "materials", "amount": 20 }
+      ]
+    },
+    {
+      "id": "political_ally",
+      "name": "Political Ally",
+      "tier": 3,
+      "giftInterval": 900,
+      "description": "A government insider who shields you from investigations",
+      "gifts": [
+        { "type": "notoriety_reduction", "amount": 10 },
+        { "type": "wealth", "amount": 150 }
+      ]
+    }
+  ]
+}

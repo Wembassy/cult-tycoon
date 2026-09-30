@@ -19,7 +19,9 @@ import { AISystem } from './systems/AISystem';
 import { BuildingSystem } from './systems/BuildingSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { FollowerFactory } from './systems/FollowerFactory';
-import { HUDManager, ResourceBarData } from './ui/HUDManager';
+import { EventSystem } from './systems/EventSystem';
+import { DataManager } from './data/DataManager';
+import { HUDManager, ResourceBarData, BuildPanelEntry } from './ui/HUDManager';
 
 class CultTycoonGame {
   private renderer: Renderer;
@@ -34,6 +36,7 @@ class CultTycoonGame {
   private jobSystem: JobSystem;
   private aiSystem: AISystem;
   private renderSystem: RenderSystem;
+  private eventSystem: EventSystem;
   private factory: FollowerFactory;
   private systems: System[] = [];
   private lastTime = 0;
@@ -69,7 +72,16 @@ class CultTycoonGame {
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.factory = new FollowerFactory(42);
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem];
+    // Event system with data-driven events
+    this.eventSystem = new EventSystem(
+      DataManager.getEvents() as any,
+      12345,
+      (event) => {
+        this.hud.logEvent(event.description, event.type === 'positive' ? 'success' : event.type === 'danger' ? 'danger' : 'warning');
+      },
+    );
+
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem];
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -89,6 +101,17 @@ class CultTycoonGame {
     this.hud.updateTime(6, 1);
     this.hud.logEvent('Welcome to Cult Tycoon!', 'success');
     this.hud.logEvent('Your cult begins with 3 followers.', 'info');
+    this.hud.logEvent('Press B to enter build mode, click to place walls.', 'info');
+
+    // Populate build panel with objects from data
+    const buildEntries: BuildPanelEntry[] = DataManager.getObjects().map(obj => ({
+      id: obj.id,
+      label: obj.name,
+      icon: obj.category === 'ritual' ? '🔮' : obj.category === 'kitchen' ? '🍲' : obj.category === 'furniture' ? '🛏️' : obj.category === 'research' ? '📚' : obj.category === 'storage' ? '📦' : '📦',
+      cost: obj.cost,
+      category: obj.category as any,
+    }));
+    this.hud.setBuildPanel(buildEntries);
 
     // Input callbacks
     this.input.onTileClick = (tile) => this.onTileClick(tile.x, tile.y);
