@@ -12,8 +12,13 @@
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "electron:dev": "NODE_ENV=development electron electron/main.js",
+    "electron:build": "npm run build && electron-builder",
+    "electron:dist": "npm run build && electron-builder --publish never",
+    "steam:build": "npm run build && electron-builder --win --publish never"
   },
+  "main": "electron/main.js",
   "dependencies": {
     "three": "^0.170.0"
   },
@@ -21,6 +26,8 @@
     "@types/three": "^0.170.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.0.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.0.0",
