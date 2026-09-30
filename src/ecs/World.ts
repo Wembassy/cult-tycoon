@@ -84,7 +84,7 @@ export class World {
   /**
    * Query all entities that have ALL of the specified component types
    */
-  query<T extends Component>(componentTypes: (new (entity: Entity) => T)[]): Entity[] {
+  query(componentTypes: (new (entity: Entity) => Component)[]): Entity[] {
     if (componentTypes.length === 0) {
       return Array.from(this.entitySet);
     }
