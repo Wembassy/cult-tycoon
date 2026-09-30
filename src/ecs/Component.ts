@@ -1,8 +1,6 @@
 /**
- * Component — placeholder scaffold.
- * Implementation will be added in a future issue.
+ * Component interface — all components are plain data objects
  */
-
-export class Component {
-  // TODO: Implement in future issue
+export interface Component {
+  readonly entity: number;
 }

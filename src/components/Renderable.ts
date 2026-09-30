@@ -1,8 +1,9 @@
-/**
- * RenderableComponent — placeholder scaffold.
- * Implementation will be added in a future issue.
- */
+import type { Component } from '../ecs/Component';
 
-export class RenderableComponent {
-  // TODO: Implement in future issue
+export class Renderable implements Component {
+  constructor(public readonly entity: number) {}
+  meshId: string = '';
+  visible = true;
+  /** Optional tint color */
+  tint: string | null = null;
 }

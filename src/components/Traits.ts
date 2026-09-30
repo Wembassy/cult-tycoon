@@ -1,8 +1,16 @@
-/**
- * TraitsComponent — placeholder scaffold.
- * Implementation will be added in a future issue.
- */
+import type { Component } from '../ecs/Component';
 
-export class TraitsComponent {
-  // TODO: Implement in future issue
+export type TraitType =
+  | 'insomniac'
+  | 'zealous'
+  | 'doubter'
+  | 'charismatic'
+  | 'lazy'
+  | 'scholar'
+  | 'hardy'
+  | 'fragile';
+
+export class Traits implements Component {
+  constructor(public readonly entity: number) {}
+  traits: TraitType[] = [];
 }

@@ -1,8 +1,17 @@
-/**
- * HealthComponent — placeholder scaffold.
- * Implementation will be added in a future issue.
- */
+import type { Component } from '../ecs/Component';
 
-export class HealthComponent {
-  // TODO: Implement in future issue
+export type StatusEffect =
+  | 'healthy'
+  | 'sick'
+  | 'injured'
+  | 'blessed'
+  | 'cursed'
+  | 'inspired'
+  | 'exhausted';
+
+export class Health implements Component {
+  constructor(public readonly entity: number) {}
+  hp = 100;
+  maxHp = 100;
+  statusEffects: StatusEffect[] = ['healthy'];
 }
