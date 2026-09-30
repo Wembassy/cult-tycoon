@@ -1,8 +1,17 @@
-/**
- * FollowerAIComponent — placeholder scaffold.
- * Implementation will be added in a future issue.
- */
+import type { Component } from '../ecs/Component';
 
-export class FollowerAIComponent {
-  // TODO: Implement in future issue
+export type AIState =
+  | 'idle'
+  | 'moving'
+  | 'working'
+  | 'stuck'
+  | 'needs'
+  | 'done';
+
+export class FollowerAI implements Component {
+  constructor(public readonly entity: number) {}
+  state: AIState = 'idle';
+  path: { x: number; y: number }[] = [];
+  pathIndex = 0;
+  stateTimer = 0;  // time in current state
 }
