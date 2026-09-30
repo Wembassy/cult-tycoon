@@ -104,10 +104,12 @@ export class IsoCamera {
   screenToTile(screenX: number, screenY: number): TileCoord {
     const ndcX = (screenX - this.viewWidth / 2) / this.currentZoom;
     const ndcY = -(screenY - this.viewHeight / 2) / this.currentZoom;
+    // Inverse rotation (transpose: swap sin sign)
     const cos = Math.cos(this.currentRotationRad);
     const sin = Math.sin(this.currentRotationRad);
-    const rotX = ndcX * cos - ndcY * sin;
-    const rotY = ndcX * sin + ndcY * cos;
+    const rotX = ndcX * cos + ndcY * sin;
+    const rotY = -ndcX * sin + ndcY * cos;
+    // Inverse isometric projection
     const isoX = (rotX + 2 * rotY) / 2;
     const isoY = (2 * rotY - rotX) / 2;
     const tileX = Math.floor(isoX / TILE_SIZE + this.currentOffset.x);
