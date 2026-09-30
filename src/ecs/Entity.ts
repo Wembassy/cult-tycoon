@@ -1,8 +1,4 @@
 /**
- * Entity — placeholder scaffold.
- * Implementation will be added in a future issue.
+ * Entity type — just a unique numeric ID
  */
-
-export class Entity {
-  // TODO: Implement in future issue
-}
+export type Entity = number;
