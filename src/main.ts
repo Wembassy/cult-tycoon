@@ -29,11 +29,14 @@ import { EventSystem } from './systems/EventSystem';
 import { RitualSystem } from './systems/RitualSystem';
 import { TechTreeSystem } from './systems/TechTreeSystem';
 import { InvestigatorSystem } from './systems/InvestigatorSystem';
+import { ResourceSystem } from './systems/ResourceSystem';
+import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
 import { HUDManager, ResourceBarData, BuildPanelEntry } from './ui/HUDManager';
 import { StartMenu } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { SettingsMenu, SettingsData, GraphicsQuality } from './ui/SettingsMenu';
+import { SaveSystem, type SaveData, type SerializedCult } from './systems/SaveSystem';
 // WinLoseEvent type used for overlay logic
 
 /** Top-level game state. */
@@ -86,6 +89,9 @@ class CultTycoonGame {
   private startMenu: StartMenu | null = null;
   private pauseMenu: PauseMenu | null = null;
   private settingsMenu: SettingsMenu | null = null;
+
+  // Save system
+  private saveSystem: SaveSystem;
   private settingsData: SettingsData = {
     masterVolume: 75,
     sfxVolume: 80,
@@ -216,6 +222,13 @@ class CultTycoonGame {
 
     // Setup HUD button click handlers
     this.setupHUDInteractions();
+
+    // Save system
+    this.saveSystem = new SaveSystem({
+      volume: this.settingsData.masterVolume / 100,
+      autoSaveInterval: 300,
+      showTutorial: true,
+    });
 
     canvas.focus();
     window.addEventListener('resize', this.onResize);
@@ -1147,6 +1160,9 @@ class CultTycoonGame {
     this.startMenu.mount();
     this.startMenu.show();
 
+    // Enable Continue button only if a save exists
+    this.startMenu.setCanContinue(this.saveSystem.hasSave());
+
     // Settings menu (shared, created on demand)
     this.settingsMenu = new SettingsMenu({
       onApply: (data) => this.applySettings(data),
@@ -1176,12 +1192,94 @@ class CultTycoonGame {
   }
 
   /**
-   * Continue from a saved game (placeholder — no save system yet).
+   * Continue from a saved game.
    */
   private continueGame(): void {
-    // TODO: Load save file when save system exists
-    console.log('[Menu] Continue not yet implemented — starting new game instead');
-    this.startNewGame();
+    console.log('[Menu] Continue: loading save...');
+
+    const data = this.saveSystem.load();
+    if (!data) {
+      console.warn('[Menu] No save found — falling back to new game');
+      this.hud.logEvent('No saved game found. Starting new game.', 'warning');
+      this.startNewGame();
+      return;
+    }
+
+    this.startMenu?.hide();
+    this.gameState = 'loading';
+
+    this.preloadAssets().then(() => {
+      console.log('[Menu] Preload complete, restoring save');
+      this.restoreFromSave(data);
+      this.gameState = 'playing';
+      this.start();
+    }).catch((err) => {
+      console.error('[Menu] Preload failed:', err);
+      this.restoreFromSave(data);
+      this.gameState = 'playing';
+      this.start();
+    });
+  }
+
+  /**
+   * Restore all game state from a SaveData object.
+   */
+  private restoreFromSave(data: SaveData): void {
+    // Reset game-ended state
+    this.gameEnded = false;
+    this._popZeroTimer = 0;
+
+    // Restore cult stats
+    this.cultWealth = data.cult.wealth;
+    this.cultInfluence = data.cult.influence;
+    this.cultNotoriety = data.cult.notoriety;
+    this.currentHour = data.time.hour;
+    this.currentDay = data.time.day;
+
+    // Recalculate tickCount from hour/day so simulation continues smoothly
+    // 900 ticks per day, 37.5 ticks per hour; day 1 starts at hour 6
+    const hoursElapsed = (data.time.day - 1) * 24 + (data.time.hour - 6);
+    this.tickCount = hoursElapsed * (900 / 24);
+    this.selectedBuildItem = null;
+    this.selectedEntity = null;
+
+    // Deserialize world entities
+    this.saveSystem.deserializeWorld(data, this.world);
+
+    // Restore tile map in-place (same dimensions expected)
+    // Update terrain and tile properties from save data
+    let tileIndex = 0;
+    for (let y = 0; y < this.map.height; y++) {
+      for (let x = 0; x < this.map.width; x++) {
+        const saved = data.tileMap.tiles[tileIndex++];
+        if (saved) {
+          this.map.setTerrain(x, y, saved.terrain as any);
+          this.map.setOccupied(x, y, saved.occupied);
+          if (saved.roomId !== null) {
+            this.map.setRoomId(x, y, saved.roomId);
+          }
+          // Restore buildable flag explicitly (setTerrain sets a default, but saved value may differ)
+          const tile = this.map.getTile(x, y);
+          if (tile) tile.buildable = saved.buildable;
+        }
+      }
+    }
+
+    // Pathfinder needs to be rebuilt with the restored map state
+    this.pathfinder = new Pathfinder(this.map);
+
+    // Rebuild scene tiles
+    this.sceneMgr.buildTiles();
+    this.sceneMgr.syncEntities();
+
+    // Reset investigator system for the loaded map
+    this.investigatorSystem.reset();
+
+    // Update HUD
+    this.updateHUD();
+    this.hud.updateTime(Math.floor(this.currentHour), this.currentDay);
+    this.hud.logEvent(`Save loaded — Day ${this.currentDay}, Hour ${Math.floor(this.currentHour)}.`, 'success');
+    this.setTimeMode('play');
   }
 
   /**
@@ -1269,12 +1367,38 @@ class CultTycoonGame {
   }
 
   /**
-   * Save the game (placeholder).
+   * Save the game to localStorage.
    */
   private saveGame(): void {
-    // TODO: Implement save system
-    this.hud.logEvent('Save: Game state saved (placeholder).', 'success');
-    console.log('[Menu] Save game requested (not yet implemented)');
+    const cult: SerializedCult = {
+      influence: this.cultInfluence,
+      wealth: this.cultWealth,
+      notoriety: this.cultNotoriety,
+      faith: 0,
+      morale: 0,
+      population: this.world.query([Needs]).length,
+      maxPopulation: 10 + this.techTree.getEffectBonus('maxPopulationBonus'),
+      leaderName: 'The Founder',
+      leaderTitle: 'Cult Leader',
+      day: this.currentDay,
+      hour: this.currentHour,
+    };
+
+    const data = this.saveSystem.serialize(
+      this.world,
+      this.map,
+      cult,
+      { hour: this.currentHour, day: this.currentDay },
+    );
+
+    const success = this.saveSystem.save(data);
+    if (success) {
+      this.hud.logEvent('Game saved successfully!', 'success');
+      console.log('[Menu] Game saved to localStorage');
+    } else {
+      this.hud.logEvent('Save failed!', 'danger');
+      console.error('[Menu] Save failed');
+    }
   }
 
   /**
