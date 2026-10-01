@@ -3,7 +3,10 @@
  * Wires together all engine systems into a playable game.
  */
 
+import * as THREE from 'three';
 import { Renderer } from './engine/Renderer';
+import { AudioManager } from './engine/AudioManager';
+import { ParticleSystem } from './engine/ParticleSystem';
 import { SceneManager } from './engine/SceneManager';
 import { InputManager } from './engine/InputManager';
 import { AssetLoader } from './engine/AssetLoader';
@@ -71,6 +74,8 @@ class CultTycoonGame {
   private resourceSystem: ResourceSystem;
   private fogOfWar: FogOfWar;
   private fogSystem: FogSystem;
+  private audio: AudioManager;
+  private particles: ParticleSystem;
   private gameInstanceState: GameInstanceState;
   private factory: FollowerFactory;
   private systems: System[] = [];
@@ -121,6 +126,8 @@ class CultTycoonGame {
 
     // Core engine
     this.renderer = new Renderer(canvas);
+    this.audio = new AudioManager();
+    this.particles = new ParticleSystem(this.renderer.threeScene);
     this.world = new World();
     this.assets = new AssetLoader();
 
@@ -177,11 +184,16 @@ class CultTycoonGame {
       ['basic_rituals'],
       (ritual) => {
         this.hud.logEvent(`Ritual started: ${ritual.name}`, 'info');
+        this.audio.play('ritual-cast');
+        // Spawn ritual particles at map center
+        const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+        this.particles.spawnRitualCast(offset.x + this.map.width / 2, offset.z + this.map.height / 2);
       },
       (result) => {
         this.cultInfluence += result.influenceGain;
         this.cultNotoriety += result.notorietyGain;
         this.hud.logEvent(`Ritual complete: ${result.name} (+${result.influenceGain} influence, +${result.faithGain} faith)`, 'success');
+        this.audio.play('level-up');
         this.dialog.ritualResult(result.name, result);
 
         // Check if Ascension ritual completed → trigger win condition check
@@ -245,6 +257,16 @@ class CultTycoonGame {
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
+
+    // Initialize audio on first user interaction (browser autoplay policy)
+    const initAudio = () => {
+      this.audio.init();
+      this.audio.startAmbient();
+      window.removeEventListener('click', initAudio);
+      window.removeEventListener('keydown', initAudio);
+    };
+    window.addEventListener('click', initAudio);
+    window.addEventListener('keydown', initAudio);
 
     // Right-click without drag → cancel/deselect (IsoCamera handles right-drag for rotation)
     this.renderer.camera.onRightClickWithoutDrag = () => {
@@ -675,6 +697,7 @@ class CultTycoonGame {
           this.input.setMode('build');
           this.selectedBuildItem = id;
           this.hud.logEvent(`Selected: ${item.querySelector('.hud-build-item-label')?.textContent} (${cost}g)`, 'info');
+          this.audio.play('ui-select');
         }
         this.hud.highlightBuildItem(id);
       });
@@ -861,6 +884,7 @@ class CultTycoonGame {
       const result = this.buildingSystem.demolish(x, y);
       if (result.success) {
         this.hud.logEvent(`Demolished at (${x}, ${y})`, 'info');
+        this.audio.play('destroy');
         this.sceneMgr.buildTiles();
         this.sceneMgr.syncEntities();
         this.pathfinder.invalidateCache();
@@ -915,6 +939,10 @@ class CultTycoonGame {
       const label = item === 'wall' ? 'Wall' : item === 'floor' ? 'Floor' : item === 'door' ? 'Door' : objDef?.name ?? item;
       this.hud.logEvent(`${label} placed at (${x}, ${y}) for ${cost}g`, 'success');
       this.showFloatingText(`-${cost}g`, x, y, '#fbbf24');
+      this.audio.play('ui-build');
+      const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+      this.particles.spawnBuildDust(x + offset.x + 0.5, y + offset.z + 0.5);
+      this.particles.spawnResourceGain(x + offset.x + 0.5, y + offset.z + 0.5, 0xfbbf24);
       this.sceneMgr.buildTiles();
       this.sceneMgr.syncEntities();
       this.pathfinder.invalidateCache();
@@ -1128,21 +1156,61 @@ class CultTycoonGame {
 
   private updateLighting(): void {
     const hour = this.currentHour;
-    // Day/night cycle: 6-18 is day, 18-6 is night
-    const dayFactor = hour < 6 || hour > 18
-      ? 0.3 // Night
-      : hour < 8 || hour > 16
-      ? 0.6 // Dawn/dusk
-      : 1.0; // Full day
+    // Smooth day/night cycle with dawn/dusk transitions
+    let dayFactor: number;
+    let lightColor: number;
+    let ambientColor: number;
+    let fogColor: number;
+    let bloomStrength: number;
+
+    if (hour >= 6 && hour < 8) {
+      // Dawn — warm orange, low light, soft bloom
+      const t = (hour - 6) / 2;
+      dayFactor = 0.3 + t * 0.4;
+      lightColor = 0xffb066;
+      ambientColor = 0x6677aa;
+      fogColor = 0x2a2233;
+      bloomStrength = 0.6;
+    } else if (hour >= 8 && hour < 16) {
+      // Full day — bright white, full bloom
+      dayFactor = 1.0;
+      lightColor = 0xfff4dd;
+      ambientColor = 0x8899bb;
+      fogColor = 0x1a1a2e;
+      bloomStrength = 0.8;
+    } else if (hour >= 16 && hour < 19) {
+      // Dusk — warm orange fading to purple
+      const t = (hour - 16) / 3;
+      dayFactor = 1.0 - t * 0.6;
+      lightColor = t < 0.5 ? 0xffaa66 : 0xaa6699;
+      ambientColor = 0x8899bb;
+      fogColor = 0x2a1a33;
+      bloomStrength = 0.9 + t * 0.3;
+    } else {
+      // Night — cool blue, low light, strong bloom for torches/lights
+      dayFactor = 0.25;
+      lightColor = 0x6688cc;
+      ambientColor = 0x334466;
+      fogColor = 0x0a0a1a;
+      bloomStrength = 1.2;
+    }
 
     const ambient = this.renderer.ambient;
-    ambient.intensity = 0.3 + dayFactor * 0.3;
+    ambient.intensity = 0.25 + dayFactor * 0.35;
+    ambient.color.setHex(ambientColor);
 
     const dirLight = this.renderer.directional;
-    dirLight.intensity = 0.3 + dayFactor * 0.5;
-    // Shift color toward orange at dawn/dusk
-    const warm = hour >= 16 && hour <= 19;
-    dirLight.color.setHex(warm ? 0xffaa66 : 0xffffff);
+    dirLight.intensity = 0.2 + dayFactor * 0.6;
+    dirLight.color.setHex(lightColor);
+
+    // Update fog color to match time of day
+    if (this.renderer.threeScene.fog instanceof THREE.Fog) {
+      this.renderer.threeScene.fog.color.setHex(fogColor);
+      this.renderer.threeScene.background = new THREE.Color(fogColor);
+    }
+
+    // Adjust bloom for time of day — stronger at night for glow effects
+    this.renderer.setBloomStrength(bloomStrength);
   }
 
   private simulate(dt: number): void {
@@ -1189,6 +1257,9 @@ class CultTycoonGame {
 
     // Sync entity positions for animation
     this.sceneMgr.syncEntities();
+
+    // Update particle effects
+    this.particles.update(dt);
 
     // Update fog of war tile visuals (only tiles that changed)
     this.sceneMgr.updateFog();

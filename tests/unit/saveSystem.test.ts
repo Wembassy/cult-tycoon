@@ -109,7 +109,7 @@ describe('SaveSystem — Save/Load', () => {
     const data = save.serialize(world, map, TEST_CULT, { hour: 0, day: 1 });
     const success = save.save(data);
     expect(success).toBe(true);
-    expect(mockStorage['cult_tycoon_save']).toBeDefined();
+    expect(mockStorage['cult_tycoon_save_0']).toBeDefined();
   });
 
   it('should load from localStorage', () => {
@@ -238,7 +238,7 @@ describe('SaveSystem — Edge Cases', () => {
   it('should create a valid JSON string in localStorage', () => {
     const data = save.serialize(world, map, TEST_CULT, { hour: 10, day: 5 });
     save.save(data);
-    const raw = mockStorage['cult_tycoon_save'];
+    const raw = mockStorage['cult_tycoon_save_0'];
     expect(raw).toBeDefined();
     // Should parse without throwing
     const parsed = JSON.parse(raw);
@@ -254,11 +254,11 @@ describe('SaveSystem — Edge Cases', () => {
     };
 
     save.save(save.serialize(world, map, cult1, { hour: 0, day: 1 }));
-    const firstRaw = mockStorage['cult_tycoon_save'];
+    const firstRaw = mockStorage['cult_tycoon_save_0'];
     expect(firstRaw).toBeDefined();
 
     save.save(save.serialize(world, map, cult2, { hour: 12, day: 10 }));
-    const secondRaw = mockStorage['cult_tycoon_save'];
+    const secondRaw = mockStorage['cult_tycoon_save_0'];
     expect(secondRaw).toBeDefined();
 
     // Should be different (overwritten)
@@ -280,7 +280,7 @@ describe('SaveSystem — Corrupted Data', () => {
   });
 
   it('should return null for corrupted (invalid JSON) save data', () => {
-    mockStorage['cult_tycoon_save'] = '{ this is not valid json }}}';
+    mockStorage['cult_tycoon_save_0'] = '{ this is not valid json }}}';
     const loaded = save.load();
     expect(loaded).toBeNull();
   });
@@ -288,7 +288,7 @@ describe('SaveSystem — Corrupted Data', () => {
   it('should return null for save data with wrong structure', () => {
     // Valid JSON but missing expected fields — should still return the parsed object
     // since load() only checks version, not structure. But version mismatch is warned.
-    mockStorage['cult_tycoon_save'] = JSON.stringify({ foo: 'bar' });
+    mockStorage['cult_tycoon_save_0'] = JSON.stringify({ foo: 'bar' });
     const loaded = save.load();
     // load() parses and returns it (version check is just a warning, not a failure)
     expect(loaded).not.toBeNull();

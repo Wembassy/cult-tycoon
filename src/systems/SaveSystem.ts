@@ -61,8 +61,10 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.1.0';
-const SAVE_KEY = 'cult_tycoon_save';
+const SAVE_VERSION = '0.2.0';
+const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
+const AUTOSAVE_KEY = 'cult_tycoon_autosave';
+const MAX_SLOTS = 6;
 
 const DEFAULT_SETTINGS: GameSettings = {
   volume: 0.7,
@@ -143,12 +145,13 @@ export class SaveSystem {
   }
 
   /**
-   * Save to localStorage
+   * Save to a specific slot (0-5). Slot -1 = autosave.
    */
-  save(data: SaveData): boolean {
+  save(data: SaveData, slot: number = 0): boolean {
     try {
       const json = JSON.stringify(data);
-      localStorage.setItem(SAVE_KEY, json);
+      const key = slot === -1 ? AUTOSAVE_KEY : `${SAVE_KEY_PREFIX}${slot}`;
+      localStorage.setItem(key, json);
       return true;
     } catch (e) {
       console.error('Save failed:', e);
@@ -157,11 +160,12 @@ export class SaveSystem {
   }
 
   /**
-   * Load from localStorage
+   * Load from a specific slot. Slot -1 = autosave.
    */
-  load(): SaveData | null {
+  load(slot: number = 0): SaveData | null {
     try {
-      const json = localStorage.getItem(SAVE_KEY);
+      const key = slot === -1 ? AUTOSAVE_KEY : `${SAVE_KEY_PREFIX}${slot}`;
+      const json = localStorage.getItem(key);
       if (!json) return null;
       const data = JSON.parse(json) as SaveData;
       if (data.version !== SAVE_VERSION) {
@@ -175,11 +179,12 @@ export class SaveSystem {
   }
 
   /**
-   * Delete save file
+   * Delete save in a specific slot.
    */
-  deleteSave(): boolean {
+  deleteSave(slot: number = 0): boolean {
     try {
-      localStorage.removeItem(SAVE_KEY);
+      const key = slot === -1 ? AUTOSAVE_KEY : `${SAVE_KEY_PREFIX}${slot}`;
+      localStorage.removeItem(key);
       return true;
     } catch (e) {
       return false;
@@ -187,11 +192,62 @@ export class SaveSystem {
   }
 
   /**
-   * Check if a save exists
+   * Check if a save exists in a specific slot.
    */
-  hasSave(): boolean {
-    return localStorage.getItem(SAVE_KEY) !== null;
+  hasSave(slot: number = 0): boolean {
+    const key = slot === -1 ? AUTOSAVE_KEY : `${SAVE_KEY_PREFIX}${slot}`;
+    return localStorage.getItem(key) !== null;
   }
+
+  /**
+   * Get info for all save slots (for save/load UI).
+   */
+  getSaveSlots(): { slot: number; exists: boolean; timestamp: number; day: number; cultName: string }[] {
+    const slots: { slot: number; exists: boolean; timestamp: number; day: number; cultName: string }[] = [];
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const json = localStorage.getItem(`${SAVE_KEY_PREFIX}${i}`);
+      if (json) {
+        try {
+          const data = JSON.parse(json) as SaveData;
+          slots.push({
+            slot: i,
+            exists: true,
+            timestamp: data.timestamp,
+            day: data.cult.day,
+            cultName: data.cult.leaderName,
+          });
+        } catch {
+          slots.push({ slot: i, exists: false, timestamp: 0, day: 0, cultName: '' });
+        }
+      } else {
+        slots.push({ slot: i, exists: false, timestamp: 0, day: 0, cultName: '' });
+      }
+    }
+    return slots;
+  }
+
+  /**
+   * Autosave — saves to the autosave slot without overwriting manual saves.
+   */
+  autosave(data: SaveData): boolean {
+    return this.save(data, -1);
+  }
+
+  /**
+   * Check if autosave exists.
+   */
+  hasAutosave(): boolean {
+    return localStorage.getItem(AUTOSAVE_KEY) !== null;
+  }
+
+  /**
+   * Load autosave.
+   */
+  loadAutosave(): SaveData | null {
+    return this.load(-1);
+  }
+
+  get maxSlots(): number { return MAX_SLOTS; }
 
   /**
    * Deserialize world from save data
