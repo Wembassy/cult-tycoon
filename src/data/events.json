@@ -43,7 +43,8 @@
       "probability": 0.01,
       "minDay": 10,
       "description": "A government investigator comes to inspect your compound",
-      "effects": { "notorietyCheck": true, "investigatorSpawn": true }
+      "effects": { "notorietyCheck": true, "investigatorSpawn": true },
+      "conditions": { "minNotoriety": 20 }
     },
     {
       "id": "inspiration",
@@ -79,7 +80,8 @@
       "probability": 0.02,
       "minDay": 8,
       "description": "A rival cult is poaching your followers",
-      "effects": { "faithDamage": 10, "followerRisk": 1 }
+      "effects": { "faithDamage": 10, "followerRisk": 1 },
+      "conditions": { "minFollowers": 5 }
     },
     {
       "id": "festival",
@@ -89,6 +91,467 @@
       "minDay": 7,
       "description": "A spontaneous celebration breaks out",
       "effects": { "moraleBoost": 30, "faithGain": 15 }
+    },
+    {
+      "id": "wealthy_donor",
+      "name": "Wealthy Donor Offers Funds",
+      "type": "positive",
+      "probability": 0.015,
+      "minDay": 6,
+      "description": "A reclusive millionaire is impressed by your movement and offers financial support",
+      "effects": { "wealth": 80 },
+      "conditions": { "minFollowers": 3, "minInfluence": 15 },
+      "choices": [
+        {
+          "label": "Accept the funds graciously",
+          "description": "Take the money with gratitude. The donor may spread the word.",
+          "effects": { "wealth": 80, "influenceGain": 5, "notorietyGain": 3 }
+        },
+        {
+          "label": "Accept quietly",
+          "description": "Take the money but keep the donor anonymous.",
+          "effects": { "wealth": 80, "notorietyGain": 0 }
+        },
+        {
+          "label": "Refuse and ask for loyalty instead",
+          "description": "Decline the money, asking the donor to join as a follower instead.",
+          "effects": { "spawnFollower": 1, "faithGain": 15, "influenceGain": 10 }
+        }
+      ]
+    },
+    {
+      "id": "divine_vision",
+      "name": "Divine Vision",
+      "type": "positive",
+      "probability": 0.02,
+      "minDay": 5,
+      "description": "During meditation, a follower receives a powerful vision of the cosmos",
+      "effects": { "faithGain": 25, "influenceGain": 15, "affectedCount": 1 },
+      "conditions": { "minFaith": 60 },
+      "choices": [
+        {
+          "label": "Share the vision with all followers",
+          "description": "Proclaim the vision as a sign of divine favor.",
+          "effects": { "faithGain": 25, "moraleBoost": 20, "notorietyGain": 5 }
+        },
+        {
+          "label": "Keep it as a sacred secret",
+          "description": "Guard the vision within the inner circle.",
+          "effects": { "faithGain": 15, "influenceGain": 20 }
+        }
+      ]
+    },
+    {
+      "id": "bountiful_harvest",
+      "name": "Bountiful Harvest",
+      "type": "positive",
+      "probability": 0.025,
+      "minDay": 4,
+      "description": "Your fields yield an unexpectedly rich harvest",
+      "effects": { "foodGain": 40, "moraleBoost": 15 },
+      "choices": [
+        {
+          "label": "Store the surplus",
+          "description": "Save the extra food for lean times.",
+          "effects": { "foodGain": 50, "moraleBoost": 5 }
+        },
+        {
+          "label": "Share with the community",
+          "description": "Distribute extra food to nearby villages to build goodwill.",
+          "effects": { "foodGain": 20, "influenceGain": 15, "reputationGain": 10 }
+        }
+      ]
+    },
+    {
+      "id": "inspirational_sermon",
+      "name": "Inspirational Sermon",
+      "type": "positive",
+      "probability": 0.035,
+      "minDay": 3,
+      "description": "Your sermon moves the congregation to tears of joy",
+      "effects": { "faithGain": 15, "moraleBoost": 20 },
+      "conditions": { "minFollowers": 2 },
+      "choices": [
+        {
+          "label": "Focus on faith and devotion",
+          "description": "Channel the energy into spiritual commitment.",
+          "effects": { "faithGain": 20, "moraleBoost": 10 }
+        },
+        {
+          "label": "Focus on community and unity",
+          "description": "Emphasize the bonds between followers.",
+          "effects": { "moraleBoost": 30, "faithGain": 5 }
+        },
+        {
+          "label": "Ask for donations during the high point",
+          "description": "Capitalize on the emotional peak.",
+          "effects": { "wealth": 30, "faithGain": 5, "moraleBoost": -5 }
+        }
+      ]
+    },
+    {
+      "id": "follower_doubts",
+      "name": "Follower's Doubt",
+      "type": "negative",
+      "probability": 0.03,
+      "minDay": 5,
+      "description": "A devoted follower begins to question the teachings",
+      "effects": { "faithDamage": 20, "affectedCount": 1 },
+      "conditions": { "minFollowers": 3 },
+      "choices": [
+        {
+          "label": "Counsel them privately",
+          "description": "Take time to address their concerns one-on-one.",
+          "effects": { "faithDamage": 5, "moraleBoost": -10, "influenceGain": 5 }
+        },
+        {
+          "label": "Make an example of them",
+          "description": "Publicly denounce their doubt to keep others in line.",
+          "effects": { "faithDamage": 10, "moraleBoost": -25, "notorietyGain": 5, "faithGain": 5 }
+        }
+      ]
+    },
+    {
+      "id": "food_shortage",
+      "name": "Food Shortage",
+      "type": "negative",
+      "probability": 0.025,
+      "minDay": 6,
+      "description": "Supplies run dangerously low. Followers are hungry and restless",
+      "effects": { "foodLoss": 20, "moraleBoost": -15 },
+      "conditions": { "minFollowers": 4 },
+      "choices": [
+        {
+          "label": "Ration food equally",
+          "description": "Everyone shares the burden, including leadership.",
+          "effects": { "foodLoss": 10, "moraleBoost": -10, "faithGain": 5 }
+        },
+        {
+          "label": "Buy food at premium prices",
+          "description": "Spend funds to keep everyone fed.",
+          "effects": { "wealth": -60, "moraleBoost": -5 }
+        },
+        {
+          "label": "Leadership eats first",
+          "description": "Ensure the inner circle is well-fed while others go hungry.",
+          "effects": { "foodLoss": 25, "moraleBoost": -30, "faithDamage": 15, "notorietyGain": 5 }
+        }
+      ]
+    },
+    {
+      "id": "neighbor_complaint",
+      "name": "Neighbor Complaint",
+      "type": "negative",
+      "probability": 0.03,
+      "minDay": 4,
+      "description": "A neighbor files a noise complaint about your late-night rituals",
+      "effects": { "notorietyGain": 10, "moraleBoost": -5 },
+      "choices": [
+        {
+          "label": "Apologize and quiet down",
+          "description": "Reduce ritual noise to keep the peace.",
+          "effects": { "notorietyGain": 0, "faithDamage": 5, "moraleBoost": -5 }
+        },
+        {
+          "label": "Invite them to join",
+          "description": "Turn the complaint into a recruitment opportunity.",
+          "effects": { "notorietyGain": 5, "influenceGain": 10, "spawnFollower": 1 }
+        },
+        {
+          "label": "Ignore the complaint",
+          "description": "Continue as before. They'll get used to it.",
+          "effects": { "notorietyGain": 15, "moraleBoost": 5 }
+        }
+      ]
+    },
+    {
+      "id": "ritual_backfire",
+      "name": "Ritual Backfire",
+      "type": "negative",
+      "probability": 0.02,
+      "minDay": 7,
+      "description": "A ritual goes terribly wrong, producing unsettling effects",
+      "effects": { "faithDamage": 15, "moraleBoost": -20, "affectedCount": 3 },
+      "conditions": { "minFollowers": 3, "minFaith": 40 },
+      "choices": [
+        {
+          "label": "Interpret it as a test of faith",
+          "description": "Frame the failure as the divine testing your devotion.",
+          "effects": { "faithDamage": 5, "moraleBoost": -10, "influenceGain": 5 }
+        },
+        {
+          "label": "Blame the ritual leader",
+          "description": "Sacrifice the leader's standing to protect the cult's image.",
+          "effects": { "faithDamage": 5, "moraleBoost": -15, "notorietyGain": 3, "followerRisk": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bad_omen",
+      "name": "Bad Omen",
+      "type": "negative",
+      "probability": 0.025,
+      "minDay": 5,
+      "description": "A black comet streaks across the sky. Followers are frightened",
+      "effects": { "faithDamage": 10, "moraleBoost": -15 },
+      "choices": [
+        {
+          "label": "Declare it a sign of coming glory",
+          "description": "Reframe the omen as a harbinger of the cult's ascension.",
+          "effects": { "faithDamage": 0, "faithGain": 10, "moraleBoost": -5, "influenceGain": 10 }
+        },
+        {
+          "label": "Perform a cleansing ritual",
+          "description": "Spend resources to purify the compound.",
+          "effects": { "faithDamage": 5, "moraleBoost": -5, "wealth": -20, "faithGain": 5 }
+        },
+        {
+          "label": "Do nothing and hope it passes",
+          "description": "Ignore the omen entirely.",
+          "effects": { "faithDamage": 15, "moraleBoost": -20 }
+        }
+      ]
+    },
+    {
+      "id": "wandering_merchant",
+      "name": "Wandering Merchant",
+      "type": "positive",
+      "probability": 0.02,
+      "minDay": 4,
+      "description": "A traveling merchant arrives with exotic goods and strange stories",
+      "effects": { "influenceGain": 10 },
+      "choices": [
+        {
+          "label": "Buy rare materials",
+          "description": "Purchase exotic supplies for your compound.",
+          "effects": { "wealth": -40, "materialsGain": 30 }
+        },
+        {
+          "label": "Trade for knowledge",
+          "description": "Exchange resources for esoteric wisdom.",
+          "effects": { "wealth": -20, "influenceGain": 20, "faithGain": 5 }
+        },
+        {
+          "label": "Rob the merchant",
+          "description": "Take what you need by force.",
+          "effects": { "materialsGain": 40, "wealth": 30, "notorietyGain": 20, "moraleBoost": -10 }
+        }
+      ]
+    },
+    {
+      "id": "rival_cult_scout",
+      "name": "Rival Cult Scout",
+      "type": "danger",
+      "probability": 0.015,
+      "minDay": 8,
+      "description": "A scout from a rival cult is spotted observing your compound",
+      "effects": { "notorietyGain": 5 },
+      "conditions": { "minFollowers": 5, "minNotoriety": 10 },
+      "choices": [
+        {
+          "label": "Capture and interrogate",
+          "description": "Seize the spy and extract information about your rival.",
+          "effects": { "influenceGain": 15, "notorietyGain": 10, "moraleBoost": -5 }
+        },
+        {
+          "label": "Let them leave peacefully",
+          "description": "Show confidence by ignoring the scout.",
+          "effects": { "faithGain": 10, "influenceGain": 5 }
+        },
+        {
+          "label": "Feed them false information",
+          "description": "Send the scout back with misleading intelligence.",
+          "effects": { "influenceGain": 25, "faithGain": 5 }
+        }
+      ]
+    },
+    {
+      "id": "strange_dream",
+      "name": "Strange Dream",
+      "type": "positive",
+      "probability": 0.025,
+      "minDay": 3,
+      "description": "A follower wakes from an intensely vivid dream claiming prophetic knowledge",
+      "effects": { "faithGain": 10, "influenceGain": 5, "affectedCount": 1 },
+      "choices": [
+        {
+          "label": "Declare it a true prophecy",
+          "description": "Elevate the follower and spread the message.",
+          "effects": { "faithGain": 15, "moraleBoost": 10, "notorietyGain": 3 }
+        },
+        {
+          "label": "Interpret it privately",
+          "description": "Meditate on the dream's meaning within the inner circle.",
+          "effects": { "influenceGain": 15, "faithGain": 5 }
+        },
+        {
+          "label": "Dismiss it as just a dream",
+          "description": "Encourage the follower to focus on their duties.",
+          "effects": { "moraleBoost": -5, "faithDamage": 5 }
+        }
+      ]
+    },
+    {
+      "id": "ancient_artifact",
+      "name": "Ancient Artifact Found",
+      "type": "positive",
+      "probability": 0.01,
+      "minDay": 10,
+      "description": "While expanding the compound, followers unearth a strange ancient relic",
+      "effects": { "influenceGain": 20, "faithGain": 15 },
+      "conditions": { "minFollowers": 4 },
+      "choices": [
+        {
+          "label": "Display it as a sacred relic",
+          "description": "Proclaim the artifact a gift from the divine.",
+          "effects": { "faithGain": 25, "moraleBoost": 15, "notorietyGain": 10, "influenceGain": 10 }
+        },
+        {
+          "label": "Study it in secret",
+          "description": "Research the artifact's origins behind closed doors.",
+          "effects": { "influenceGain": 30, "faithGain": 5 }
+        },
+        {
+          "label": "Sell it to a collector",
+          "description": "Convert the artifact into immediate financial gain.",
+          "effects": { "wealth": 120, "notorietyGain": 5, "moraleBoost": -5 }
+        }
+      ]
+    },
+    {
+      "id": "political_election",
+      "name": "Political Election Nearby",
+      "type": "positive",
+      "probability": 0.015,
+      "minDay": 8,
+      "description": "A local political campaign is underway. Candidates are courting community leaders",
+      "effects": { "influenceGain": 10 },
+      "conditions": { "minInfluence": 20 },
+      "choices": [
+        {
+          "label": "Endorse a candidate publicly",
+          "description": "Throw your support behind a sympathetic politician.",
+          "effects": { "influenceGain": 25, "notorietyGain": 10, "wealth": 40 }
+        },
+        {
+          "label": "Remain neutral and negotiate privately",
+          "description": "Play both sides for maximum benefit.",
+          "effects": { "influenceGain": 15, "wealth": 20, "notorietyGain": 0 }
+        },
+        {
+          "label": "Discourage followers from voting",
+          "description": "Keep the cult separate from worldly politics.",
+          "effects": { "faithGain": 10, "influenceGain": -5, "moraleBoost": 5 }
+        }
+      ]
+    },
+    {
+      "id": "investigator_raid",
+      "name": "Investigator Raid",
+      "type": "danger",
+      "probability": 0.008,
+      "minDay": 15,
+      "description": "Armed investigators raid your compound in search of evidence of wrongdoing",
+      "effects": { "investigatorSpawn": true, "notorietyCheck": true },
+      "conditions": { "minNotoriety": 40, "minFollowers": 5 },
+      "choices": [
+        {
+          "label": "Cooperate fully",
+          "description": "Open all doors and answer every question.",
+          "effects": { "notorietyGain": -10, "moraleBoost": -10, "faithDamage": 10, "wealth": -50 }
+        },
+        {
+          "label": "Stall and hide evidence",
+          "description": "Buy time to conceal questionable activities.",
+          "effects": { "notorietyGain": 15, "faithDamage": 5, "moraleBoost": -15, "influenceGain": 5 }
+        },
+        {
+          "label": "Resist with force",
+          "description": "Block the investigators from entering.",
+          "effects": { "notorietyGain": 30, "moraleBoost": 10, "faithGain": 10, "followerRisk": 2 }
+        }
+      ]
+    },
+    {
+      "id": "follower_departs",
+      "name": "Follower Departs",
+      "type": "negative",
+      "probability": 0.02,
+      "minDay": 6,
+      "description": "A disillusioned follower announces they are leaving the cult",
+      "effects": { "followerLoss": 1, "moraleBoost": -15, "faithDamage": 10 },
+      "conditions": { "minFollowers": 3 },
+      "choices": [
+        {
+          "label": "Let them go peacefully",
+          "description": "Wish them well and show the cult is voluntary.",
+          "effects": { "followerLoss": 1, "moraleBoost": -5, "influenceGain": 5, "notorietyGain": -3 }
+        },
+        {
+          "label": "Convince them to stay",
+          "description": " personally appeal to their faith and loyalty.",
+          "effects": { "followerLoss": 0, "faithGain": 5, "moraleBoost": -10, "influenceGain": 10 }
+        },
+        {
+          "label": "Threaten them into silence",
+          "description": "Make sure they won't talk if they leave.",
+          "effects": { "followerLoss": 1, "notorietyGain": 15, "moraleBoost": -10, "faithDamage": 5 }
+        }
+      ]
+    },
+    {
+      "id": "scandal_spreads",
+      "name": "Scandal Spreads",
+      "type": "danger",
+      "probability": 0.012,
+      "minDay": 10,
+      "description": "A former member leaks damaging stories to the press about the cult's inner workings",
+      "effects": { "notorietyGain": 20, "moraleBoost": -20, "faithDamage": 15 },
+      "conditions": { "minNotoriety": 15, "minFollowers": 4 },
+      "choices": [
+        {
+          "label": "Launch a PR counter-campaign",
+          "description": "Fight the narrative with positive stories.",
+          "effects": { "wealth": -80, "notorietyGain": 5, "moraleBoost": 5, "influenceGain": 10 }
+        },
+        {
+          "label": "Deny everything",
+          "description": "Categorically deny all allegations.",
+          "effects": { "notorietyGain": 10, "faithDamage": 5, "moraleBoost": -10 }
+        },
+        {
+          "label": "Confess and reform",
+          "description": "Admit mistakes and promise change.",
+          "effects": { "notorietyGain": -5, "moraleBoost": 10, "faithDamage": 10, "influenceGain": 15 }
+        }
+      ]
+    },
+    {
+      "id": "supply_caravan_attacked",
+      "name": "Supply Caravan Attacked",
+      "type": "danger",
+      "probability": 0.015,
+      "minDay": 8,
+      "description": "Bandits raid a supply caravan headed for your compound. Goods are lost",
+      "effects": { "foodLoss": 25, "wealth": -30, "moraleBoost": -10 },
+      "conditions": { "minFollowers": 3 },
+      "choices": [
+        {
+          "label": "Send followers to retaliate",
+          "description": "Organize a posse to recover the supplies.",
+          "effects": { "foodLoss": 10, "wealth": -10, "notorietyGain": 10, "moraleBoost": 5, "followerRisk": 1 }
+        },
+        {
+          "label": "Absorb the loss quietly",
+          "description": "Tighten belts and move on.",
+          "effects": { "foodLoss": 25, "moraleBoost": -15, "faithDamage": 5 }
+        },
+        {
+          "label": "Hire escorts for future shipments",
+          "description": "Prevent future attacks by paying for protection.",
+          "effects": { "wealth": -60, "foodLoss": 10, "moraleBoost": 0 }
+        }
+      ]
     }
   ]
 }

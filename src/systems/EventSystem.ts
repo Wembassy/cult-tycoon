@@ -9,6 +9,21 @@ import { Needs } from '../components/Needs';
 import { Health } from '../components/Health';
 import { FollowerAI } from '../components/FollowerAI';
 
+export interface EventConditions {
+  minFollowers?: number;
+  minNotoriety?: number;
+  minFaith?: number;
+  minFunds?: number;
+  minInfluence?: number;
+  requiresTech?: string;
+}
+
+export interface EventChoice {
+  label: string;
+  description?: string;
+  effects: Record<string, number | boolean>;
+}
+
 export interface EventDef {
   id: string;
   name: string;
@@ -17,6 +32,8 @@ export interface EventDef {
   minDay: number;
   description: string;
   effects: Record<string, number | boolean>;
+  conditions?: EventConditions;
+  choices?: EventChoice[];
 }
 
 export interface GameEvent {
