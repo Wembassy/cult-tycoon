@@ -13,8 +13,8 @@
 import * as THREE from 'three';
 
 export const TILE_SIZE = 1;
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 3;
+const MIN_ZOOM = 10;
+const MAX_ZOOM = 80;
 const LERP_FACTOR = 0.12;
 const CAMERA_DISTANCE = 50;
 const ELEVATION = THREE.MathUtils.degToRad(60);
@@ -29,8 +29,8 @@ export interface TileCoord {
 export class IsoCamera {
   readonly camera: THREE.OrthographicCamera;
 
-  private targetZoom = 1;
-  private currentZoom = 1;
+  private targetZoom = 40;
+  private currentZoom = 40;
   private targetRotationStep = 0;
   private currentRotationRad = 0;
   private targetOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
@@ -74,7 +74,7 @@ export class IsoCamera {
   update(dt: number): void {
     this.processPan(dt);
     if (this.wheelDelta !== 0) {
-      this.targetZoom = THREE.MathUtils.clamp(this.targetZoom - this.wheelDelta * 0.001, MIN_ZOOM, MAX_ZOOM);
+      this.targetZoom = THREE.MathUtils.clamp(this.targetZoom - this.wheelDelta * 0.05, MIN_ZOOM, MAX_ZOOM);
       this.wheelDelta = 0;
     }
     this.currentZoom = THREE.MathUtils.lerp(this.currentZoom, this.targetZoom, LERP_FACTOR);
