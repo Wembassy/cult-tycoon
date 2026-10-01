@@ -382,7 +382,9 @@ class CultTycoonGame {
       .hud-build-bar {
         position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
         display: flex; gap: 4px; padding: 6px 8px;
-        background: linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
+        background-image: url('/assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
         border: 1px solid rgba(80, 120, 180, 0.5);
         border-bottom: none;
         border-radius: 8px 8px 0 0;
@@ -390,6 +392,7 @@ class CultTycoonGame {
         backdrop-filter: blur(10px);
         box-shadow: 0 -2px 16px rgba(0,0,0,0.7), inset 0 1px 0 rgba(120,160,220,0.15);
         z-index: 10;
+        image-rendering: pixelated;
       }
       .hud-build-cat {
         display: flex; flex-direction: column; align-items: center; gap: 2px;
@@ -418,13 +421,16 @@ class CultTycoonGame {
       .hud-build-items {
         position: absolute; bottom: 72px; left: 50%; transform: translateX(-50%);
         display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px;
-        background: linear-gradient(180deg, rgba(18,26,42,0.96), rgba(14,20,35,0.98));
+        background-image: url('/assets/ui/scifi_box_shadowed.png'), linear-gradient(180deg, rgba(18,26,42,0.96), rgba(14,20,35,0.98));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
         border: 1px solid rgba(80, 120, 180, 0.4);
         border-radius: 8px;
         pointer-events: auto;
         backdrop-filter: blur(10px);
         box-shadow: 0 4px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(120,160,220,0.1);
         max-width: 560px; z-index: 9;
+        image-rendering: pixelated;
       }
       .hud-build-item {
         display: flex; flex-direction: column; align-items: center; gap: 3px;
