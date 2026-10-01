@@ -92,21 +92,24 @@ export class Renderer {
 
     // Post-processing pipeline
     this.composer = new EffectComposer(this.renderer);
+    // Match the renderer's pixel ratio for crisp output
+    this.composer.setPixelRatio(window.devicePixelRatio);
+    this.composer.setSize(window.innerWidth, window.innerHeight);
     const renderPass = new RenderPass(this.scene, this.isoCamera.camera);
     this.composer.addPass(renderPass);
 
-    // Bloom — glow for emissive materials, torches, rituals
+    // Bloom — subtle glow only for very bright emissive materials
     this.bloomPass = new BloomPass(
-      0.8,    // strength
-      25,     // kernelSize
-      4.0,    // sigma (blur)
+      0.4,    // strength (low to avoid blurriness)
+      20,     // kernelSize
+      3.0,    // sigma (tighter blur = less bleed)
     );
     this.composer.addPass(this.bloomPass);
 
     // Vignette — cinematic darkened edges
     this.vignettePass = new ShaderPass(VignetteShader);
-    this.vignettePass.uniforms.offset.value = 1.0;
-    this.vignettePass.uniforms.darkness.value = 1.15;
+    this.vignettePass.uniforms.offset.value = 1.1;
+    this.vignettePass.uniforms.darkness.value = 1.1;
     this.composer.addPass(this.vignettePass);
 
     // Output — applies tone mapping and color space
@@ -118,6 +121,7 @@ export class Renderer {
 
   private onResize = (): void => {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.composer.setPixelRatio(window.devicePixelRatio);
     this.composer.setSize(window.innerWidth, window.innerHeight);
   };
 

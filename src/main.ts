@@ -417,10 +417,11 @@ class CultTycoonGame {
       }
       .hud-build-cat.active .hud-build-cat-label { color: #e0f0ff; }
 
-      /* Build Items — grid panel above the bottom bar */
+      /* Build Items — horizontal strip panel above the bottom bar */
       .hud-build-items {
         position: absolute; bottom: 72px; left: 50%; transform: translateX(-50%);
-        display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px;
+        display: flex; flex-wrap: nowrap; gap: 6px; padding: 10px 12px;
+        overflow-x: auto; overflow-y: hidden;
         background-image: url('/assets/ui/scifi_box_shadowed.png'), linear-gradient(180deg, rgba(18,26,42,0.96), rgba(14,20,35,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
@@ -429,7 +430,7 @@ class CultTycoonGame {
         pointer-events: auto;
         backdrop-filter: blur(10px);
         box-shadow: 0 4px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(120,160,220,0.1);
-        max-width: 560px; z-index: 9;
+        max-width: 90vw; z-index: 9;
         image-rendering: pixelated;
       }
       .hud-build-item {
@@ -1216,7 +1217,7 @@ class CultTycoonGame {
     }
 
     // Adjust bloom for time of day — stronger at night for glow effects
-    this.renderer.setBloomStrength(bloomStrength);
+    this.renderer.setBloomStrength(bloomStrength * 0.4);
   }
 
   private simulate(dt: number): void {

@@ -15,8 +15,8 @@
 import * as THREE from 'three';
 
 export const TILE_SIZE = 1;
-const MIN_ZOOM = 3;
-const MAX_ZOOM = 130;
+const MIN_ZOOM = 5;
+const MAX_ZOOM = 100;
 const LERP_FACTOR = 0.12;
 const CAMERA_DISTANCE = 60;
 // 30° from vertical = 60° from horizontal — very dramatic low angle
@@ -284,7 +284,8 @@ export class IsoCamera {
 
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
-    this.wheelDelta += e.deltaY;
+    // 30% more zoom per scroll step for faster zoom-in
+    this.wheelDelta += e.deltaY * 1.3;
   }
 
   // ─── Mouse Controls ──────────────────────────────────────────
