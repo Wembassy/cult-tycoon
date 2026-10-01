@@ -11,6 +11,7 @@ export interface Resources {
   materials: number;
   food: number;
   influence: number;
+  notoriety: number;
 }
 
 export interface CultStats {
@@ -51,6 +52,7 @@ export class GameState {
       materials: initial?.materials ?? 50,
       food: initial?.food ?? 100,
       influence: initial?.influence ?? 10,
+      notoriety: initial?.notoriety ?? 0,
     };
 
     this.cult = {

@@ -14,6 +14,7 @@ export default defineConfig({
       '@utils': resolve(import.meta.dirname, 'src/utils'),
       '@types': resolve(import.meta.dirname, 'src/types'),
       '@data': resolve(import.meta.dirname, 'src/data'),
+      '@game': resolve(import.meta.dirname, 'src/game'),
     },
   },
   build: {
