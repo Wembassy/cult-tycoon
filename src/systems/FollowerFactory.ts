@@ -9,7 +9,7 @@ import { Renderable } from '../components/Renderable';
 import { Needs } from '../components/Needs';
 import { Job } from '../components/Job';
 import { Skills } from '../components/Skills';
-import { Traits, TraitType } from '../components/Traits';
+import { Traits, TraitType, ALL_TRAITS } from '../components/Traits';
 import { Health } from '../components/Health';
 import { Inventory } from '../components/Inventory';
 import { FollowerAI } from '../components/FollowerAI';
@@ -21,10 +21,7 @@ const NAMES = [
   'Yara', 'Zane', 'Belle', 'Cole', 'Dora', 'Eli', 'Faye', 'Gus',
 ];
 
-const ALL_TRAITS: TraitType[] = [
-  'insomniac', 'zealous', 'doubter', 'charismatic',
-  'lazy', 'scholar', 'hardy', 'fragile',
-];
+const ALL_TRAIT_IDS: TraitType[] = ALL_TRAITS;
 
 export interface FollowerSpawnConfig {
   x: number;
@@ -97,8 +94,8 @@ export class FollowerFactory {
     if (config.traits) {
       traits.traits = config.traits;
     } else {
-      const numTraits = 1 + Math.floor(this.rng() * 3);
-      const shuffled = [...ALL_TRAITS].sort(() => this.rng() - 0.5);
+      const numTraits = 1 + Math.floor(this.rng() * 2); // 1-2 traits
+      const shuffled = [...ALL_TRAIT_IDS].sort(() => this.rng() - 0.5);
       traits.traits = shuffled.slice(0, numTraits);
     }
     world.addComponent(entity, traits);

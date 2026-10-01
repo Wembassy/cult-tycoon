@@ -8,6 +8,7 @@ import { Job, JobType } from '../components/Job';
 import { Skills } from '../components/Skills';
 import { FollowerAI } from '../components/FollowerAI';
 import { Transform } from '../components/Transform';
+import { Traits } from '../components/Traits';
 
 export interface JobPosting {
   id: string;
@@ -142,7 +143,13 @@ export class JobSystem {
       if (ai.state === 'working') {
         const job = world.getComponent(entity, Job);
         if (job) {
-          job.workProgress += dt;
+          // Apply trait-based work speed multiplier
+          const traits = world.getComponent(entity, Traits);
+          const workMult = traits
+            ? traits.getWorkSpeedMult(job.type)
+            : 1.0;
+
+          job.workProgress += dt * workMult;
           if (job.workProgress >= assignment.posting.duration) {
             job.type = 'idle';
             job.jobId = null;

@@ -179,6 +179,33 @@
       "size": { "w": 1, "h": 1 },
       "meshId": "object_bowl",
       "effects": { "faithGen": 1.5 }
+    },
+    {
+      "id": "farm_plot",
+      "name": "Farm Plot",
+      "category": "kitchen",
+      "cost": 20,
+      "size": { "w": 2, "h": 2 },
+      "meshId": "object_mat",
+      "effects": { "foodGen": 5, "moraleBonus": 1 }
+    },
+    {
+      "id": "reinforced_floor",
+      "name": "Reinforced Floor",
+      "category": "construction",
+      "cost": 30,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_box",
+      "effects": { "wallStrength": 2, "defenseBonus": 1 }
+    },
+    {
+      "id": "watch_tower",
+      "name": "Watch Tower",
+      "category": "defense",
+      "cost": 60,
+      "size": { "w": 1, "h": 1 },
+      "meshId": "object_altar",
+      "effects": { "defenseBonus": 5, "lightRadius": 8, "notorietyGen": -0.2 }
     }
   ]
 }

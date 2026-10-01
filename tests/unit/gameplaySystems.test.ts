@@ -34,7 +34,7 @@ describe('RitualSystem', () => {
 
   it('should load rituals from DataManager', () => {
     const rituals = DataManager.getRituals();
-    expect(rituals.length).toBe(6);
+    expect(rituals.length).toBe(9);
     expect(rituals[0].id).toBe('morning_prayer');
   });
 
@@ -148,7 +148,7 @@ describe('TechTreeSystem', () => {
 
   it('should load tech nodes from DataManager', () => {
     const nodes = system.getNodes();
-    expect(nodes.length).toBe(10);
+    expect(nodes.length).toBe(22);
     expect(nodes[0].id).toBeTruthy();
     expect(nodes[0].cost).toBeGreaterThan(0);
   });

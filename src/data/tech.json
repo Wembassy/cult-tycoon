@@ -26,6 +26,42 @@
       "effects": { "maxPopulationBonus": 10 }
     },
     {
+      "id": "basic_farming",
+      "name": "Basic Farming",
+      "cost": 40,
+      "tier": 1,
+      "description": "Learn to cultivate crops for sustainable food supply",
+      "unlocks": ["farm_plot"],
+      "effects": { "foodGenMult": 1.2 }
+    },
+    {
+      "id": "simple_prayers",
+      "name": "Simple Prayers",
+      "cost": 30,
+      "tier": 1,
+      "description": "Enhance daily prayer routines for greater faith generation",
+      "unlocks": ["prayer_beads"],
+      "effects": { "faithGenMult": 1.3 }
+    },
+    {
+      "id": "dormitory_improvements",
+      "name": "Dormitory Improvements",
+      "cost": 45,
+      "tier": 1,
+      "description": "Better sleeping arrangements increase rest quality and capacity",
+      "unlocks": ["bunk_bed"],
+      "effects": { "dormCapacityBonus": 1, "sleepQualityBonus": 1 }
+    },
+    {
+      "id": "basic_storage",
+      "name": "Organized Storage",
+      "cost": 35,
+      "tier": 1,
+      "description": "Systematic storage solutions for larger inventories",
+      "unlocks": ["warehouse"],
+      "effects": { "storageCapBonus": 50 }
+    },
+    {
       "id": "advanced_rituals",
       "name": "Advanced Rituals",
       "cost": 200,
@@ -48,6 +84,7 @@
       "name": "Improved Housing",
       "cost": 120,
       "tier": 2,
+      "requires": ["dormitory_improvements"],
       "description": "Dormitories house 4 followers instead of 2",
       "unlocks": [],
       "effects": { "dormCapacityBonus": 2 }
@@ -57,9 +94,50 @@
       "name": "Agriculture",
       "cost": 100,
       "tier": 2,
+      "requires": ["basic_farming"],
       "description": "Food generation +50%",
       "unlocks": ["farm_plot"],
       "effects": { "foodGenMult": 1.5 }
+    },
+    {
+      "id": "advanced_recruitment",
+      "name": "Advanced Recruitment",
+      "cost": 175,
+      "tier": 2,
+      "requires": ["recruitment_ii"],
+      "description": "Sophisticated recruitment techniques attract followers faster",
+      "unlocks": [],
+      "effects": { "recruitmentMult": 1.5 }
+    },
+    {
+      "id": "ritual_mastery",
+      "name": "Ritual Mastery",
+      "cost": 180,
+      "tier": 2,
+      "requires": ["advanced_rituals"],
+      "description": "Deep understanding of ritual mechanics improves efficiency",
+      "unlocks": ["group_meditation"],
+      "effects": { "ritualEfficiency": 1.5 }
+    },
+    {
+      "id": "improved_materials",
+      "name": "Improved Materials",
+      "cost": 160,
+      "tier": 2,
+      "requires": ["stone_buildings"],
+      "description": "Reinforced building materials strengthen all structures",
+      "unlocks": ["reinforced_floor"],
+      "effects": { "wallStrength": 1 }
+    },
+    {
+      "id": "false_prophecies",
+      "name": "False Prophecies",
+      "cost": 190,
+      "tier": 2,
+      "requires": ["basic_rituals"],
+      "description": "Fabricate divine visions to sway recruits, at the cost of notoriety",
+      "unlocks": [],
+      "effects": { "recruitmentMult": 1.3, "notorietyGen": 0.5 }
     },
     {
       "id": "divine_intervention",
@@ -89,6 +167,46 @@
       "description": "Recruitment success rate doubled",
       "unlocks": [],
       "effects": { "recruitmentMult": 2.0 }
+    },
+    {
+      "id": "dark_rituals",
+      "name": "Dark Rituals",
+      "cost": 450,
+      "tier": 3,
+      "requires": ["advanced_rituals"],
+      "description": "Forbidden ceremonies grant immense power but raise notoriety",
+      "unlocks": ["blood_sacrifice"],
+      "effects": { "faithGenMult": 2.0, "notorietyGen": 1.0 }
+    },
+    {
+      "id": "mind_control",
+      "name": "Mind Control",
+      "cost": 550,
+      "tier": 3,
+      "requires": ["follower_education", "advanced_rituals"],
+      "description": "Psychological conditioning slows faith decay and deepens loyalty",
+      "unlocks": [],
+      "effects": { "faithDecayRate": 0.5, "loyaltyMult": 2.0 }
+    },
+    {
+      "id": "fortress_defenses",
+      "name": "Fortress Defenses",
+      "cost": 400,
+      "tier": 3,
+      "requires": ["fortified_walls"],
+      "description": "Transform your compound into a defensible fortress with watchtowers",
+      "unlocks": ["watch_tower"],
+      "effects": { "wallStrength": 5, "defenseMult": 2.0 }
+    },
+    {
+      "id": "indoctrination",
+      "name": "Mass Indoctrination",
+      "cost": 350,
+      "tier": 3,
+      "requires": ["propaganda", "follower_education"],
+      "description": "Systematic indoctrination accelerates recruitment and skill development",
+      "unlocks": ["mass_indoctrination"],
+      "effects": { "recruitmentMult": 1.5, "skillGainMult": 1.5 }
     }
   ]
 }

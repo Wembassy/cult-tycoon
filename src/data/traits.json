@@ -21,8 +21,8 @@
     {
       "id": "charismatic",
       "name": "Charismatic",
-      "description": "Boosts morale of nearby followers",
-      "effects": { "moraleBonusRadius": 2, "moraleBonus": 5 }
+      "description": "Boosts morale of nearby followers, aids recruitment",
+      "effects": { "moraleBonusRadius": 2, "moraleBonus": 5, "recruitmentBonus": 1 }
     },
     {
       "id": "lazy",
@@ -39,14 +39,32 @@
     {
       "id": "hardy",
       "name": "Hardy",
-      "description": "Resilient, slower needs decay",
-      "effects": { "hungerDecayMult": 0.8, "sanityDecayMult": 0.8 }
+      "description": "Resilient, slower needs decay, less food consumption",
+      "effects": { "hungerDecayMult": 0.75, "sanityDecayMult": 0.8 }
     },
     {
       "id": "fragile",
       "name": "Fragile",
       "description": "Needs decay faster, prone to breakdowns",
       "effects": { "sanityDecayMult": 1.5, "hungerDecayMult": 1.2 }
+    },
+    {
+      "id": "devoted",
+      "name": "Devoted",
+      "description": "Generates 50% more faith when praying",
+      "effects": { "prayerBonus": 1.5, "faithDecayMult": 0.7 }
+    },
+    {
+      "id": "scholarly",
+      "name": "Scholarly",
+      "description": "Researches 50% faster",
+      "effects": { "researchBonus": 1.5, "skillGainMult": 1.5 }
+    },
+    {
+      "id": "paranoid",
+      "name": "Paranoid",
+      "description": "Loses 20% more morale from investigations",
+      "effects": { "investigationMoraleLossMult": 1.2 }
     }
   ]
 }
