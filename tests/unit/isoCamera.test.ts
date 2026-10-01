@@ -26,7 +26,7 @@ describe('IsoCamera', () => {
 
   describe('Construction', () => {
     it('creates an OrthographicCamera', () => { expect(camera.camera).toBeInstanceOf(THREE.OrthographicCamera); });
-    it('initializes with zoom of 1', () => { expect(camera.getZoom()).toBeCloseTo(1, 5); });
+    it('initializes with zoom of 40', () => { expect(camera.getZoom()).toBeCloseTo(40, 5); });
     it('initializes at rotation step 0', () => { expect(camera.getRotationStep()).toBe(0); });
     it('registers event listeners on the DOM element', () => {
       expect(element.addEventListener).toHaveBeenCalledWith('keydown', expect.any(Function));
@@ -36,11 +36,11 @@ describe('IsoCamera', () => {
   });
 
   describe('Zoom', () => {
-    it('setZoom clamps to minimum 0.5', () => { camera.setZoom(0.1); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeGreaterThanOrEqual(0.5); });
-    it('setZoom clamps to maximum 3', () => { camera.setZoom(10); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeLessThanOrEqual(3); });
-    it('setZoom accepts valid values', () => { camera.setZoom(1.5); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeCloseTo(1.5, 1); });
-    it('wheel events adjust zoom target', () => { element._dispatch('wheel', { deltaY: 100, preventDefault: vi.fn() }); camera.update(0.016); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeLessThan(1); });
-    it('wheel up increases zoom', () => { element._dispatch('wheel', { deltaY: -200, preventDefault: vi.fn() }); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeGreaterThan(1); });
+    it('setZoom clamps to minimum 10', () => { camera.setZoom(1); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeGreaterThanOrEqual(10); });
+    it('setZoom clamps to maximum 80', () => { camera.setZoom(200); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeLessThanOrEqual(80); });
+    it('setZoom accepts valid values', () => { camera.setZoom(50); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeCloseTo(50, 1); });
+    it('wheel events adjust zoom target', () => { element._dispatch('wheel', { deltaY: 100, preventDefault: vi.fn() }); camera.update(0.016); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeLessThan(40); });
+    it('wheel up increases zoom', () => { element._dispatch('wheel', { deltaY: -200, preventDefault: vi.fn() }); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeGreaterThan(40); });
   });
 
   describe('Rotation', () => {
@@ -74,7 +74,7 @@ describe('IsoCamera', () => {
   });
 
   describe('Smooth Lerp Transitions', () => {
-    it('zoom transitions smoothly (not instant)', () => { camera.setZoom(2); camera.update(0.016); const z = camera.getZoom(); expect(z).toBeGreaterThan(1); expect(z).toBeLessThan(2); });
+    it('zoom transitions smoothly (not instant)', () => { camera.setZoom(60); camera.update(0.016); const z = camera.getZoom(); expect(z).toBeGreaterThan(40); expect(z).toBeLessThan(60); });
     it('rotation transitions smoothly', () => { camera.setRotationStep(1); camera.update(0.016); const pos = camera.camera.position; const targetAz = THREE.MathUtils.degToRad(45) + Math.PI / 2; const expectedX = 50 * Math.cos(THREE.MathUtils.degToRad(60)) * Math.cos(targetAz); expect(Math.abs(pos.x - expectedX)).toBeGreaterThan(0.1); });
     it('pan transitions smoothly', () => { camera.setTarget(20, 20); camera.update(0.016); const o = camera.getOffset(); expect(o.x).toBeGreaterThan(0); expect(o.x).toBeLessThan(20); expect(o.z).toBeGreaterThan(0); expect(o.z).toBeLessThan(20); });
   });
