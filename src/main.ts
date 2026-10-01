@@ -1237,6 +1237,7 @@ class CultTycoonGame {
       onClose: () => this.closeSettings(),
     }, this.settingsData);
     this.settingsMenu.mount();
+    this.settingsMenu.hide();
   }
 
   /**
