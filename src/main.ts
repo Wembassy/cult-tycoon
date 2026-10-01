@@ -33,6 +33,7 @@ import { ResourceSystem } from './systems/ResourceSystem';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
 import { HUDManager, ResourceBarData, BuildPanelEntry } from './ui/HUDManager';
+import { DialogSystem } from './ui/DialogSystem';
 import { StartMenu } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { SettingsMenu, SettingsData, GraphicsQuality } from './ui/SettingsMenu';
@@ -47,6 +48,7 @@ class CultTycoonGame {
   private sceneMgr: SceneManager;
   private input: InputManager;
   private hud: HUDManager;
+  private dialog: DialogSystem;
   private assets: AssetLoader;
   private world: World;
   private map: TileMap;
@@ -60,6 +62,8 @@ class CultTycoonGame {
   private ritualSystem: RitualSystem;
   private techTree: TechTreeSystem;
   private investigatorSystem: InvestigatorSystem;
+  private resourceSystem: ResourceSystem;
+  private gameInstanceState: GameInstanceState;
   private factory: FollowerFactory;
   private systems: System[] = [];
   private gameEnded = false;
@@ -152,6 +156,7 @@ class CultTycoonGame {
         this.cultInfluence += result.influenceGain;
         this.cultNotoriety += result.notorietyGain;
         this.hud.logEvent(`Ritual complete: ${result.name} (+${result.influenceGain} influence, +${result.faithGain} faith)`, 'success');
+        this.dialog.ritualResult(result.name, result);
 
         // Check if Ascension ritual completed → trigger win condition check
         if (result.id.startsWith('ascension')) {
@@ -184,7 +189,27 @@ class CultTycoonGame {
       99999,
     );
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem];
+    // Game state store for resource tracking
+    this.gameInstanceState = new GameInstanceState({
+      faith: 100,
+      funds: this.cultWealth,
+      materials: 50,
+      food: 100,
+      influence: this.cultInfluence,
+      notoriety: this.cultNotoriety,
+    });
+
+    // Resource system — generates and consumes resources each tick
+    this.resourceSystem = new ResourceSystem(
+      this.gameInstanceState,
+      {},
+      (event) => {
+        const logType = event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
+        this.hud.logEvent(event.message, logType as any);
+      },
+    );
+
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem];
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -197,6 +222,7 @@ class CultTycoonGame {
     hudContainer.id = 'hud';
     document.body.appendChild(hudContainer);
     this.hud = new HUDManager({ container: hudContainer });
+    this.dialog = new DialogSystem();
 
     // Spawn initial followers
     this.spawnFollowers(4);
@@ -865,6 +891,11 @@ class CultTycoonGame {
       system.update(this.world, dt);
     }
 
+    // Sync GameState resources with main.ts properties
+    this.gameInstanceState.resources.funds = this.cultWealth;
+    this.gameInstanceState.resources.influence = this.cultInfluence;
+    this.gameInstanceState.resources.notoriety = this.cultNotoriety;
+
     // Time progression: 1 game day = 30 real seconds at 1x speed
     // 30 ticks/sec * 30 sec = 900 ticks per day
     this.tickCount += dt;
@@ -886,6 +917,9 @@ class CultTycoonGame {
         this.cultInfluence += dailyInfluence;
       }
     }
+
+    // Sync back notoriety from ResourceSystem (it grows it slowly)
+    this.cultNotoriety = this.gameInstanceState.resources.notoriety;
 
     // Update HUD every 30 ticks (~1 second)
     const tickFloor = Math.floor(this.tickCount);
@@ -1112,6 +1146,24 @@ class CultTycoonGame {
 
     // Reset systems
     this.investigatorSystem.reset();
+    this.resourceSystem.reset();
+    this.gameInstanceState = new GameInstanceState({
+      faith: 100,
+      funds: this.cultWealth,
+      materials: 50,
+      food: 100,
+      influence: this.cultInfluence,
+      notoriety: this.cultNotoriety,
+    });
+    this.resourceSystem = new ResourceSystem(
+      this.gameInstanceState,
+      {},
+      (event) => {
+        const logType = event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
+        this.hud.logEvent(event.message, logType as any);
+      },
+    );
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem];
 
     // Rebuild map
     const worldGen = new WorldGen(12345);
@@ -1136,6 +1188,7 @@ class CultTycoonGame {
     window.removeEventListener('resize', this.onResize);
     this.input.dispose();
     this.hud.destroy();
+    this.dialog.destroy();
     this.sceneMgr.dispose();
     this.renderer.dispose();
     this.startMenu?.destroy();
