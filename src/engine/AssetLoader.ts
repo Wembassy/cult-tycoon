@@ -88,6 +88,22 @@ export class AssetLoader {
     console.log(`[AssetLoader] clone() — cloning ${url}, scene children: ${asset.scene.children.length}`);
     // Use SkeletonUtils.clone for proper skinned mesh support
     const clone = SkeletonUtils.clone(asset.scene) as THREE.Group;
+
+    // Fix: After SkeletonUtils.clone, skinned meshes may have stale bone bindings.
+    // Re-bind the skeleton to ensure boneMatrices are computed from the rest pose.
+    clone.traverse((child) => {
+      if (child instanceof THREE.SkinnedMesh) {
+        // Force skeleton to recompute bone inverses from current bone transforms
+        if (child.skeleton) {
+          child.skeleton.calculateInverses();
+          // Re-bind to update the GPU bone texture
+          child.skeleton.computeBoneTexture();
+          // Update bone matrices to rest pose
+          child.skeleton.update();
+        }
+      }
+    });
+
     console.log(`[AssetLoader] clone() — result children: ${clone.children.length}, visible: ${clone.visible}`);
     return clone;
   }

@@ -294,15 +294,17 @@ export class SceneManager {
             this.entityMeshIsPlaceholder.set(entity, false);
 
             // Play first animation clip from GLB
-            // NOTE: Polygon Minis models have a rest pose that looks correct.
-            // Only play animation if the skeleton clone is clean — the neck
-            // stretch bug was caused by SkeletonUtils clone + animation mixer
-            // applying transforms incorrectly. We skip animation for now and
-            // use the rest pose, which looks good.
-            // TODO: Investigate proper skinned mesh animation cloning
+            // Skeleton clone fix in AssetLoader ensures bones start at rest pose.
+            // Animation mixer will blend from rest pose into the clip's first frame.
             const asset = this.assets!.get(assetPath);
             if (asset && asset.animations.length > 0) {
-              console.log(`[SceneManager] Animation available (${asset.animations.length} clips) but using rest pose for ${entity} to avoid skeleton distortion`);
+              const mixer = new THREE.AnimationMixer(cloned);
+              const action = mixer.clipAction(asset.animations[0]);
+              action.play();
+              // Start at time 0 — the skeleton reset in AssetLoader ensures
+              // the rest pose is the baseline before animation blends in.
+              this.mixers.set(entity, mixer);
+              console.log(`[SceneManager] Playing animation "${asset.animations[0].name}" for entity ${entity}`);
             }
 
             // Add subtle point light so followers glow in the dark
