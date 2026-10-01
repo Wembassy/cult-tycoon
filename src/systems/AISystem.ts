@@ -86,7 +86,8 @@ export class AISystem {
       const needs = world.getComponent(entity, Needs);
       if (needs) {
         // Check if any needs are critical
-        if (needs.hunger < 30 || needs.faith < 30 || needs.fun < 20) {
+        if (needs.hunger < 30 || needs.faith < 30 || needs.fun < 20 ||
+            needs.energy < 20 || needs.bladder < 20 || needs.hygiene < 20) {
           ai.state = 'needs';
           ai.stateTimer = 0;
           return 1;
@@ -222,6 +223,9 @@ export class AISystem {
       needs.faith = clamp(needs.faith + 20, 0, 100);
       needs.fun = clamp(needs.fun + 25, 0, 100);
       needs.sanity = clamp(needs.sanity + 15, 0, 100);
+      needs.energy = clamp(needs.energy + 25, 0, 100);
+      needs.bladder = clamp(needs.bladder + 40, 0, 100);
+      needs.hygiene = clamp(needs.hygiene + 30, 0, 100);
 
       ai.state = 'idle';
       ai.stateTimer = 0;

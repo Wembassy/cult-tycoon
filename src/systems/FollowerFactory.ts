@@ -72,6 +72,9 @@ export class FollowerFactory {
     needs.fun = 75 + this.rng() * 25;
     needs.health = 100;
     needs.sanity = 85 + this.rng() * 15;
+    needs.energy = 85 + this.rng() * 15;
+    needs.bladder = 80 + this.rng() * 20;
+    needs.hygiene = 85 + this.rng() * 15;
     world.addComponent(entity, needs);
 
     // Job — start idle

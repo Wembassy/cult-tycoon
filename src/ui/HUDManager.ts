@@ -36,7 +36,7 @@ export interface InspectorData {
   name: string;
   role: string;
   health: number;
-  needs: { hunger: number; faith: number; fun: number; sanity: number };
+  needs: { hunger: number; faith: number; fun: number; sanity: number; energy: number; bladder: number; hygiene: number };
   job: string;
   traits: string[];
 }
@@ -209,6 +209,9 @@ export class HUDManager {
       faith: 'scifi_icon_faith',
       fun: 'scifi_icon_morale',
       sanity: 'scifi_icon_health',
+      energy: 'scifi_icon_energy',
+      bladder: 'scifi_icon_thirst',
+      hygiene: 'scifi_icon_clean',
     };
     const needsHtml = Object.entries(data.needs).map(([key, val]) => {
       const icon = needIcons[key] || 'scifi_icon_health';
