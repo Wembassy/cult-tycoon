@@ -17,4 +17,6 @@ export class FollowerAI implements Component {
   pathIndex = 0;
   stateTimer = 0;  // time in current state
   tier: QualityTier = 'very_poor';
+  /** Entity ID of the room the cultist currently occupies (-1 = none). */
+  roomEntityId: number = -1;
 }

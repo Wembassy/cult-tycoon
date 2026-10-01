@@ -7,6 +7,18 @@ import type { World } from '../ecs/World';
 import { Needs } from '../components/Needs';
 import { FollowerAI } from '../components/FollowerAI';
 import { Traits, TraitType } from '../components/Traits';
+import { Prestige } from '../components/Prestige';
+import type { QualityTier } from '../components/CultistTier';
+
+/** Maps cultist quality tier → expected prestige level. */
+const TIER_EXPECTED_PRESTIGE: Record<QualityTier, number> = {
+  very_poor: 1,
+  poor: 2,
+  average: 3,
+  good: 4,
+  very_good: 5,
+  incredible: 6,
+};
 
 export interface NeedsConfig {
   hungerDecay: number;   // per tick
@@ -68,6 +80,22 @@ export class NeedsSystem {
       needs.energy = clamp(needs.energy - mult.energyDecay * dt, 0, 100);
       needs.bladder = clamp(needs.bladder - mult.bladderDecay * dt, 0, 100);
       needs.hygiene = clamp(needs.hygiene - mult.hygieneDecay * dt, 0, 100);
+
+      // Apply prestige mood modifiers if the cultist is in a room with Prestige
+      if (ai.roomEntityId >= 0) {
+        const prestige = world.getComponent(ai.roomEntityId, Prestige);
+        if (prestige) {
+          const expected = TIER_EXPECTED_PRESTIGE[ai.tier] ?? 1;
+          if (prestige.level < expected) {
+            const deficit = expected - prestige.level;
+            needs.fun = clamp(needs.fun - 0.1 * deficit * dt, 0, 100);
+            needs.sanity = clamp(needs.sanity - 0.1 * deficit * dt, 0, 100);
+          } else if (prestige.level > expected) {
+            const surplus = prestige.level - expected;
+            needs.fun = clamp(needs.fun + 0.05 * surplus * dt, 0, 100);
+          }
+        }
+      }
 
       // Trigger state changes on critical needs
       if (needs.hunger < 20 && ai.state !== 'needs') {
