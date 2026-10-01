@@ -813,22 +813,22 @@ class CultTycoonGame {
   }
 
   private showTechTree(): void {
-    const nodes = this.techTree.getNodes();
+    const nodes = this.techTree.getTree();
     const available = this.techTree.getAvailable();
     const unlocked = this.techTree.getUnlocked();
 
     this.hud.logEvent(`Tech Tree: ${unlocked.length}/${nodes.length} unlocked, ${available.length} available`, 'info');
     for (const node of available.slice(0, 3)) {
-      const canAfford = this.cultInfluence >= node.cost;
-      this.hud.logEvent(`  ${canAfford ? '✅' : '🔒'} ${node.name} (${node.cost} influence) — ${node.description}`, canAfford ? 'success' : 'info');
+      const canAfford = this.cultInfluence >= node.cost.influence;
+      this.hud.logEvent(`  ${canAfford ? '✅' : '🔒'} ${node.name} (${node.cost.influence} influence) — ${node.description}`, canAfford ? 'success' : 'info');
     }
 
     // Auto-unlock if we can afford the cheapest available
-    const cheapest = available.sort((a, b) => a.cost - b.cost)[0];
-    if (cheapest && this.cultInfluence >= cheapest.cost) {
-      const result = this.techTree.unlock(cheapest.id, this.cultInfluence);
+    const cheapest = available.sort((a, b) => a.cost.influence - b.cost.influence)[0];
+    if (cheapest && this.cultInfluence >= cheapest.cost.influence) {
+      const result = this.techTree.unlock(cheapest.id, this.cultInfluence, this.cultFaith ?? 0);
       if (result.success) {
-        this.cultInfluence -= cheapest.cost;
+        this.cultInfluence -= cheapest.cost.influence;
         this.hud.logEvent(`Auto-researched: ${cheapest.name}!`, 'success');
       }
     }
@@ -1053,7 +1053,7 @@ class CultTycoonGame {
     }
 
     const pop = entities.length;
-    const maxPopBonus = this.techTree.getEffectBonus('maxPopulationBonus');
+    const maxPopBonus = this.techTree.getEffectBonus('maxPopulationPlus');
 
     // Resource generation: working followers generate wealth
     this.cultWealth += workingCount * 0.05;
@@ -1796,7 +1796,7 @@ class CultTycoonGame {
       faith: 0,
       morale: 0,
       population: this.world.query([Needs]).length,
-      maxPopulation: 10 + this.techTree.getEffectBonus('maxPopulationBonus'),
+      maxPopulation: 10 + this.techTree.getEffectBonus('maxPopulationPlus'),
       leaderName: 'The Founder',
       leaderTitle: 'Cult Leader',
       day: this.currentDay,
