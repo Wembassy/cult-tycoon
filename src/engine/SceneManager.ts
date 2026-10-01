@@ -268,27 +268,41 @@ export class SceneManager {
           const cloned = this.assets.clone(assetPath);
           if (cloned) {
             console.log(`[SceneManager] Loaded GLB for entity ${entity}: ${assetPath}, children=${cloned.children.length}`);
-            // Polygon Minis are ~2 units tall, scale for game tiles
-            cloned.scale.setScalar(1.5);
+            // Polygon Minis are ~2 units tall centered at origin (yMin=-1, yMax=+1).
+            // Scale to ~0.6 so they're ~1.2 units tall — fits 1x1 tiles nicely.
+            const modelScale = 0.6;
+            cloned.scale.setScalar(modelScale);
+            // Shift model up so feet sit on y=0 (model center is at y=0, bottom at y=-1*scale)
+            cloned.position.y = modelScale;
+
             cloned.traverse((child) => {
               if (child instanceof THREE.Mesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
+                // Fix frustum culling for skinned meshes (prevents disappearing/glitching)
+                child.frustumCulled = false;
               }
             });
-            obj = cloned;
+
+            // Wrap in a container group — the sync loop sets position on `obj`,
+            // so we need the model's y-offset to be preserved inside the wrapper.
+            const wrapper = new THREE.Group();
+            wrapper.add(cloned);
+            obj = wrapper;
             this.entityGroup.add(obj);
             this.entityMeshes.set(entity, obj);
             this.entityMeshIsPlaceholder.set(entity, false);
 
             // Play first animation clip from GLB
+            // NOTE: Polygon Minis models have a rest pose that looks correct.
+            // Only play animation if the skeleton clone is clean — the neck
+            // stretch bug was caused by SkeletonUtils clone + animation mixer
+            // applying transforms incorrectly. We skip animation for now and
+            // use the rest pose, which looks good.
+            // TODO: Investigate proper skinned mesh animation cloning
             const asset = this.assets!.get(assetPath);
             if (asset && asset.animations.length > 0) {
-              const mixer = new THREE.AnimationMixer(cloned);
-              const action = mixer.clipAction(asset.animations[0]);
-              action.play();
-              this.mixers.set(entity, mixer);
-              console.log(`[SceneManager] Playing animation "${asset.animations[0].name}" for entity ${entity}`);
+              console.log(`[SceneManager] Animation available (${asset.animations.length} clips) but using rest pose for ${entity} to avoid skeleton distortion`);
             }
 
             // Add subtle point light so followers glow in the dark
@@ -317,7 +331,9 @@ export class SceneManager {
       obj.position.x += (targetX - obj.position.x) * 0.15;
       obj.position.z += (targetZ - obj.position.z) * 0.15;
 
-      let baseY = transform.z + 0.3;
+      // Terrain grass top is at y=0.5. Place model wrapper so feet rest on terrain.
+      // The wrapper contains the model shifted up by modelScale, so wrapper.y = terrain top.
+      let baseY = transform.z + 0.5;
       // No bob — animation mixer handles idle movement
       if (!renderable.meshId.startsWith('follower')) {
         obj.rotation.y = transform.rotation;
