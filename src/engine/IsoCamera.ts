@@ -94,30 +94,38 @@ export class IsoCamera {
   getOffset(): THREE.Vector3 { return this.currentOffset.clone(); }
 
   screenToTile(screenX: number, screenY: number): TileCoord {
+    // Use the actual camera azimuth (45° + rotationRad) to match updateCameraPosition
+    const azimuth = this.currentRotationRad + THREE.MathUtils.degToRad(45);
+    const sinA = Math.sin(azimuth);
+    const cosA = Math.cos(azimuth);
+    const sinE = Math.sin(ELEVATION);
+    // Convert screen pixels to camera-space NDC
     const ndcX = (screenX - this.viewWidth / 2) / this.currentZoom;
     const ndcY = -(screenY - this.viewHeight / 2) / this.currentZoom;
-    const cos = Math.cos(this.currentRotationRad);
-    const sin = Math.sin(this.currentRotationRad);
-    const rotX = ndcX * cos + ndcY * sin;
-    const rotY = -ndcX * sin + ndcY * cos;
-    const isoX = (rotX + 2 * rotY) / 2;
-    const isoY = (2 * rotY - rotX) / 2;
-    const tileX = Math.floor(isoX / TILE_SIZE + this.currentOffset.x);
-    const tileY = Math.floor(isoY / TILE_SIZE + this.currentOffset.z);
+    // Invert the camera projection:
+    //   ndcX = worldX * sin(az) - worldZ * cos(az)
+    //   ndcY = -(worldX * cos(az) + worldZ * sin(az)) * sin(elev)
+    // Solving for worldX, worldZ:
+    const worldX = ndcX * sinA - ndcY * cosA / sinE;
+    const worldZ = -ndcX * cosA - ndcY * sinA / sinE;
+    const tileX = Math.floor(worldX / TILE_SIZE + this.currentOffset.x);
+    const tileY = Math.floor(worldZ / TILE_SIZE + this.currentOffset.z);
     return { x: tileX, y: tileY };
   }
 
   tileToScreen(tileX: number, tileY: number): { x: number; y: number } {
+    // Use the actual camera azimuth (45° + rotationRad) to match updateCameraPosition
+    const azimuth = this.currentRotationRad + THREE.MathUtils.degToRad(45);
+    const sinA = Math.sin(azimuth);
+    const cosA = Math.cos(azimuth);
+    const sinE = Math.sin(ELEVATION);
     const worldX = (tileX - this.currentOffset.x) * TILE_SIZE;
-    const worldY = (tileY - this.currentOffset.z) * TILE_SIZE;
-    const isoX = worldX - worldY;
-    const isoY = (worldX + worldY) / 2;
-    const cos = Math.cos(this.currentRotationRad);
-    const sin = Math.sin(this.currentRotationRad);
-    const rotX = isoX * cos - isoY * sin;
-    const rotY = isoX * sin + isoY * cos;
-    const screenX = rotX * this.currentZoom + this.viewWidth / 2;
-    const screenY = -rotY * this.currentZoom + this.viewHeight / 2;
+    const worldZ = (tileY - this.currentOffset.z) * TILE_SIZE;
+    // Forward camera projection on the ground plane (y=0):
+    //   screenX = (worldX * sin(az) - worldZ * cos(az)) * zoom + cx
+    //   screenY = (worldX * cos(az) + worldZ * sin(az)) * sin(elev) * zoom + cy
+    const screenX = (worldX * sinA - worldZ * cosA) * this.currentZoom + this.viewWidth / 2;
+    const screenY = (worldX * cosA + worldZ * sinA) * sinE * this.currentZoom + this.viewHeight / 2;
     return { x: screenX, y: screenY };
   }
 
