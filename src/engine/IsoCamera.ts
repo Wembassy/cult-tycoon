@@ -1,36 +1,28 @@
 /**
- * IsoCamera — Isometric camera controller using Three.js OrthographicCamera.
- *
- * Features:
- *   - 45° azimuth, 60° elevation orthographic projection
- *   - Zoom via mouse wheel (0.5x–3x bounds)
- *   - Rotation via Q/E keys, snapping to 4 directions (0°, 90°, 180°, 270°)
- *   - Pan via WASD keys
- *   - screenToTile() / tileToScreen() coordinate conversion
- *   - Smooth lerp transitions for zoom, rotation, and pan
+ * IsoCamera — Isometric camera with dramatic angle for 3D visibility.
+ * 35° elevation (from horizontal) gives strong 3D perspective.
+ * WASD pan, Q/E rotate, wheel zoom — all on window (no focus needed).
  */
 
 import * as THREE from 'three';
 
 export const TILE_SIZE = 1;
-const MIN_ZOOM = 10;
-const MAX_ZOOM = 80;
+const MIN_ZOOM = 15;
+const MAX_ZOOM = 100;
 const LERP_FACTOR = 0.12;
-const CAMERA_DISTANCE = 50;
-const ELEVATION = THREE.MathUtils.degToRad(60);
+const CAMERA_DISTANCE = 60;
+// 30° from vertical = 60° from horizontal — very dramatic low angle
+const ELEVATION = THREE.MathUtils.degToRad(30);
 const ROTATION_DIRECTIONS = 4;
-const PAN_SPEED = 20;
+const PAN_SPEED = 25;
 
-export interface TileCoord {
-  x: number;
-  y: number;
-}
+export interface TileCoord { x: number; y: number; }
 
 export class IsoCamera {
   readonly camera: THREE.OrthographicCamera;
 
-  private targetZoom = 40;
-  private currentZoom = 40;
+  private targetZoom = 50;
+  private currentZoom = 50;
   private targetRotationStep = 0;
   private currentRotationRad = 0;
   private targetOffset: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
@@ -63,8 +55,8 @@ export class IsoCamera {
     this.boundWheel = this.onWheel.bind(this);
     this.boundResize = this.onResize.bind(this);
 
-    domElement.addEventListener('keydown', this.boundKeyDown);
-    domElement.addEventListener('keyup', this.boundKeyUp);
+    window.addEventListener('keydown', this.boundKeyDown);
+    window.addEventListener('keyup', this.boundKeyUp);
     domElement.addEventListener('wheel', this.boundWheel, { passive: false });
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', this.boundResize);
@@ -104,12 +96,10 @@ export class IsoCamera {
   screenToTile(screenX: number, screenY: number): TileCoord {
     const ndcX = (screenX - this.viewWidth / 2) / this.currentZoom;
     const ndcY = -(screenY - this.viewHeight / 2) / this.currentZoom;
-    // Inverse rotation (transpose: swap sin sign)
     const cos = Math.cos(this.currentRotationRad);
     const sin = Math.sin(this.currentRotationRad);
     const rotX = ndcX * cos + ndcY * sin;
     const rotY = -ndcX * sin + ndcY * cos;
-    // Inverse isometric projection
     const isoX = (rotX + 2 * rotY) / 2;
     const isoY = (2 * rotY - rotX) / 2;
     const tileX = Math.floor(isoX / TILE_SIZE + this.currentOffset.x);
@@ -132,9 +122,9 @@ export class IsoCamera {
   }
 
   dispose(): void {
-    this.domElement.removeEventListener('keydown', this.boundKeyDown);
-    this.domElement.removeEventListener('keyup', this.boundKeyUp);
     this.domElement.removeEventListener('wheel', this.boundWheel);
+    window.removeEventListener('keydown', this.boundKeyDown);
+    window.removeEventListener('keyup', this.boundKeyUp);
     if (typeof window !== 'undefined') {
       window.removeEventListener('resize', this.boundResize);
     }
