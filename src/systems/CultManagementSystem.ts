@@ -12,6 +12,8 @@ import { Skills } from '../components/Skills';
 import { Traits } from '../components/Traits';
 import { Health, StatusEffect } from '../components/Health';
 
+export type GameState = 'playing' | 'won' | 'lost';
+
 export interface CultStats {
   influence: number;    // 0-1000, grows with prayer and rituals
   wealth: number;       // currency for building/recruiting
@@ -20,6 +22,15 @@ export interface CultStats {
   morale: number;       // 0-100, average follower fun + sanity
   population: number;   // current follower count
   maxPopulation: number; // capacity based on dormitories
+}
+
+export type LoseReason = 'abandoned' | 'bankruptcy' | 'busted';
+
+export interface WinLoseEvent {
+  type: 'win' | 'lose';
+  reason?: LoseReason;
+  stats: CultStats;
+  day: number;
 }
 
 export type ScheduleBlock = 'work' | 'pray' | 'eat' | 'free' | 'sleep';
@@ -87,8 +98,22 @@ export class CultManagementSystem {
   private currentHour = 0;
   private dayCount = 1;
 
-  constructor(leader: CultLeader, seed: number = Date.now()) {
+  // Win/Lose tracking
+  private gameState: GameState = 'playing';
+  private loseReason: LoseReason | null = null;
+  private populationZeroTimer = 0; // seconds at 0 population
+  private ascensionCompleted = false;
+  private onWinLose?: (event: WinLoseEvent) => void;
+
+  // Win condition thresholds
+  static readonly WIN_FOLLOWER_COUNT = 20;
+  static readonly BANKRUPTCY_THRESHOLD = -50;
+  static readonly NOTORIETY_BUST_THRESHOLD = 100;
+  static readonly POPULATION_ZERO_GRACE = 30; // seconds before lose
+
+  constructor(leader: CultLeader, seed: number = Date.now(), onWinLose?: (event: WinLoseEvent) => void) {
     this.leader = leader;
+    this.onWinLose = onWinLose;
     this.stats = {
       influence: 0,
       wealth: 100,
@@ -186,9 +211,13 @@ export class CultManagementSystem {
   }
 
   /**
-   * Update cult stats based on follower states and needs
+   * Update cult stats based on follower states and needs.
+   * Also checks win/lose conditions.
    */
   update(world: World, dt: number): void {
+    // Don't update if game is over
+    if (this.gameState !== 'playing') return;
+
     this.currentHour = (this.currentHour + dt) % 24;
     if (this.currentHour < dt) this.dayCount++;
 
@@ -231,6 +260,135 @@ export class CultManagementSystem {
 
     // Schedule-based job posting
     this.applySchedule(world);
+
+    // Check win/lose conditions
+    this.checkLoseConditions(dt);
+    this.checkWinConditions();
+  }
+
+  /**
+   * Check lose conditions:
+   * - Population 0 for 30+ seconds
+   * - Wealth < -50 (bankruptcy)
+   * - Notoriety >= 100 (busted)
+   */
+  private checkLoseConditions(dt: number): void {
+    if (this.gameState !== 'playing') return;
+
+    // Check bankruptcy
+    if (this.stats.wealth < CultManagementSystem.BANKRUPTCY_THRESHOLD) {
+      this.triggerLose('bankruptcy');
+      return;
+    }
+
+    // Check notoriety busted
+    if (this.stats.notoriety >= CultManagementSystem.NOTORIETY_BUST_THRESHOLD) {
+      this.triggerLose('busted');
+      return;
+    }
+
+    // Check population zero
+    if (this.stats.population <= 0) {
+      this.populationZeroTimer += dt;
+      if (this.populationZeroTimer >= CultManagementSystem.POPULATION_ZERO_GRACE) {
+        this.triggerLose('abandoned');
+      }
+    } else {
+      this.populationZeroTimer = 0;
+    }
+  }
+
+  /**
+   * Check win condition:
+   * - 20+ followers AND Ascension ritual completed
+   */
+  private checkWinConditions(): void {
+    if (this.gameState !== 'playing') return;
+
+    if (this.ascensionCompleted && this.stats.population >= CultManagementSystem.WIN_FOLLOWER_COUNT) {
+      this.triggerWin();
+    }
+  }
+
+  private triggerLose(reason: LoseReason): void {
+    this.gameState = 'lost';
+    this.loseReason = reason;
+    this.onWinLose?.({
+      type: 'lose',
+      reason,
+      stats: this.getStats(),
+      day: this.dayCount,
+    });
+  }
+
+  private triggerWin(): void {
+    this.gameState = 'won';
+    this.onWinLose?.({
+      type: 'win',
+      stats: this.getStats(),
+      day: this.dayCount,
+    });
+  }
+
+  /**
+   * Mark the Ascension ritual as completed (called by RitualSystem or main).
+   */
+  markAscensionComplete(): void {
+    this.ascensionCompleted = true;
+    this.checkWinConditions();
+  }
+
+  /**
+   * Get current game state.
+   */
+  getGameState(): GameState {
+    return this.gameState;
+  }
+
+  /**
+   * Get lose reason (if lost).
+   */
+  getLoseReason(): LoseReason | null {
+    return this.loseReason;
+  }
+
+  /**
+   * Get population zero timer (for debugging/UI).
+   */
+  getPopulationZeroTimer(): number {
+    return this.populationZeroTimer;
+  }
+
+  /**
+   * Check if ascension ritual has been completed.
+   */
+  hasAscensionCompleted(): boolean {
+    return this.ascensionCompleted;
+  }
+
+  /**
+   * Reset game state for a new game.
+   */
+  resetGame(leader?: CultLeader): void {
+    this.gameState = 'playing';
+    this.loseReason = null;
+    this.populationZeroTimer = 0;
+    this.ascensionCompleted = false;
+    this.roster.clear();
+    this.candidates = [];
+    this.techTree = [...DEFAULT_TECH];
+    this.currentHour = 0;
+    this.dayCount = 1;
+    this.stats = {
+      influence: 0,
+      wealth: 100,
+      notoriety: 0,
+      faith: 100,
+      morale: 100,
+      population: 0,
+      maxPopulation: 5,
+    };
+    if (leader) this.leader = leader;
   }
 
   /**
@@ -321,6 +479,13 @@ export class CultManagementSystem {
    */
   getStats(): CultStats {
     return { ...this.stats };
+  }
+
+  /**
+   * Set max population directly (for testing).
+   */
+  setMaxPopulation(max: number): void {
+    this.stats.maxPopulation = max;
   }
 
   /**

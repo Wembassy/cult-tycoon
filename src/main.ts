@@ -28,8 +28,16 @@ import { FollowerFactory } from './systems/FollowerFactory';
 import { EventSystem } from './systems/EventSystem';
 import { RitualSystem } from './systems/RitualSystem';
 import { TechTreeSystem } from './systems/TechTreeSystem';
+import { InvestigatorSystem } from './systems/InvestigatorSystem';
 import { DataManager } from './data/DataManager';
 import { HUDManager, ResourceBarData, BuildPanelEntry } from './ui/HUDManager';
+import { StartMenu } from './ui/StartMenu';
+import { PauseMenu } from './ui/PauseMenu';
+import { SettingsMenu, SettingsData, GraphicsQuality } from './ui/SettingsMenu';
+// WinLoseEvent type used for overlay logic
+
+/** Top-level game state. */
+type GameState = 'menu' | 'loading' | 'playing' | 'paused';
 
 class CultTycoonGame {
   private renderer: Renderer;
@@ -48,8 +56,10 @@ class CultTycoonGame {
   private eventSystem: EventSystem;
   private ritualSystem: RitualSystem;
   private techTree: TechTreeSystem;
+  private investigatorSystem: InvestigatorSystem;
   private factory: FollowerFactory;
   private systems: System[] = [];
+  private gameEnded = false;
   private lastTime = 0;
   private accumulator = 0;
   private readonly tickDuration = 1 / 30;
@@ -70,6 +80,18 @@ class CultTycoonGame {
 
   // Time control
   private timeMode: 'pause' | 'play' | 'fast' = 'play';
+
+  // Menu system
+  private gameState: GameState = 'menu';
+  private startMenu: StartMenu | null = null;
+  private pauseMenu: PauseMenu | null = null;
+  private settingsMenu: SettingsMenu | null = null;
+  private settingsData: SettingsData = {
+    masterVolume: 75,
+    sfxVolume: 80,
+    graphicsQuality: 'high' as GraphicsQuality,
+    cameraSnap: false,
+  };
 
   constructor() {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -124,10 +146,39 @@ class CultTycoonGame {
         this.cultInfluence += result.influenceGain;
         this.cultNotoriety += result.notorietyGain;
         this.hud.logEvent(`Ritual complete: ${result.name} (+${result.influenceGain} influence, +${result.faithGain} faith)`, 'success');
+
+        // Check if Ascension ritual completed → trigger win condition check
+        if (result.id.startsWith('ascension')) {
+          this.checkWinCondition();
+        }
       },
     );
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem];
+    // Investigator system — spawns when notoriety > 50
+    this.investigatorSystem = new InvestigatorSystem(
+      this.map,
+      this.pathfinder,
+      16,
+      16,
+      {
+        onInvestigatorSpawn: (_inv) => {
+          this.hud.logEvent(`⚠️ An investigator has arrived to inspect your cult!`, 'danger');
+        },
+        onInvestigatorInspectComplete: (_inv) => {
+          this.cultNotoriety = Math.min(100, this.cultNotoriety + 10);
+          this.hud.logEvent(`Investigator completed inspection. Notoriety +10.`, 'danger');
+        },
+        onInvestigatorConverted: (_inv) => {
+          this.hud.logEvent(`Investigator was converted to your cult!`, 'success');
+        },
+        onInvestigatorFled: (_inv) => {
+          this.hud.logEvent(`Investigator fled.`, 'info');
+        },
+      },
+      99999,
+    );
+
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem];
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -343,11 +394,20 @@ class CultTycoonGame {
           this.hud.logEvent('Demolish mode: click to remove.', 'info');
           break;
         case 'escape':
-          this.input.setMode('select');
-          this.selectedBuildItem = null;
-          this.selectedEntity = null;
-          this.hud.hideInspector();
-          this.highlightBuildPanel(null);
+          if (this.gameState === 'playing') {
+            // If in build/demolish mode, exit that first
+            if (this.input.getMode() !== 'select') {
+              this.input.setMode('select');
+              this.selectedBuildItem = null;
+              this.selectedEntity = null;
+              this.hud.hideInspector();
+              this.highlightBuildPanel(null);
+            } else {
+              this.openPauseMenu();
+            }
+          } else if (this.gameState === 'paused') {
+            this.closePauseMenu();
+          }
           break;
         case 't':
           this.showTechTree();
@@ -676,8 +736,22 @@ class CultTycoonGame {
     // Renderer handles its own resize
   };
 
+  /**
+   * Start the render loop only (no simulation). Used when showing the menu
+   * so the 3D scene is visible behind the menu overlay.
+   */
+  startRenderLoop(): void {
+    this.lastTime = performance.now();
+    this.running = true;
+    this.gameLoop();
+  }
+
+  /**
+   * Start the full game (render + simulation). Called when "New Game" is clicked.
+   */
   start(): void {
     this.lastTime = performance.now();
+    this.running = true;
     this.gameLoop();
   }
 
@@ -731,14 +805,17 @@ class CultTycoonGame {
     const frameTime = Math.min((now - this.lastTime) / 1000, 0.25);
     this.lastTime = now;
 
-    // Fixed timestep simulation
-    this.accumulator += frameTime * this.timeScale;
-    while (this.accumulator >= this.tickDuration) {
-      this.simulate(this.tickDuration);
-      this.accumulator -= this.tickDuration;
+    // Only simulate when playing
+    if (this.gameState === 'playing') {
+      // Fixed timestep simulation
+      this.accumulator += frameTime * this.timeScale;
+      while (this.accumulator >= this.tickDuration) {
+        this.simulate(this.tickDuration);
+        this.accumulator -= this.tickDuration;
+      }
     }
 
-    // Render
+    // Always render (even when paused, so the scene is visible behind pause overlay)
     this.renderSystem.update(this.world, 0);
     this.renderer.camera.update(frameTime);
 
@@ -806,6 +883,239 @@ class CultTycoonGame {
 
     // Sync entity positions for animation
     this.sceneMgr.syncEntities();
+
+    // Update investigator notoriety
+    this.investigatorSystem.setNotoriety(this.cultNotoriety);
+
+    // Check lose conditions
+    this.checkLoseConditions();
+  }
+
+  /**
+   * Check win condition: 20+ followers and Ascension ritual completed.
+   */
+  private checkWinCondition(): void {
+    if (this.gameEnded) return;
+    const entities = this.world.query([Needs, FollowerAI]);
+    if (entities.length >= 20) {
+      this.showWinOverlay();
+    } else {
+      this.hud.logEvent(`Ascension ritual complete! Need 20 followers to win (have ${entities.length}).`, 'success');
+    }
+  }
+
+  /**
+   * Check lose conditions each tick.
+   */
+  private checkLoseConditions(): void {
+    if (this.gameEnded) return;
+
+    const entities = this.world.query([Needs, FollowerAI]);
+    const pop = entities.length;
+
+    // Bankruptcy
+    if (this.cultWealth < -50) {
+      this.showLoseOverlay('bankruptcy');
+      return;
+    }
+
+    // Notoriety busted
+    if (this.cultNotoriety >= 100) {
+      this.showLoseOverlay('busted');
+      return;
+    }
+
+    // Population zero tracking
+    if (pop <= 0) {
+      if (!this._popZeroTimer) this._popZeroTimer = 0;
+      this._popZeroTimer += this.tickDuration;
+      if (this._popZeroTimer >= 30) {
+        this.showLoseOverlay('abandoned');
+      }
+    } else {
+      this._popZeroTimer = 0;
+    }
+  }
+
+  private _popZeroTimer = 0;
+
+  /**
+   * Show the victory overlay.
+   */
+  private showWinOverlay(): void {
+    if (this.gameEnded) return;
+    this.gameEnded = true;
+    this.setTimeMode('pause');
+
+    const stats = this.gatherStats();
+    const overlay = this.createOverlay('win');
+    overlay.innerHTML = `
+      <div class="ov-card win">
+        <div class="ov-icon">🌟</div>
+        <h1>Your cult has achieved Ascension!</h1>
+        <div class="ov-stats">
+          <div>Day: <b>${stats.day}</b></div>
+          <div>Followers: <b>${stats.pop}</b></div>
+          <div>Influence: <b>${stats.influence}</b></div>
+          <div>Wealth: <b>${stats.wealth}</b></div>
+          <div>Notoriety: <b>${stats.notoriety}</b></div>
+        </div>
+        <div class="ov-buttons">
+          <button id="ov-continue" class="ov-btn">Continue Playing</button>
+          <button id="ov-newgame" class="ov-btn ov-btn-primary">New Game</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('ov-continue')?.addEventListener('click', () => {
+      overlay.remove();
+      this.gameEnded = false;
+      this.setTimeMode('play');
+    });
+    document.getElementById('ov-newgame')?.addEventListener('click', () => {
+      overlay.remove();
+      this.resetForNewGame();
+    });
+  }
+
+  /**
+   * Show the defeat overlay.
+   */
+  private showLoseOverlay(reason: 'abandoned' | 'bankruptcy' | 'busted'): void {
+    if (this.gameEnded) return;
+    this.gameEnded = true;
+    this.setTimeMode('pause');
+
+    const reasons: Record<string, { icon: string; title: string; desc: string }> = {
+      abandoned: { icon: '👻', title: 'Your cult has been abandoned', desc: 'All your followers have left. The cult is no more.' },
+      bankruptcy: { icon: '💸', title: 'Your cult is bankrupt', desc: 'Wealth has dropped below -50g. The cult cannot sustain itself.' },
+      busted: { icon: '🚨', title: 'Your cult has been busted', desc: 'Notoriety reached 100. Authorities raided and shut you down.' },
+    };
+    const r = reasons[reason];
+    const stats = this.gatherStats();
+    const overlay = this.createOverlay('lose');
+    overlay.innerHTML = `
+      <div class="ov-card lose">
+        <div class="ov-icon">${r.icon}</div>
+        <h1>${r.title}</h1>
+        <p class="ov-desc">${r.desc}</p>
+        <div class="ov-stats">
+          <div>Day: <b>${stats.day}</b></div>
+          <div>Followers: <b>${stats.pop}</b></div>
+          <div>Influence: <b>${stats.influence}</b></div>
+          <div>Wealth: <b>${stats.wealth}</b></div>
+          <div>Notoriety: <b>${stats.notoriety}</b></div>
+        </div>
+        <div class="ov-buttons">
+          <button id="ov-newgame" class="ov-btn ov-btn-primary">New Game</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('ov-newgame')?.addEventListener('click', () => {
+      overlay.remove();
+      this.resetForNewGame();
+    });
+  }
+
+  private createOverlay(_type: 'win' | 'lose'): HTMLDivElement {
+    const overlay = document.createElement('div');
+    overlay.className = 'game-overlay';
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; pointer-events: auto;
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+    `;
+    // Add card styles if not already present
+    if (!document.getElementById('overlay-styles')) {
+      const style = document.createElement('style');
+      style.id = 'overlay-styles';
+      style.textContent = `
+        .ov-card {
+          background: linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+          border: 2px solid rgba(168,85,247,0.4);
+          border-radius: 16px; padding: 40px 48px; text-align: center;
+          max-width: 480px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+          color: #e0e0e0;
+        }
+        .ov-card.win { border-color: rgba(168,85,247,0.6); box-shadow: 0 8px 40px rgba(168,85,247,0.3); }
+        .ov-card.lose { border-color: rgba(239,68,68,0.5); box-shadow: 0 8px 40px rgba(239,68,68,0.3); }
+        .ov-icon { font-size: 48px; margin-bottom: 16px; }
+        .ov-card h1 { font-size: 24px; margin: 0 0 12px; color: #fff; }
+        .ov-desc { color: #aaa; font-size: 14px; margin: 0 0 20px; }
+        .ov-stats { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin: 16px 0 24px; font-size: 14px; }
+        .ov-stats div { color: #ccc; }
+        .ov-stats b { color: #fff; }
+        .ov-buttons { display: flex; gap: 12px; justify-content: center; }
+        .ov-btn {
+          background: rgba(60,60,90,0.8); border: 1px solid rgba(100,100,160,0.4);
+          color: #ccc; padding: 10px 24px; border-radius: 8px;
+          cursor: pointer; font-size: 14px; font-weight: 600;
+          transition: all 0.15s;
+        }
+        .ov-btn:hover { background: rgba(80,80,120,0.9); }
+        .ov-btn-primary { background: rgba(168,85,247,0.4); border-color: rgba(168,85,247,0.6); color: #fff; }
+        .ov-btn-primary:hover { background: rgba(168,85,247,0.6); }
+      `;
+      document.head.appendChild(style);
+    }
+    return overlay;
+  }
+
+  private gatherStats() {
+    const entities = this.world.query([Needs, FollowerAI]);
+    return {
+      day: this.currentDay,
+      pop: entities.length,
+      influence: Math.floor(this.cultInfluence),
+      wealth: Math.floor(this.cultWealth),
+      notoriety: Math.floor(this.cultNotoriety),
+    };
+  }
+
+  /**
+   * Reset game state for a new game (from win/lose overlay).
+   */
+  private resetForNewGame(): void {
+    // Clear all entities
+    this.world.clear();
+
+    // Reset game state
+    this.gameEnded = false;
+    this._popZeroTimer = 0;
+    this.cultWealth = 100;
+    this.cultInfluence = 50;
+    this.cultNotoriety = 5;
+    this.currentHour = 6;
+    this.currentDay = 1;
+    this.tickCount = 0;
+    this.selectedBuildItem = null;
+    this.selectedEntity = null;
+    this.followerNames.clear();
+
+    // Reset systems
+    this.investigatorSystem.reset();
+
+    // Rebuild map
+    const worldGen = new WorldGen(12345);
+    this.map = worldGen.generate({ width: 32, height: 32, waterPools: 3, stonePatches: 4, dirtPatches: 5 });
+    this.pathfinder = new Pathfinder(this.map);
+    this.sceneMgr.buildTiles();
+
+    // Spawn initial followers
+    this.spawnFollowers(4);
+
+    // Update HUD
+    this.updateHUD();
+    this.hud.updateTime(6, 1);
+    this.hud.logEvent('New game started!', 'success');
+    this.hud.logEvent('Your cult begins with 4 followers.', 'info');
+
+    this.setTimeMode('play');
   }
 
   dispose(): void {
@@ -815,19 +1125,203 @@ class CultTycoonGame {
     this.hud.destroy();
     this.sceneMgr.dispose();
     this.renderer.dispose();
+    this.startMenu?.destroy();
+    this.pauseMenu?.destroy();
+    this.settingsMenu?.destroy();
+  }
+
+  // ─── Menu System ───────────────────────────────────────────────
+
+  /**
+   * Show the start menu on game boot. Does NOT start the game loop.
+   */
+  showStartMenu(): void {
+    this.gameState = 'menu';
+
+    this.startMenu = new StartMenu({
+      onNewGame: () => this.startNewGame(),
+      onContinue: () => this.continueGame(),
+      onSettings: () => this.openSettings(),
+      onQuit: () => this.quitGame(),
+    });
+    this.startMenu.mount();
+    this.startMenu.show();
+
+    // Settings menu (shared, created on demand)
+    this.settingsMenu = new SettingsMenu({
+      onApply: (data) => this.applySettings(data),
+      onClose: () => this.closeSettings(),
+    }, this.settingsData);
+    this.settingsMenu.mount();
+  }
+
+  /**
+   * Start a new game from the start menu.
+   */
+  private startNewGame(): void {
+    console.log('[Menu] Starting new game...');
+    this.startMenu?.hide();
+
+    // Start preloading and then the game
+    this.gameState = 'loading';
+    this.preloadAssets().then(() => {
+      console.log('[Menu] Preload complete, starting game loop');
+      this.gameState = 'playing';
+      this.start();
+    }).catch((err) => {
+      console.error('[Menu] Preload failed:', err);
+      this.gameState = 'playing';
+      this.start();
+    });
+  }
+
+  /**
+   * Continue from a saved game (placeholder — no save system yet).
+   */
+  private continueGame(): void {
+    // TODO: Load save file when save system exists
+    console.log('[Menu] Continue not yet implemented — starting new game instead');
+    this.startNewGame();
+  }
+
+  /**
+   * Open the settings menu (from start menu or pause menu).
+   */
+  private openSettings(): void {
+    // Rebuild settings menu with current data
+    this.settingsMenu?.setData(this.settingsData);
+    this.settingsMenu?.show();
+  }
+
+  /**
+   * Close the settings menu and return to the previous context.
+   */
+  private closeSettings(): void {
+    this.settingsMenu?.hide();
+  }
+
+  /**
+   * Apply settings changes.
+   */
+  private applySettings(data: SettingsData): void {
+    this.settingsData = { ...data };
+    console.log('[Menu] Settings applied:', this.settingsData);
+
+    // Apply graphics quality
+    this.applyGraphicsQuality(data.graphicsQuality);
+
+    this.closeSettings();
+  }
+
+  /**
+   * Apply graphics quality to the renderer.
+   */
+  private applyGraphicsQuality(quality: GraphicsQuality): void {
+    const pixelRatios: Record<GraphicsQuality, number> = { low: 0.5, medium: 0.75, high: 1.0 };
+    const shadowSizes: Record<GraphicsQuality, number> = { low: 512, medium: 1024, high: 2048 };
+
+    this.renderer.setPixelRatio(pixelRatios[quality]);
+    this.renderer.setShadowMapSize(shadowSizes[quality]);
+  }
+
+  /**
+   * Open the pause menu (Esc during gameplay).
+   */
+  private openPauseMenu(): void {
+    if (this.gameState !== 'playing') return;
+    this.gameState = 'paused';
+
+    // Pause time simulation
+    const prevTimeMode = this.timeMode;
+    this.timeScale = 0;
+
+    if (!this.pauseMenu) {
+      this.pauseMenu = new PauseMenu({
+        onResume: () => this.closePauseMenu(),
+        onSettings: () => this.openSettings(),
+        onSave: () => this.saveGame(),
+        onMainMenu: () => this.returnToMainMenu(),
+      });
+      this.pauseMenu.mount();
+    }
+    this.pauseMenu.show();
+
+    // Store previous time mode for restore
+    (this.pauseMenu as any)._prevTimeMode = prevTimeMode;
+  }
+
+  /**
+   * Close the pause menu and resume gameplay.
+   */
+  private closePauseMenu(): void {
+    if (this.gameState !== 'paused') return;
+    this.gameState = 'playing';
+
+    this.pauseMenu?.hide();
+
+    // Restore time scale
+    const prevMode = (this.pauseMenu as any)._prevTimeMode as 'pause' | 'play' | 'fast' | undefined;
+    if (prevMode) {
+      this.setTimeMode(prevMode);
+    } else {
+      this.setTimeMode('play');
+    }
+  }
+
+  /**
+   * Save the game (placeholder).
+   */
+  private saveGame(): void {
+    // TODO: Implement save system
+    this.hud.logEvent('Save: Game state saved (placeholder).', 'success');
+    console.log('[Menu] Save game requested (not yet implemented)');
+  }
+
+  /**
+   * Return to the main menu from pause.
+   */
+  private returnToMainMenu(): void {
+    console.log('[Menu] Returning to main menu...');
+    this.gameState = 'menu';
+    this.pauseMenu?.hide();
+
+    // Stop the game loop
+    this.running = false;
+
+    // Show start menu again
+    this.startMenu?.show();
+
+    // Reset game state for a fresh start
+    // Note: We keep the instance alive but stop the loop.
+    // A full reset would require re-initializing all systems.
+    // For now, the user can start a new game from the menu.
+  }
+
+  /**
+   * Quit the game (Electron only).
+   */
+  private quitGame(): void {
+    // Check if running in Electron
+    const isElectron = typeof (window as any).require !== 'undefined' ||
+      (typeof process !== 'undefined' && process.versions?.electron !== undefined);
+    if (isElectron) {
+      const electron = (window as any).require('electron');
+      electron.ipcRenderer.send('app-quit');
+    } else {
+      // In browser, just show start menu
+      console.log('[Menu] Quit not available in browser mode');
+      // Could show a toast/overlay, but simplest is to just stay on menu
+    }
   }
 }
 
 function init(): void {
   console.log('[init] Starting Cult Tycoon...');
   const game = new CultTycoonGame();
-  game.preloadAssets().then(() => {
-    console.log('[init] Preload complete, starting game loop');
-    game.start();
-  }).catch((err) => {
-    console.error('[init] Preload failed:', err);
-    game.start();
-  });
+  // Show start menu first; game starts when "New Game" is clicked
+  game.showStartMenu();
+  // Start the render loop immediately so the 3D scene renders behind the menu
+  game.startRenderLoop();
 }
 
 if (document.readyState === 'loading') {

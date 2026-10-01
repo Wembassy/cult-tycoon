@@ -24,6 +24,8 @@ export default defineConfig({
   server: {
     open: true,
     port: 3000,
+    allowedHosts: ['cult.pixagame.com', 'localhost'],
+    host: true,
   },
   test: {
     globals: true,

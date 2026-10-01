@@ -34,7 +34,7 @@ describe('RitualSystem', () => {
 
   it('should load rituals from DataManager', () => {
     const rituals = DataManager.getRituals();
-    expect(rituals.length).toBe(5);
+    expect(rituals.length).toBe(6);
     expect(rituals[0].id).toBe('morning_prayer');
   });
 

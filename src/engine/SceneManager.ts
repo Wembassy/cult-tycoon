@@ -36,9 +36,12 @@ export class SceneManager {
   private tileMeshes: Map<string, THREE.Mesh> = new Map();
   private entityMeshes: Map<number, THREE.Object3D> = new Map();
   private entityMeshIsPlaceholder: Map<number, boolean> = new Map();
+  private mixers: Map<number, THREE.AnimationMixer> = new Map();
+  private entityLights: Map<number, THREE.PointLight> = new Map();
   private world: World;
   private map: TileMap;
   private assets: AssetLoader | null = null;
+  private lastAnimTime: number = 0;
 
   constructor(scene: THREE.Scene, world: World, map: TileMap, assets?: AssetLoader) {
     this.scene = scene;
@@ -74,9 +77,10 @@ export class SceneManager {
         const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
         const isWater = tile.terrain === 'water';
 
-        // Slight per-tile color variation for texture
-        const variation = ((x * 7 + y * 13) % 5) - 2;
-        const finalColor = new THREE.Color(color).offsetHSL(0, 0, variation * 0.02);
+        // Stronger per-tile noise-based color variation for texture
+        const noiseVal = Math.sin(x * 0.5) * Math.cos(y * 0.5) + Math.sin((x + y) * 0.3);
+        const variation = noiseVal * 0.06;
+        const finalColor = new THREE.Color(color).offsetHSL(0, 0, variation);
 
         const geom = new THREE.BoxGeometry(TILE_SIZE, height, TILE_SIZE);
         const mat = isWater
@@ -100,6 +104,24 @@ export class SceneManager {
 
         this.tileGroup.add(mesh);
         this.tileMeshes.set(`${x},${y}`, mesh);
+
+        // Add grass blade particles on grass tiles
+        if (tile.terrain === 'grass') {
+          const bladeCount = 3 + ((x * 3 + y * 7) % 4); // 3-6 blades per tile
+          const grassGeom = new THREE.ConeGeometry(0.04, 0.2, 4);
+          for (let b = 0; b < bladeCount; b++) {
+            const bladeColor = new THREE.Color(0x4a8c3a).offsetHSL(0, 0, ((b * 17 + x * 3) % 5 - 2) * 0.03);
+            const bladeMat = new THREE.MeshStandardMaterial({ color: bladeColor, flatShading: true, roughness: 0.95 });
+            const blade = new THREE.Mesh(grassGeom, bladeMat);
+            const bx = (Math.random() - 0.5) * 0.7;
+            const bz = (Math.random() - 0.5) * 0.7;
+            blade.position.set(x + offset.x + 0.5 + bx, height + 0.1, y + offset.z + 0.5 + bz);
+            blade.rotation.y = Math.random() * Math.PI;
+            blade.rotation.x = (Math.random() - 0.5) * 0.2;
+            blade.castShadow = false;
+            this.tileGroup.add(blade);
+          }
+        }
 
         if (tile.decor !== 'none') {
           const decorMesh = this.createDecorMesh(tile.decor);
@@ -246,8 +268,8 @@ export class SceneManager {
           const cloned = this.assets.clone(assetPath);
           if (cloned) {
             console.log(`[SceneManager] Loaded GLB for entity ${entity}: ${assetPath}, children=${cloned.children.length}`);
-            // Polygon Minis are ~2 units tall, scale up for game tiles
-            cloned.scale.setScalar(3.0);
+            // Polygon Minis are ~2 units tall, scale for game tiles
+            cloned.scale.setScalar(1.5);
             cloned.traverse((child) => {
               if (child instanceof THREE.Mesh) {
                 child.castShadow = true;
@@ -258,6 +280,24 @@ export class SceneManager {
             this.entityGroup.add(obj);
             this.entityMeshes.set(entity, obj);
             this.entityMeshIsPlaceholder.set(entity, false);
+
+            // Play first animation clip from GLB
+            const asset = this.assets!.get(assetPath);
+            if (asset && asset.animations.length > 0) {
+              const mixer = new THREE.AnimationMixer(cloned);
+              const action = mixer.clipAction(asset.animations[0]);
+              action.play();
+              this.mixers.set(entity, mixer);
+              console.log(`[SceneManager] Playing animation "${asset.animations[0].name}" for entity ${entity}`);
+            }
+
+            // Add subtle point light so followers glow in the dark
+            if (renderable.meshId.startsWith('follower')) {
+              const light = new THREE.PointLight(0xaa88ff, 0.6, 3, 2);
+              light.position.set(0, 1, 0);
+              obj.add(light);
+              this.entityLights.set(entity, light);
+            }
           }
         }
 
@@ -278,12 +318,19 @@ export class SceneManager {
       obj.position.z += (targetZ - obj.position.z) * 0.15;
 
       let baseY = transform.z + 0.3;
-      if (renderable.meshId.startsWith('follower')) {
-        const time = performance.now() * 0.003;
-        baseY += Math.sin(time + entity) * 0.08;
+      // No bob — animation mixer handles idle movement
+      if (!renderable.meshId.startsWith('follower')) {
+        obj.rotation.y = transform.rotation;
       }
       obj.position.y += (baseY - obj.position.y) * 0.15;
-      obj.rotation.y = transform.rotation;
+    }
+
+    // Update animation mixers
+    const now = performance.now();
+    const dt = this.lastAnimTime > 0 ? (now - this.lastAnimTime) / 1000 : 0;
+    this.lastAnimTime = now;
+    for (const mixer of this.mixers.values()) {
+      mixer.update(dt);
     }
 
     // Cleanup
@@ -293,6 +340,8 @@ export class SceneManager {
         this.disposeObject(obj);
         this.entityMeshes.delete(entityId);
         this.entityMeshIsPlaceholder.delete(entityId);
+        this.mixers.delete(entityId);
+        this.entityLights.delete(entityId);
       }
     }
   }
@@ -453,6 +502,8 @@ export class SceneManager {
   dispose(): void {
     this.tileMeshes.clear();
     this.entityMeshes.clear();
+    this.mixers.clear();
+    this.entityLights.clear();
     this.scene.remove(this.tileGroup);
     this.scene.remove(this.entityGroup);
   }

@@ -56,6 +56,18 @@
       "notorietyGain": 10,
       "requirements": ["ritual_room", "divine_intervention"],
       "description": "Ultimate ritual to commune with the divine"
+    },
+    {
+      "id": "ascension",
+      "name": "Ascension",
+      "duration": 300,
+      "minFollowers": 10,
+      "faithCost": 100,
+      "influenceGain": 500,
+      "faithGain": 100,
+      "notorietyGain": 20,
+      "requirements": ["ritual_room", "divine_intervention", "advanced_rituals"],
+      "description": "The ultimate ritual — transcend mortality and achieve godhood. Requires 20 followers to win."
     }
   ]
 }
