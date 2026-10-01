@@ -1,8 +1,13 @@
 /**
  * HUDManager — Manages DOM-based HUD elements for the game UI.
- * Resource bar, build panel, inspector, event log, time controls.
+ * Resource bar, build panel, inspector, event log, time controls,
+ * tech tree, mission, and schedule panels.
  * Uses vanilla DOM + CSS (no framework dependency).
  */
+
+import { TechTreePanel, TechTreePanelData } from './TechTreePanel';
+import { MissionPanel, MissionPanelData } from './MissionPanel';
+import { SchedulePanel, SchedulePanelData } from './SchedulePanel';
 
 export interface HUDConfig {
   container: HTMLElement;
@@ -23,7 +28,7 @@ export interface BuildPanelEntry {
   label: string;
   icon: string;
   cost: number;
-  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure';
+  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure' | 'decor';
 }
 
 export interface BuildCategory {
@@ -59,6 +64,10 @@ export class HUDManager {
   private inspector: HTMLElement | null = null;
   private eventLog: HTMLElement | null = null;
   private timeControls: HTMLElement | null = null;
+  private topBar: HTMLElement | null = null;
+  private techTreePanel: TechTreePanel | null = null;
+  private missionPanel: MissionPanel | null = null;
+  private schedulePanel: SchedulePanel | null = null;
   private eventLogEntries: EventLogEntry[] = [];
   private nextEventId = 1;
   private maxLogEntries = 20;
@@ -66,6 +75,12 @@ export class HUDManager {
   private _currentTime = 0;
   private _currentDay = 1;
   private _activeCategoryId: string | null = null;
+
+  /** Callbacks for panel actions. */
+  onTechTreeUnlock?: (techId: string) => void;
+  onSendMission?: (templateId: string, cultistIds: number[]) => void;
+  onAssignShift?: (entityId: number, shift: 'morning' | 'afternoon' | 'night') => void;
+  onAutoAssignShifts?: () => void;
 
   constructor(config: HUDConfig) {
     this.container = config.container;
@@ -83,8 +98,10 @@ export class HUDManager {
     this.inspector = this.createElement('div', 'hud-inspector');
     this.eventLog = this.createElement('div', 'hud-event-log');
     this.timeControls = this.createElement('div', 'hud-time-controls');
+    this.topBar = this.createElement('div', 'hud-top-bar');
 
     this.container.appendChild(this.resourceBar);
+    this.container.appendChild(this.topBar);
     this.container.appendChild(this.buildItems);
     this.container.appendChild(this.buildBar);
     this.container.appendChild(this.buildPanel);
@@ -94,6 +111,197 @@ export class HUDManager {
 
     // Build items panel hidden by default
     this.buildItems.style.display = 'none';
+
+    // Create and mount panels
+    this.techTreePanel = new TechTreePanel({
+      onUnlock: (techId: string) => this.onTechTreeUnlock?.(techId),
+      onClose: () => this.hideTechTreePanel(),
+    });
+    this.techTreePanel.mount();
+
+    this.missionPanel = new MissionPanel({
+      onSendMission: (templateId: string, cultistIds: number[]) => this.onSendMission?.(templateId, cultistIds),
+      onClose: () => this.hideMissionPanel(),
+    });
+    this.missionPanel.mount();
+
+    this.schedulePanel = new SchedulePanel({
+      onAssignShift: (entityId: number, shift: 'morning' | 'afternoon' | 'night') => this.onAssignShift?.(entityId, shift),
+      onAutoAssign: () => this.onAutoAssignShifts?.(),
+      onClose: () => this.hideSchedulePanel(),
+    });
+    this.schedulePanel.mount();
+
+    this.setupTopBar();
+    this.injectTopBarStyles();
+  }
+
+  private setupTopBar(): void {
+    if (!this.topBar) return;
+    this.topBar.innerHTML = `
+      <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
+      <button class="hud-top-btn" data-panel="missions" title="Missions">🎯 Missions</button>
+      <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
+    `;
+    this.topBar.querySelectorAll('.hud-top-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const panel = (e.currentTarget as HTMLElement).dataset.panel;
+        switch (panel) {
+          case 'techtree': this.toggleTechTreePanel(); break;
+          case 'missions': this.toggleMissionPanel(); break;
+          case 'schedule': this.toggleSchedulePanel(); break;
+        }
+      });
+    });
+  }
+
+  private injectTopBarStyles(): void {
+    if (document.getElementById('hud-top-bar-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'hud-top-bar-styles';
+    style.textContent = `
+      .hud-top-bar {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        display: flex;
+        gap: 4px;
+        padding: 6px 8px;
+        background-image: url('/assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
+        border: 1px solid rgba(80, 120, 180, 0.5);
+        border-radius: 6px;
+        pointer-events: auto;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(120,160,220,0.15);
+        z-index: 10;
+        image-rendering: pixelated;
+      }
+      .hud-top-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #a0b8d8;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid transparent;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .hud-top-btn:hover {
+        background: rgba(50, 80, 130, 0.5);
+        border-color: rgba(100, 150, 220, 0.3);
+        color: #e0f0ff;
+      }
+      .hud-top-btn.active {
+        background: rgba(168, 85, 247, 0.3);
+        border-color: rgba(168, 85, 247, 0.5);
+        color: #fff;
+        box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // ─── Tech Tree Panel ──────────────────────────────────────
+
+  toggleTechTreePanel(): void {
+    if (!this.techTreePanel) return;
+    if (this.techTreePanel.isVisible) {
+      this.hideTechTreePanel();
+    } else {
+      this.techTreePanel.show({ unlockedIds: [], influence: 0, faith: 0 });
+    }
+    this.updateTopBarActive();
+  }
+
+  showTechTreePanel(data: TechTreePanelData): void {
+    if (!this.techTreePanel) return;
+    this.techTreePanel.show(data);
+    this.updateTopBarActive();
+  }
+
+  hideTechTreePanel(): void {
+    this.techTreePanel?.hide();
+    this.updateTopBarActive();
+  }
+
+  updateTechTreePanel(data: TechTreePanelData): void {
+    this.techTreePanel?.update(data);
+  }
+
+  // ─── Mission Panel ────────────────────────────────────────
+
+  toggleMissionPanel(): void {
+    if (!this.missionPanel) return;
+    if (this.missionPanel.isVisible) {
+      this.hideMissionPanel();
+    } else {
+      this.missionPanel.show({ cultists: [], activeMissions: [] });
+    }
+    this.updateTopBarActive();
+  }
+
+  showMissionPanel(data: MissionPanelData): void {
+    if (!this.missionPanel) return;
+    this.missionPanel.show(data);
+    this.updateTopBarActive();
+  }
+
+  hideMissionPanel(): void {
+    this.missionPanel?.hide();
+    this.updateTopBarActive();
+  }
+
+  updateMissionPanel(data: MissionPanelData): void {
+    this.missionPanel?.update(data);
+  }
+
+  // ─── Schedule Panel ───────────────────────────────────────
+
+  toggleSchedulePanel(): void {
+    if (!this.schedulePanel) return;
+    if (this.schedulePanel.isVisible) {
+      this.hideSchedulePanel();
+    } else {
+      this.schedulePanel.show({ cultists: [], currentHour: this._currentTime });
+    }
+    this.updateTopBarActive();
+  }
+
+  showSchedulePanel(data: SchedulePanelData): void {
+    if (!this.schedulePanel) return;
+    this.schedulePanel.show(data);
+    this.updateTopBarActive();
+  }
+
+  hideSchedulePanel(): void {
+    this.schedulePanel?.hide();
+    this.updateTopBarActive();
+  }
+
+  updateSchedulePanel(data: SchedulePanelData): void {
+    this.schedulePanel?.update(data);
+  }
+
+  private updateTopBarActive(): void {
+    if (!this.topBar) return;
+    this.topBar.querySelectorAll('.hud-top-btn').forEach(btn => {
+      const panel = (btn as HTMLElement).dataset.panel;
+      let isActive = false;
+      switch (panel) {
+        case 'techtree': isActive = this.techTreePanel?.isVisible ?? false; break;
+        case 'missions': isActive = this.missionPanel?.isVisible ?? false; break;
+        case 'schedule': isActive = this.schedulePanel?.isVisible ?? false; break;
+      }
+      btn.classList.toggle('active', isActive);
+    });
   }
 
   private createElement(tag: string, className: string): HTMLElement {
@@ -327,6 +535,9 @@ export class HUDManager {
    * Destroy the HUD and clean up DOM
    */
   destroy(): void {
+    this.techTreePanel?.destroy();
+    this.missionPanel?.destroy();
+    this.schedulePanel?.destroy();
     this.container.innerHTML = '';
     this.resourceBar = null;
     this.buildBar = null;
@@ -335,6 +546,7 @@ export class HUDManager {
     this.inspector = null;
     this.eventLog = null;
     this.timeControls = null;
+    this.topBar = null;
     this.eventLogEntries = [];
   }
 }

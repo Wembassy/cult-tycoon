@@ -37,6 +37,13 @@ import { CombatSystem } from './systems/CombatSystem';
 import { ResourceSystem } from './systems/ResourceSystem';
 import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
+import { MissionSystem } from './systems/MissionSystem';
+import { PrestigeSystem } from './systems/PrestigeSystem';
+import { HeatSystem, HEAT_CONFIG } from './systems/HeatSystem';
+import { Prestige } from './components/Prestige';
+import { OnMission } from './components/OnMission';
+import { DECOR_ITEMS } from './data/DecorItems';
+import { RoomGraph } from './world/RoomGraph';
 import { FogOfWar } from './world/FogOfWar';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
@@ -76,6 +83,11 @@ class CultTycoonGame {
   private fogOfWar: FogOfWar;
   private fogSystem: FogSystem;
   private schedulingSystem: SchedulingSystem;
+  private missionSystem: MissionSystem;
+  private prestigeSystem: PrestigeSystem;
+  private heatSystem: HeatSystem;
+  private roomGraph: RoomGraph;
+  private roomEntities: Map<number, number> = new Map(); // roomId → entity with Prestige
   private audio: AudioManager;
   private particles: ParticleSystem;
   private gameInstanceState: GameInstanceState;
@@ -101,6 +113,17 @@ class CultTycoonGame {
   private activeBuildCategory: string | null = null;
   private followerNames: Map<number, string> = new Map();
   private floatingTexts: { el: HTMLDivElement; life: number }[] = [];
+
+  /** Average faith across all followers — used for tech tree unlocks. */
+  private get cultFaith(): number {
+    const entities = this.world.query([Needs, FollowerAI]);
+    if (entities.length === 0) return 0;
+    let total = 0;
+    for (const e of entities) {
+      total += this.world.getComponent(e, Needs)!.faith;
+    }
+    return total / entities.length;
+  }
 
   // Time control
   private timeMode: 'pause' | 'play' | 'fast' = 'play';
@@ -258,7 +281,57 @@ class CultTycoonGame {
     // Scheduling system — manages shifts and daily activities
     this.schedulingSystem = new SchedulingSystem();
 
+    // Mission system — sends cultists on external missions for rewards
+    this.missionSystem = new MissionSystem(
+      (missionId, event, choices) => {
+        this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
+        // Auto-resolve with first choice for now (player can choose manually when UI is built)
+        const result = this.missionSystem.resolveEventChoice(missionId, 0, this.world);
+        if (result) {
+          this.hud.logEvent(`Mission outcome: ${result.text}`, result.success ? 'success' : 'danger');
+        }
+      },
+      (missionId, templateId, success, rewards) => {
+        // Apply mission rewards to cult resources
+        if (rewards.money) this.cultWealth += rewards.money;
+        if (rewards.influence) this.cultInfluence += rewards.influence;
+        if (rewards.heatReduction) this.heatSystem.reduceHeat(rewards.heatReduction);
+        if (rewards.heatGain) this.heatSystem.addHeat(rewards.heatGain, 'mission');
+        const parts: string[] = [];
+        if (rewards.money) parts.push(`+${rewards.money}g`);
+        if (rewards.influence) parts.push(`+${rewards.influence} influence`);
+        if (rewards.decorItemIds.length > 0) parts.push(`+${rewards.decorItemIds.length} decor item(s)`);
+        this.hud.logEvent(
+          `Mission ${success ? 'succeeded' : 'failed'}: ${templateId}${parts.length > 0 ? ` (${parts.join(', ')})` : ''}`,
+          success ? 'success' : 'danger',
+        );
+      },
+    );
+
+    // Prestige system — manages room decor and mood effects
+    this.prestigeSystem = new PrestigeSystem();
+
+    // Heat system — tracks heat accumulation and triggers consequences
+    this.heatSystem = new HeatSystem(
+      (event) => {
+        const logType = event.severity === 'critical' || event.severity === 'danger'
+          ? 'danger'
+          : event.severity === 'warning'
+            ? 'warning'
+            : 'info';
+        this.hud.logEvent(`🔥 ${event.title}: ${event.message}`, logType as any);
+      },
+      (reason) => {
+        this.showLoseOverlay(reason);
+      },
+    );
+
+    // Room graph for room detection (used by prestige system)
+    this.roomGraph = new RoomGraph(this.map);
+
     this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.schedulingSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.resourceSystem];
+    // Note: MissionSystem, PrestigeSystem, and HeatSystem are updated manually
+    // in simulate() because they don't extend the System base class.
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -298,7 +371,10 @@ class CultTycoonGame {
     this.hud.logEvent('Welcome to Cult Tycoon!', 'success');
     this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
     this.hud.logEvent('Press B for build mode, click objects in the panel.', 'info');
-    this.hud.logEvent('Press T for tech tree, R for rituals.', 'info');
+    this.hud.logEvent('Press T for tech tree, R for rituals, M for missions.', 'info');
+
+    // Add action buttons to HUD (top-right corner)
+    this.setupActionButtons();
 
     // Populate build panel
     this.setupBuildPanel();
@@ -611,6 +687,7 @@ class CultTycoonGame {
       { id: 'objects', label: 'Objects', icon: '📦' },
       { id: 'ritual', label: 'Ritual', icon: '🔮' },
       { id: 'rooms', label: 'Rooms', icon: '🏠' },
+      { id: 'decor', label: 'Decor', icon: '🎨' },
       { id: 'demolish', label: 'Demolish', icon: '❌' },
     ];
     this.hud.setBuildCategories(categories);
@@ -627,6 +704,14 @@ class CultTycoonGame {
         icon: obj.category === 'ritual' ? '🔮' : obj.category === 'kitchen' ? '🍲' : obj.category === 'furniture' ? '🛏️' : obj.category === 'research' ? '📚' : obj.category === 'storage' ? '📦' : obj.category === 'decor' ? '🔥' : obj.category === 'wellness' ? '🧘' : '📦',
         cost: obj.cost,
         category: obj.category === 'ritual' ? 'ritual' : 'objects' as BuildPanelEntry['category'],
+      })),
+      // Decor items for room prestige
+      ...Object.values(DECOR_ITEMS).filter(d => !d.missionOnly).map(d => ({
+        id: `decor_${d.id}`,
+        label: d.name,
+        icon: '🎨',
+        cost: d.cost,
+        category: 'decor' as BuildPanelEntry['category'],
       })),
     ];
 
@@ -662,6 +747,9 @@ class CultTycoonGame {
           break;
         case 'r':
           this.showRitualMenu();
+          break;
+        case 'm':
+          this.showMissionMenu();
           break;
         case ' ': // Space
           e.preventDefault();
@@ -812,6 +900,93 @@ class CultTycoonGame {
     }
   }
 
+  private setupActionButtons(): void {
+    const btnContainer = document.createElement('div');
+    btnContainer.id = 'hud-action-buttons';
+    btnContainer.style.cssText = `
+      position: absolute; top: 8px; right: 8px; display: flex; gap: 6px;
+      pointer-events: auto; z-index: 100;
+    `;
+    const hudEl = document.getElementById('hud');
+    if (hudEl) hudEl.appendChild(btnContainer);
+
+    const buttons: { label: string; icon: string; action: () => void }[] = [
+      { label: 'Tech Tree', icon: '🔬', action: () => this.showTechTree() },
+      { label: 'Missions', icon: '🗺️', action: () => this.showMissionMenu() },
+      { label: 'Rituals', icon: '🔮', action: () => this.showRitualMenu() },
+    ];
+
+    for (const btn of buttons) {
+      const el = document.createElement('button');
+      el.className = 'hud-action-btn';
+      el.innerHTML = `<span class="hud-action-icon">${btn.icon}</span><span class="hud-action-label">${btn.label}</span>`;
+      el.style.cssText = `
+        background: rgba(15,15,30,0.9); border: 1px solid rgba(100,100,160,0.4);
+        color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+        font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px;
+        transition: all 0.15s; backdrop-filter: blur(8px);
+      `;
+      el.addEventListener('mouseenter', () => {
+        el.style.background = 'rgba(50,50,80,0.9)';
+        el.style.borderColor = 'rgba(168,85,247,0.4)';
+      });
+      el.addEventListener('mouseleave', () => {
+        el.style.background = 'rgba(15,15,30,0.9)';
+        el.style.borderColor = 'rgba(100,100,160,0.4)';
+      });
+      el.addEventListener('click', () => btn.action());
+      btnContainer.appendChild(el);
+    }
+  }
+
+  private showMissionMenu(): void {
+    const missions = this.missionSystem.getAvailableMissions();
+    const activeMissions = this.missionSystem.getActiveMissions();
+    const entities = this.world.query([Needs, FollowerAI]);
+
+    // Filter out cultists already on missions
+    const availableCultists = entities.filter(e => !this.missionSystem.isOnMission(e, this.world));
+
+    this.hud.logEvent(
+      `Missions: ${missions.length} available, ${activeMissions.length} active, ${availableCultists.length} cultists ready`,
+      'info',
+    );
+
+    for (const mission of missions) {
+      this.hud.logEvent(
+        `  📋 ${mission.name} — ${mission.description} (${mission.minCultists}-${mission.maxCultists} cultists, ${mission.duration}h)`,
+        'info',
+      );
+    }
+
+    // Auto-start the cheapest mission if we have enough cultists and no active missions
+    if (activeMissions.length === 0 && availableCultists.length > 0) {
+      const startable = missions.filter(m => availableCultists.length >= m.minCultists);
+      if (startable.length > 0) {
+        const mission = startable[0];
+        const cultistIds = availableCultists.slice(0, Math.min(mission.maxCultists, availableCultists.length));
+        const result = this.missionSystem.startMission(mission.id, cultistIds, this.world);
+        if (result.success) {
+          this.hud.logEvent(
+            `Started mission: ${mission.name} (${cultistIds.length} cultists sent)`,
+            'success',
+          );
+        } else {
+          this.hud.logEvent(`Failed to start mission: ${result.reason}`, 'warning');
+        }
+      } else {
+        this.hud.logEvent('Not enough available cultists for any mission.', 'warning');
+      }
+    } else if (activeMissions.length > 0) {
+      for (const am of activeMissions) {
+        this.hud.logEvent(
+          `  ⏳ ${am.templateId}: ${Math.floor(am.progress * 100)}% complete`,
+          'info',
+        );
+      }
+    }
+  }
+
   private showTechTree(): void {
     const nodes = this.techTree.getTree();
     const available = this.techTree.getAvailable();
@@ -826,7 +1001,7 @@ class CultTycoonGame {
     // Auto-unlock if we can afford the cheapest available
     const cheapest = available.sort((a, b) => a.cost.influence - b.cost.influence)[0];
     if (cheapest && this.cultInfluence >= cheapest.cost.influence) {
-      const result = this.techTree.unlock(cheapest.id, this.cultInfluence, this.cultFaith ?? 0);
+      const result = this.techTree.unlock(cheapest.id, this.cultInfluence, this.cultFaith);
       if (result.success) {
         this.cultInfluence -= cheapest.cost.influence;
         this.hud.logEvent(`Auto-researched: ${cheapest.name}!`, 'success');

@@ -11,7 +11,6 @@ import {
   TechBranch,
   IdeologyPath,
   TECH_TREE_NODES,
-  getTechNode,
   getAvailableTechs,
   getTechBranches,
 } from '../data/TechTreeData';
