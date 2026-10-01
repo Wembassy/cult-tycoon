@@ -115,7 +115,6 @@ export class HeatSystem {
    * Add heat and check thresholds.
    */
   addHeat(amount: number, reason: string): void {
-    const previousHeat = this.heat;
     this.heat = Math.max(0, this.heat + amount);
 
     // Emit heat_added event
