@@ -12,10 +12,10 @@ import type { AssetLoader } from './AssetLoader';
 
 // Richer terrain colors
 const TERRAIN_COLORS: Record<string, number> = {
-  grass: 0x3d6b35,
-  water: 0x1a5588,
-  stone: 0x8a8a82,
-  dirt: 0x7a5a3a,
+  grass: 0x4a8c3a,
+  water: 0x2a6aaa,
+  stone: 0x9a9a92,
+  dirt: 0x8a6a4a,
 };
 
 // Dramatic height differences — stone is cliffs, water is low
@@ -313,10 +313,10 @@ export class SceneManager {
       const root = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
 
       // Robe (cone) — colored by entity hash
-      const robeColors = [0x6b3e8e, 0x3e6b8e, 0x8e6b3e, 0x3e8e6b, 0x8e3e6b, 0x6b8e3e];
-      const robeColor = robeColors[entityId % robeColors.length] ?? 0x6b3e8e;
+      const robeColors = [0x8b4eae, 0x4e8bae, 0xae8b4e, 0x4eae8b, 0xae4e8b, 0x8bae4e];
+      const robeColor = robeColors[entityId % robeColors.length] ?? 0x8b4eae;
       const robeGeom = new THREE.ConeGeometry(0.5, 1.2, 8);
-      const robeMat = new THREE.MeshStandardMaterial({ color: robeColor, flatShading: true, roughness: 0.8 });
+      const robeMat = new THREE.MeshStandardMaterial({ color: robeColor, flatShading: true, roughness: 0.8, emissive: robeColor, emissiveIntensity: 0.15 });
       const robe = new THREE.Mesh(robeGeom, robeMat);
       robe.position.y = 0.6;
       robe.castShadow = true;

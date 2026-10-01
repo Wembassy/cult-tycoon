@@ -15,8 +15,8 @@ export class Renderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0f0f1e);
-    this.scene.fog = new THREE.Fog(0x0f0f1e, 30, 80);
+    this.scene.background = new THREE.Color(0x1a1a2e);
+    this.scene.fog = new THREE.Fog(0x1a1a2e, 40, 100);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -26,26 +26,26 @@ export class Renderer {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
 
-    // Lighting
-    this.ambientLight = new THREE.AmbientLight(0x6680aa, 0.4);
+    // Lighting — brighter for visibility
+    this.ambientLight = new THREE.AmbientLight(0x8899bb, 0.6);
     this.scene.add(this.ambientLight);
 
-    this.dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    this.dirLight = new THREE.DirectionalLight(0xfff4dd, 1.0);
     this.dirLight.position.set(15, 25, 10);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 2048;
     this.dirLight.shadow.mapSize.height = 2048;
     this.dirLight.shadow.camera.near = 0.5;
     this.dirLight.shadow.camera.far = 80;
-    this.dirLight.shadow.camera.left = -25;
-    this.dirLight.shadow.camera.right = 25;
-    this.dirLight.shadow.camera.top = 25;
-    this.dirLight.shadow.camera.bottom = -25;
+    this.dirLight.shadow.camera.left = -30;
+    this.dirLight.shadow.camera.right = 30;
+    this.dirLight.shadow.camera.top = 30;
+    this.dirLight.shadow.camera.bottom = -30;
     this.dirLight.shadow.bias = -0.0005;
     this.scene.add(this.dirLight);
 
-    // Hemisphere light for more natural ambient
-    const hemiLight = new THREE.HemisphereLight(0x8899bb, 0x332211, 0.3);
+    // Hemisphere light for natural ambient — brighter
+    const hemiLight = new THREE.HemisphereLight(0xaabbdd, 0x443322, 0.5);
     this.scene.add(hemiLight);
 
     this.isoCamera = new IsoCamera(canvas);
