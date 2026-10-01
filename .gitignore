@@ -24,3 +24,7 @@ npm-debug.log*
 *.zip
 screenshot*.png
 glb-test*.png
+
+# Large asset downloads
+assets/downloads/*.zip
+assets/downloads/hud_gui/
