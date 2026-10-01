@@ -1,7 +1,6 @@
 /**
- * SceneManager — Manages the Three.js scene graph for game objects.
- * Creates and updates meshes for tiles, buildings, and followers.
- * Syncs ECS Renderable components to Three.js meshes.
+ * SceneManager — Three.js scene graph for Cult Tycoon.
+ * Dramatic 3D terrain, detailed follower models, environmental decor.
  */
 
 import * as THREE from 'three';
@@ -9,19 +8,22 @@ import type { World } from '../ecs/World';
 import type { TileMap } from '../world/TileMap';
 import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
+import type { AssetLoader } from './AssetLoader';
 
+// Richer terrain colors
 const TERRAIN_COLORS: Record<string, number> = {
-  grass: 0x4a7c3a,
-  water: 0x2a6a9a,
-  stone: 0x9a9a9a,
-  dirt: 0x8a6a4a,
+  grass: 0x3d6b35,
+  water: 0x1a5588,
+  stone: 0x8a8a82,
+  dirt: 0x7a5a3a,
 };
 
+// Dramatic height differences — stone is cliffs, water is low
 const TERRAIN_HEIGHT: Record<string, number> = {
-  grass: 0.12,
-  water: 0.04,
-  stone: 0.18,
-  dirt: 0.10,
+  grass: 0.5,
+  water: 0.05,
+  stone: 1.5,
+  dirt: 0.35,
 };
 
 const TILE_SIZE = 1;
@@ -32,14 +34,17 @@ export class SceneManager {
   private entityGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
   private tileMeshes: Map<string, THREE.Mesh> = new Map();
-  private entityMeshes: Map<number, THREE.Mesh> = new Map();
+  private entityMeshes: Map<number, THREE.Object3D> = new Map();
+  private entityMeshIsPlaceholder: Map<number, boolean> = new Map();
   private world: World;
   private map: TileMap;
+  private assets: AssetLoader | null = null;
 
-  constructor(scene: THREE.Scene, world: World, map: TileMap) {
+  constructor(scene: THREE.Scene, world: World, map: TileMap, assets?: AssetLoader) {
     this.scene = scene;
     this.world = world;
     this.map = map;
+    this.assets = assets ?? null;
     this.tileGroup = new THREE.Group();
     this.tileGroup.name = 'tiles';
     this.entityGroup = new THREE.Group();
@@ -48,18 +53,13 @@ export class SceneManager {
     this.scene.add(this.entityGroup);
   }
 
-  /**
-   * Build tile meshes from the TileMap with per-terrain heights
-   */
+  setAssetLoader(assets: AssetLoader): void { this.assets = assets; }
+
   buildTiles(): void {
-    // Clear existing
     while (this.tileGroup.children.length > 0) {
       const child = this.tileGroup.children[0];
       this.tileGroup.remove(child);
-      if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
-        (child.material as THREE.Material).dispose();
-      }
+      this.disposeObject(child);
     }
     this.tileMeshes.clear();
 
@@ -70,50 +70,147 @@ export class SceneManager {
         const tile = this.map.getTile(x, y);
         if (!tile) continue;
 
-        const color = TERRAIN_COLORS[tile.terrain] ?? 0x4a7c3a;
-        const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.1;
-
-        // Water tiles are flat and slightly transparent
+        const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
+        const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
         const isWater = tile.terrain === 'water';
+
+        // Slight per-tile color variation for texture
+        const variation = ((x * 7 + y * 13) % 5) - 2;
+        const finalColor = new THREE.Color(color).offsetHSL(0, 0, variation * 0.02);
+
         const geom = new THREE.BoxGeometry(TILE_SIZE, height, TILE_SIZE);
         const mat = isWater
           ? new THREE.MeshStandardMaterial({
-              color, transparent: true, opacity: 0.75,
-              flatShading: true, roughness: 0.3, metalness: 0.1,
+              color: finalColor, transparent: true, opacity: 0.8,
+              flatShading: true, roughness: 0.2, metalness: 0.3,
             })
           : new THREE.MeshStandardMaterial({
-              color, flatShading: true, roughness: 0.85,
+              color: finalColor, flatShading: true, roughness: 0.9,
             });
 
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.set(x + offset.x + 0.5, height / 2, y + offset.z + 0.5);
-        mesh.castShadow = false;
+        mesh.castShadow = !isWater;
         mesh.receiveShadow = true;
         mesh.userData = { tileX: x, tileY: y };
 
-        // Darken occupied tiles
-        if (tile.occupied) {
-          mat.color.lerp(new THREE.Color(0x333333), 0.4);
+        if (tile.occupied && tile.decor === 'none') {
+          mat.color.lerp(new THREE.Color(0x222222), 0.5);
         }
 
         this.tileGroup.add(mesh);
         this.tileMeshes.set(`${x},${y}`, mesh);
+
+        if (tile.decor !== 'none') {
+          const decorMesh = this.createDecorMesh(tile.decor);
+          if (decorMesh) {
+            decorMesh.position.set(x + offset.x + 0.5, height, y + offset.z + 0.5);
+            this.tileGroup.add(decorMesh);
+          }
+        }
       }
     }
 
-    // Add a ground plane underneath for shadows
-    const groundGeom = new THREE.PlaneGeometry(this.map.width + 20, this.map.height + 20);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 1 });
+    // Ground plane
+    const groundGeom = new THREE.PlaneGeometry(this.map.width + 40, this.map.height + 40);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x0a0a14, roughness: 1 });
     const ground = new THREE.Mesh(groundGeom, groundMat);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.05;
+    ground.position.y = -0.1;
     ground.receiveShadow = true;
     this.tileGroup.add(ground);
   }
 
-  /**
-   * Sync entity meshes from ECS Renderable components
-   */
+  private createDecorMesh(decor: string): THREE.Mesh | null {
+    switch (decor) {
+      case 'tree': {
+        const tree = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+
+        // Trunk
+        const trunkGeom = new THREE.CylinderGeometry(0.12, 0.18, 0.6, 6);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, flatShading: true, roughness: 0.95 });
+        const trunk = new THREE.Mesh(trunkGeom, trunkMat);
+        trunk.position.y = 0.3;
+        trunk.castShadow = true;
+        tree.add(trunk);
+
+        // Layered foliage — 3 cones for full look
+        const leafColors = [0x1a4a1a, 0x2a5a2a, 0x1a5a2a, 0x2a4a1a];
+        const leafColor = leafColors[Math.floor(Math.random() * leafColors.length)] ?? 0x2a5a2a;
+
+        for (let i = 0; i < 3; i++) {
+          const radius = 0.6 - i * 0.15;
+          const height = 0.55;
+          const y = 0.7 + i * 0.4;
+          const coneGeom = new THREE.ConeGeometry(radius, height, 8);
+          const coneMat = new THREE.MeshStandardMaterial({ color: leafColor, flatShading: true, roughness: 0.9 });
+          const cone = new THREE.Mesh(coneGeom, coneMat);
+          cone.position.y = y;
+          cone.castShadow = true;
+          tree.add(cone);
+        }
+        return tree;
+      }
+      case 'rock': {
+        const rock = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+        // Main rock
+        const rockColors = [0x7a7a72, 0x8a8a82, 0x6a6a62];
+        const rc = rockColors[Math.floor(Math.random() * 3)] ?? 0x7a7a72;
+        const mainGeom = new THREE.DodecahedronGeometry(0.4, 0);
+        const mainMat = new THREE.MeshStandardMaterial({ color: rc, flatShading: true, roughness: 0.9 });
+        const main = new THREE.Mesh(mainGeom, mainMat);
+        main.position.y = 0.2;
+        main.castShadow = true;
+        main.receiveShadow = true;
+        rock.add(main);
+        // Small rock beside it
+        const smallGeom = new THREE.DodecahedronGeometry(0.2, 0);
+        const smallMat = new THREE.MeshStandardMaterial({ color: rc, flatShading: true, roughness: 0.9 });
+        const small = new THREE.Mesh(smallGeom, smallMat);
+        small.position.set(0.25, 0.1, 0.15);
+        small.castShadow = true;
+        rock.add(small);
+        return rock;
+      }
+      case 'bush': {
+        const bush = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+        const bushColors = [0x2a5a2a, 0x1a4a1a, 0x3a6a3a];
+        const bc = bushColors[Math.floor(Math.random() * 3)] ?? 0x2a5a2a;
+        // 3 overlapping spheres for organic look
+        for (let i = 0; i < 3; i++) {
+          const r = 0.22 + Math.random() * 0.08;
+          const g = new THREE.SphereGeometry(r, 8, 6);
+          const m = new THREE.MeshStandardMaterial({ color: bc, flatShading: true, roughness: 0.9 });
+          const s = new THREE.Mesh(g, m);
+          s.position.set((Math.random() - 0.5) * 0.3, 0.15 + Math.random() * 0.1, (Math.random() - 0.5) * 0.3);
+          s.castShadow = true;
+          bush.add(s);
+        }
+        return bush;
+      }
+      case 'flower': {
+        const flower = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+        // Stem
+        const stemGeom = new THREE.CylinderGeometry(0.025, 0.025, 0.2, 4);
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0x2a7a2a, flatShading: true });
+        const stem = new THREE.Mesh(stemGeom, stemMat);
+        stem.position.y = 0.1;
+        flower.add(stem);
+        // Flower head
+        const flowerColors = [0xff5588, 0xffdd33, 0xff8833, 0xdd55ff, 0xff4444, 0xffffff];
+        const fc = flowerColors[Math.floor(Math.random() * flowerColors.length)] ?? 0xff5588;
+        const headGeom = new THREE.IcosahedronGeometry(0.12, 0);
+        const headMat = new THREE.MeshStandardMaterial({ color: fc, flatShading: true, emissive: fc, emissiveIntensity: 0.3 });
+        const head = new THREE.Mesh(headGeom, headMat);
+        head.position.y = 0.22;
+        flower.add(head);
+        return flower;
+      }
+      default:
+        return null;
+    }
+  }
+
   syncEntities(): void {
     const entities = this.world.query([Transform, Renderable]);
     const seen = new Set<number>();
@@ -121,100 +218,155 @@ export class SceneManager {
     for (const entity of entities) {
       const transform = this.world.getComponent(entity, Transform)!;
       const renderable = this.world.getComponent(entity, Renderable)!;
-
       if (!renderable.visible) continue;
       seen.add(entity);
 
-      let mesh = this.entityMeshes.get(entity);
+      let obj = this.entityMeshes.get(entity);
+      const isPlaceholder = this.entityMeshIsPlaceholder.get(entity) ?? true;
 
-      if (!mesh) {
-        mesh = this.createPlaceholderMesh(renderable.meshId);
-        this.entityGroup.add(mesh);
-        this.entityMeshes.set(entity, mesh);
+      // Replace placeholder with real asset if loaded
+      if (obj && isPlaceholder) {
+        const assetPath = this.getAssetPath(renderable.meshId);
+        if (assetPath && this.assets && this.assets.get(assetPath)) {
+          this.entityGroup.remove(obj);
+          this.disposeObject(obj);
+          this.entityMeshes.delete(entity);
+          this.entityMeshIsPlaceholder.delete(entity);
+          obj = undefined;
+        }
       }
 
-      // Smooth position interpolation
+      if (!obj) {
+        const assetPath = this.getAssetPath(renderable.meshId);
+        if (assetPath && this.assets) {
+          const cloned = this.assets.clone(assetPath);
+          if (cloned) {
+            cloned.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+            cloned.scale.setScalar(1.5);
+            obj = cloned;
+            this.entityGroup.add(obj);
+            this.entityMeshes.set(entity, obj);
+            this.entityMeshIsPlaceholder.set(entity, false);
+          }
+        }
+
+        if (!obj) {
+          const mesh = this.createPlaceholderMesh(renderable.meshId, entity);
+          obj = mesh;
+          this.entityGroup.add(obj);
+          this.entityMeshes.set(entity, obj);
+          this.entityMeshIsPlaceholder.set(entity, true);
+        }
+      }
+
+      // Smooth position
       const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
       const targetX = transform.x + offset.x + 0.5;
       const targetZ = transform.y + offset.z + 0.5;
-      mesh.position.x += (targetX - mesh.position.x) * 0.15;
-      mesh.position.z += (targetZ - mesh.position.z) * 0.15;
-      mesh.position.y = transform.z + 0.3;
-      mesh.rotation.y = transform.rotation;
+      obj.position.x += (targetX - obj.position.x) * 0.15;
+      obj.position.z += (targetZ - obj.position.z) * 0.15;
 
-      // Bob animation for followers
+      let baseY = transform.z + 0.3;
       if (renderable.meshId.startsWith('follower')) {
         const time = performance.now() * 0.003;
-        mesh.position.y += Math.sin(time + entity) * 0.05;
+        baseY += Math.sin(time + entity) * 0.08;
       }
+      obj.position.y += (baseY - obj.position.y) * 0.15;
+      obj.rotation.y = transform.rotation;
     }
 
-    // Remove meshes for deleted entities
-    for (const [entityId, mesh] of this.entityMeshes) {
+    // Cleanup
+    for (const [entityId, obj] of this.entityMeshes) {
       if (!seen.has(entityId)) {
-        this.entityGroup.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
+        this.entityGroup.remove(obj);
+        this.disposeObject(obj);
         this.entityMeshes.delete(entityId);
+        this.entityMeshIsPlaceholder.delete(entityId);
       }
     }
   }
 
-  private createPlaceholderMesh(meshId: string): THREE.Mesh {
-    let geom: THREE.BufferGeometry;
-    let color = 0xcccccc;
-
+  private getAssetPath(meshId: string): string | null {
     if (meshId.startsWith('follower')) {
-      // Follower: capsule body + sphere head
-      const group = new THREE.Group() as any;
-      const bodyGeom = new THREE.CapsuleGeometry(0.25, 0.35, 4, 8);
-      const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8c8a0, flatShading: true, roughness: 0.7 });
-      const body = new THREE.Mesh(bodyGeom, bodyMat);
-      body.castShadow = true;
-      group.add(body);
+      const variants = ['/assets/models/followers/follower_novice.glb', '/assets/models/followers/follower_adept.glb', '/assets/models/followers/follower_priest.glb'];
+      const hash = meshId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+      return variants[hash % variants.length];
+    }
+    if (meshId.includes('wall')) return '/assets/models/buildings/wall_straight.glb';
+    if (meshId.includes('door')) return '/assets/models/buildings/door.glb';
+    if (meshId.includes('bed')) return '/assets/models/buildings/bed.glb';
+    if (meshId.includes('altar') || meshId.includes('prayer')) return '/assets/models/buildings/prayer_mat.glb';
+    if (meshId.includes('cookpot') || meshId.includes('cooking')) return '/assets/models/buildings/cooking_pot.glb';
+    if (meshId.includes('desk') || meshId.includes('research')) return '/assets/models/buildings/research_desk.glb';
+    if (meshId.includes('ritual')) return '/assets/models/buildings/ritual_circle.glb';
+    return null;
+  }
 
-      // Add a simple "robe" color variation
-      const robeColors = [0x6b4e8e, 0x4e6b8e, 0x8e6b4e, 0x4e8e6b];
-      const robeColor = robeColors[Math.floor(Math.random() * robeColors.length)];
-      const robeGeom = new THREE.ConeGeometry(0.35, 0.3, 6);
-      const robeMat = new THREE.MeshStandardMaterial({ color: robeColor, flatShading: true });
+  private createPlaceholderMesh(meshId: string, entityId: number = 0): THREE.Mesh {
+    if (meshId.startsWith('follower')) {
+      // Detailed follower: body + robe + head
+      const root = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+
+      // Robe (cone) — colored by entity hash
+      const robeColors = [0x6b3e8e, 0x3e6b8e, 0x8e6b3e, 0x3e8e6b, 0x8e3e6b, 0x6b8e3e];
+      const robeColor = robeColors[entityId % robeColors.length] ?? 0x6b3e8e;
+      const robeGeom = new THREE.ConeGeometry(0.5, 1.2, 8);
+      const robeMat = new THREE.MeshStandardMaterial({ color: robeColor, flatShading: true, roughness: 0.8 });
       const robe = new THREE.Mesh(robeGeom, robeMat);
-      robe.position.y = -0.15;
+      robe.position.y = 0.6;
       robe.castShadow = true;
-      group.add(robe);
+      root.add(robe);
 
-      // Return the group as a mesh-like object
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
-      mesh.add(body);
-      mesh.add(robe);
-      mesh.castShadow = true;
-      return mesh;
-    } else if (meshId.includes('wall')) {
-      geom = new THREE.BoxGeometry(0.9, 1.2, 0.9);
+      // Head (sphere)
+      const headGeom = new THREE.SphereGeometry(0.22, 8, 6);
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xe0c0a0, flatShading: true, roughness: 0.6 });
+      const head = new THREE.Mesh(headGeom, headMat);
+      head.position.y = 1.4;
+      head.castShadow = true;
+      root.add(head);
+
+      // Hood (cone, same color as robe)
+      const hoodGeom = new THREE.ConeGeometry(0.28, 0.4, 6);
+      const hoodMat = new THREE.MeshStandardMaterial({ color: robeColor, flatShading: true, roughness: 0.8 });
+      const hood = new THREE.Mesh(hoodGeom, hoodMat);
+      hood.position.y = 1.55;
+      hood.castShadow = true;
+      root.add(hood);
+
+      return root;
+    }
+
+    let geom: THREE.BufferGeometry;
+    let color: number;
+
+    if (meshId.includes('wall')) {
+      geom = new THREE.BoxGeometry(0.85, 1.5, 0.85);
       color = 0x8a8a7a;
     } else if (meshId.includes('floor')) {
-      geom = new THREE.BoxGeometry(0.95, 0.06, 0.95);
+      geom = new THREE.BoxGeometry(0.95, 0.15, 0.95);
       color = 0x6a5a4a;
     } else if (meshId.includes('door')) {
-      geom = new THREE.BoxGeometry(0.9, 0.9, 0.15);
+      geom = new THREE.BoxGeometry(0.8, 1.2, 0.15);
       color = 0x5a3a2a;
-    } else if (meshId.includes('tree') || meshId.includes('plant')) {
-      geom = new THREE.ConeGeometry(0.4, 0.8, 6);
-      color = 0x3a6a2a;
     } else if (meshId.includes('bed')) {
-      geom = new THREE.BoxGeometry(0.8, 0.25, 0.5);
+      geom = new THREE.BoxGeometry(0.75, 0.4, 0.5);
       color = 0x8b6c5a;
     } else if (meshId.includes('altar')) {
-      geom = new THREE.BoxGeometry(0.8, 0.6, 0.4);
+      geom = new THREE.BoxGeometry(0.7, 0.5, 0.4);
       color = 0x6b4e8e;
     } else if (meshId.includes('cookpot')) {
       geom = new THREE.CylinderGeometry(0.3, 0.25, 0.35, 8);
-      color = 0x4a4a4a;
+      color = 0x3a3a3a;
     } else if (meshId.includes('desk')) {
-      geom = new THREE.BoxGeometry(0.7, 0.5, 0.4);
+      geom = new THREE.BoxGeometry(0.65, 0.45, 0.4);
       color = 0x6a5a3a;
     } else if (meshId.includes('box') || meshId.includes('storage')) {
-      geom = new THREE.BoxGeometry(0.6, 0.5, 0.6);
+      geom = new THREE.BoxGeometry(0.55, 0.45, 0.55);
       color = 0x8a6a4a;
     } else if (meshId.includes('torch')) {
       geom = new THREE.CylinderGeometry(0.08, 0.06, 0.6, 6);
@@ -223,7 +375,7 @@ export class SceneManager {
       geom = new THREE.CylinderGeometry(0.2, 0.15, 0.12, 8);
       color = 0xaa8855;
     } else if (meshId.includes('mat')) {
-      geom = new THREE.BoxGeometry(0.7, 0.05, 0.4);
+      geom = new THREE.BoxGeometry(0.65, 0.08, 0.4);
       color = 0x4a8a6a;
     } else {
       geom = new THREE.BoxGeometry(0.5, 0.5, 0.5);
@@ -237,11 +389,7 @@ export class SceneManager {
     return mesh;
   }
 
-  /**
-   * Highlight a tile (for cursor hover) — uses a dedicated highlight mesh
-   */
   highlightTile(x: number, y: number): void {
-    // Remove previous highlight
     if (this.highlightMesh) {
       this.tileGroup.remove(this.highlightMesh);
       this.highlightMesh.geometry.dispose();
@@ -253,29 +401,35 @@ export class SceneManager {
     if (!tile) return;
 
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
-    const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.1;
-    const geom = new THREE.BoxGeometry(1.02, height + 0.02, 1.02);
+    const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
+    const geom = new THREE.BoxGeometry(1.02, height + 0.05, 1.02);
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xffff88,
-      transparent: true,
-      opacity: 0.3,
-      depthWrite: false,
+      color: 0xffff44, transparent: true, opacity: 0.35, depthWrite: false,
     });
     this.highlightMesh = new THREE.Mesh(geom, mat);
-    this.highlightMesh.position.set(x + offset.x + 0.5, height + 0.01, y + offset.z + 0.5);
+    this.highlightMesh.position.set(x + offset.x + 0.5, height + 0.02, y + offset.z + 0.5);
     this.tileGroup.add(this.highlightMesh);
   }
 
-  /**
-   * Get the tile mesh at a position
-   */
   getTileMesh(x: number, y: number): THREE.Mesh | null {
     return this.tileMeshes.get(`${x},${y}`) ?? null;
   }
 
-  /**
-   * Clear all meshes
-   */
+  private disposeObject(obj: THREE.Object3D): void {
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry?.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      }
+    });
+  }
+
   dispose(): void {
     this.tileMeshes.clear();
     this.entityMeshes.clear();

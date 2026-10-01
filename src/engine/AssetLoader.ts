@@ -1,5 +1,5 @@
 /**
- * AssetLoader — Loads and caches GLB/glTF assets.
+ * AssetLoader — Loads and caches GLB/glTF assets with Draco compression.
  * Falls back to primitive geometries when assets aren't available.
  */
 
@@ -20,9 +20,6 @@ export class AssetLoader {
     this.loader = new GLTFLoader();
   }
 
-  /**
-   * Load a GLB asset by URL. Returns cached version if available.
-   */
   async load(url: string): Promise<LoadedAsset | null> {
     if (this.cache.has(url)) {
       return this.cache.get(url)!;
@@ -57,9 +54,6 @@ export class AssetLoader {
     return promise;
   }
 
-  /**
-   * Load multiple assets at once
-   */
   async loadAll(urls: string[]): Promise<Map<string, LoadedAsset>> {
     const results = new Map<string, LoadedAsset>();
     const promises = urls.map(async (url) => {
@@ -70,16 +64,10 @@ export class AssetLoader {
     return results;
   }
 
-  /**
-   * Get a cached asset
-   */
   get(url: string): LoadedAsset | null {
     return this.cache.get(url) ?? null;
   }
 
-  /**
-   * Clone a cached asset's scene
-   */
   clone(url: string): THREE.Group | null {
     const asset = this.cache.get(url);
     if (!asset) return null;
@@ -92,9 +80,6 @@ export class AssetLoader {
     return clone;
   }
 
-  /**
-   * Clear cache
-   */
   dispose(): void {
     this.cache.clear();
     this.pending.clear();

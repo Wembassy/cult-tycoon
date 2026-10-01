@@ -8,10 +8,13 @@ Usage:
     blender --background --python generate_followers.py -- [--output-dir PATH]
 """
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 try:
     import bpy
     import bmesh
     import math
+    from mathutils import Matrix
     import os
     import sys
     from blender_utils import clear_scene, make_flat_material, add_edge_split, apply_flat_shading, export_glb, safe_bpy_import
@@ -49,27 +52,27 @@ def create_body_mesh():
     bmesh.ops.create_cone(
         bm, cap_ends=True, cap_tris=True, segments=8,
         radius1=0.18, radius2=0.28, depth=0.35,
-        matrix=((1,0,0,0),(0,1,0,0),(0,0,1,0.175),(0,0,0,1)),
+        matrix=Matrix.Translation((0, 0, 0.175)),
     )
 
     # Torso — 8-sided cylinder
     bmesh.ops.create_cone(
         bm, cap_ends=True, cap_tris=True, segments=8,
         radius1=0.16, radius2=0.20, depth=0.25,
-        matrix=((1,0,0,0),(0,1,0,0),(0,0,1,0.475),(0,0,0,1)),
+        matrix=Matrix.Translation((0, 0, 0.475)),
     )
 
     # Head — low-poly UV sphere
     bmesh.ops.create_uvsphere(
         bm, u_segments=8, v_segments=4, radius=0.12,
-        matrix=((1,0,0,0),(0,1,0,0),(0,0,1,0.66),(0,0,0,1)),
+        matrix=Matrix.Translation((0, 0, 0.66)),
     )
 
     # Hood — half UV sphere
     hood_bm = bmesh.new()
     bmesh.ops.create_uvsphere(
         hood_bm, u_segments=8, v_segments=4, radius=0.16,
-        matrix=((1,0,0,0),(0,1,0,0),(0,0,1,0.66),(0,0,0,1)),
+        matrix=Matrix.Translation((0, 0, 0.66)),
     )
     for v in list(hood_bm.verts):
         if v.co.z < 0.66:
@@ -92,7 +95,7 @@ def create_body_mesh():
         bmesh.ops.create_cone(
             bm, cap_ends=True, cap_tris=True, segments=6,
             radius1=0.05, radius2=0.06, depth=0.28,
-            matrix=((1,0,0,x_offset),(0,1,0,0),(0,0,1,0.47),(0,0,0,1)),
+            matrix=Matrix.Translation((x_offset, 0, 0.47)),
         )
 
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.005)

@@ -6,6 +6,7 @@
 import { Renderer } from './engine/Renderer';
 import { SceneManager } from './engine/SceneManager';
 import { InputManager } from './engine/InputManager';
+import { AssetLoader } from './engine/AssetLoader';
 import { TileMap } from './world/TileMap';
 import { WorldGen } from './world/WorldGen';
 import { Pathfinder } from './world/Pathfinder';
@@ -35,6 +36,7 @@ class CultTycoonGame {
   private sceneMgr: SceneManager;
   private input: InputManager;
   private hud: HUDManager;
+  private assets: AssetLoader;
   private world: World;
   private map: TileMap;
   private pathfinder: Pathfinder;
@@ -64,6 +66,7 @@ class CultTycoonGame {
   private selectedBuildItem: string | null = null;
   private selectedEntity: number | null = null;
   private followerNames: Map<number, string> = new Map();
+  private floatingTexts: { el: HTMLDivElement; life: number }[] = [];
 
   // Time control
   private timeMode: 'pause' | 'play' | 'fast' = 'play';
@@ -77,6 +80,7 @@ class CultTycoonGame {
     // Core engine
     this.renderer = new Renderer(canvas);
     this.world = new World();
+    this.assets = new AssetLoader();
 
     // World generation — larger map for more building space
     const worldGen = new WorldGen(12345);
@@ -84,7 +88,7 @@ class CultTycoonGame {
     this.pathfinder = new Pathfinder(this.map);
 
     // Scene manager builds tile meshes
-    this.sceneMgr = new SceneManager(this.renderer.threeScene, this.world, this.map);
+    this.sceneMgr = new SceneManager(this.renderer.threeScene, this.world, this.map, this.assets);
     this.sceneMgr.buildTiles();
 
     // Systems
@@ -553,6 +557,7 @@ class CultTycoonGame {
       this.cultWealth -= cost;
       const label = item === 'wall' ? 'Wall' : item === 'floor' ? 'Floor' : item === 'door' ? 'Door' : objDef?.name ?? item;
       this.hud.logEvent(`${label} placed at (${x}, ${y}) for ${cost}g`, 'success');
+      this.showFloatingText(`-${cost}g`, x, y, '#fbbf24');
       this.sceneMgr.buildTiles();
       this.sceneMgr.syncEntities();
       this.pathfinder.invalidateCache();
@@ -564,6 +569,32 @@ class CultTycoonGame {
 
   private onTileHover(x: number, y: number): void {
     this.sceneMgr.highlightTile(x, y);
+  }
+
+  private showFloatingText(text: string, tileX: number, tileY: number, color: string = '#fff'): void {
+    const screen = this.renderer.camera.tileToScreen(tileX, tileY);
+    const el = document.createElement('div');
+    el.textContent = text;
+    el.style.cssText = `position:absolute;left:${screen.x}px;top:${screen.y}px;color:${color};font-weight:700;font-size:14px;pointer-events:none;z-index:200;text-shadow:0 1px 3px rgba(0,0,0,0.8);transition:all 1s ease-out;opacity:1;`;
+    document.body.appendChild(el);
+    this.floatingTexts.push({ el, life: 1.0 });
+
+    // Animate upward
+    requestAnimationFrame(() => {
+      el.style.transform = 'translateY(-40px)';
+      el.style.opacity = '0';
+    });
+  }
+
+  private updateFloatingTexts(dt: number): void {
+    this.floatingTexts = this.floatingTexts.filter(ft => {
+      ft.life -= dt;
+      if (ft.life <= 0) {
+        ft.el.remove();
+        return false;
+      }
+      return true;
+    });
   }
 
   private findFollowerAt(tileX: number, tileY: number): number | null {
@@ -650,6 +681,24 @@ class CultTycoonGame {
     this.gameLoop();
   }
 
+  async preloadAssets(): Promise<void> {
+    const assetUrls = [
+      '/assets/models/followers/follower_novice.glb',
+      '/assets/models/followers/follower_adept.glb',
+      '/assets/models/followers/follower_priest.glb',
+      '/assets/models/buildings/wall_straight.glb',
+      '/assets/models/buildings/door.glb',
+      '/assets/models/buildings/bed.glb',
+      '/assets/models/buildings/prayer_mat.glb',
+      '/assets/models/buildings/research_desk.glb',
+      '/assets/models/buildings/cooking_pot.glb',
+      '/assets/models/buildings/ritual_circle.glb',
+    ];
+    await this.assets.loadAll(assetUrls);
+    // Re-sync entities now that assets are loaded
+    this.sceneMgr.syncEntities();
+  }
+
   private gameLoop = (): void => {
     if (!this.running) return;
     requestAnimationFrame(this.gameLoop);
@@ -671,6 +720,9 @@ class CultTycoonGame {
 
     // Day/night lighting
     this.updateLighting();
+
+    // Update floating texts
+    this.updateFloatingTexts(frameTime);
 
     this.renderer.render();
   };
@@ -744,7 +796,9 @@ class CultTycoonGame {
 
 function init(): void {
   const game = new CultTycoonGame();
-  game.start();
+  game.preloadAssets().then(() => {
+    game.start();
+  });
 }
 
 if (document.readyState === 'loading') {
