@@ -36,6 +36,7 @@ import { InvestigatorSystem } from './systems/InvestigatorSystem';
 import { CombatSystem } from './systems/CombatSystem';
 import { ResourceSystem } from './systems/ResourceSystem';
 import { FogSystem } from './systems/FogSystem';
+import { SchedulingSystem } from './systems/SchedulingSystem';
 import { FogOfWar } from './world/FogOfWar';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
@@ -74,6 +75,7 @@ class CultTycoonGame {
   private resourceSystem: ResourceSystem;
   private fogOfWar: FogOfWar;
   private fogSystem: FogSystem;
+  private schedulingSystem: SchedulingSystem;
   private audio: AudioManager;
   private particles: ParticleSystem;
   private gameInstanceState: GameInstanceState;
@@ -253,7 +255,10 @@ class CultTycoonGame {
     // Fog system — updates visibility around followers every 10 ticks
     this.fogSystem = new FogSystem(this.fogOfWar, 10);
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.resourceSystem];
+    // Scheduling system — manages shifts and daily activities
+    this.schedulingSystem = new SchedulingSystem();
+
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.schedulingSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.resourceSystem];
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -878,6 +883,8 @@ class CultTycoonGame {
     for (const f of followers) {
       this.followerNames.set(f.entityId, f.name);
     }
+    // Auto-assign shifts to new followers
+    this.schedulingSystem.autoAssignShifts(this.world);
     this.sceneMgr.syncEntities();
   }
 
@@ -1238,6 +1245,7 @@ class CultTycoonGame {
     this.tickCount += dt;
     const ticksPerHour = 900 / 24; // 37.5 ticks per hour
     this.currentHour = (6 + this.tickCount / ticksPerHour) % 24;
+    this.schedulingSystem.setHour(this.currentHour);
     const newDay = Math.floor(this.tickCount / 900) + 1;
     if (newDay !== this.currentDay) {
       this.currentDay = newDay;
@@ -1511,7 +1519,7 @@ class CultTycoonGame {
         this.hud.logEvent(event.message, logType as any);
       },
     );
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem, this.combatSystem];
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.schedulingSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem, this.combatSystem];
 
     // Rebuild map — 64x64 with fog of war
     const worldGen = new WorldGen(12345);

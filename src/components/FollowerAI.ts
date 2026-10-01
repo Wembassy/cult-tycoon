@@ -7,7 +7,8 @@ export type AIState =
   | 'working'
   | 'stuck'
   | 'needs'
-  | 'done';
+  | 'done'
+  | 'sleeping';
 
 export class FollowerAI implements Component {
   constructor(public readonly entity: number) {}

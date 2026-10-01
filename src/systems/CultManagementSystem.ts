@@ -12,6 +12,7 @@ import { Skills } from '../components/Skills';
 import { Traits } from '../components/Traits';
 import { Health, StatusEffect } from '../components/Health';
 import { QualityTier, TIER_FAITH_COST, ALL_TIERS } from '../components/CultistTier';
+import { HeatSystem, HEAT_CONFIG } from './HeatSystem';
 
 export type GameState = 'playing' | 'won' | 'lost';
 
@@ -107,6 +108,9 @@ export class CultManagementSystem {
   private ascensionCompleted = false;
   private onWinLose?: (event: WinLoseEvent) => void;
 
+  // Heat system
+  private heatSystem: HeatSystem | null = null;
+
   // Win condition thresholds
   static readonly WIN_FOLLOWER_COUNT = 20;
   static readonly BANKRUPTCY_THRESHOLD = -50;
@@ -151,6 +155,22 @@ export class CultManagementSystem {
   removeMember(entityId: number): void {
     this.roster.delete(entityId);
     this.stats.population = this.roster.size;
+  }
+
+  /**
+   * Dismiss a follower — removes them AND generates heat.
+   * Use this when the player voluntarily dismisses a cultist.
+   * Use removeMember() for death/defection (no heat).
+   */
+  dismissMember(entityId: number): void {
+    this.roster.delete(entityId);
+    this.stats.population = this.roster.size;
+    // Dismissing a follower generates a heat spike
+    if (this.heatSystem) {
+      this.heatSystem.addHeat(HEAT_CONFIG.DISMISS_HEAT, 'A follower was dismissed.');
+    }
+    // Also increase notoriety (passive heat in CultManagementSystem)
+    this.stats.notoriety = Math.min(100, this.stats.notoriety + 2);
   }
 
   /**
@@ -289,12 +309,32 @@ export class CultManagementSystem {
     // Notoriety grows slowly with population and influence
     this.stats.notoriety = Math.min(100, this.stats.notoriety + (pop * 0.001 + this.stats.influence * 0.0001) * dt);
 
+    // Sync notoriety to heat system (passive heat)
+    if (this.heatSystem) {
+      this.heatSystem.syncNotoriety(this.stats.notoriety);
+      this.heatSystem.update(dt);
+    }
+
     // Schedule-based job posting
     this.applySchedule(world);
 
     // Check win/lose conditions
     this.checkLoseConditions(dt);
     this.checkWinConditions();
+  }
+
+  /**
+   * Set the heat system reference (for dismiss/raid integration).
+   */
+  setHeatSystem(heatSystem: HeatSystem): void {
+    this.heatSystem = heatSystem;
+  }
+
+  /**
+   * Get the heat system (if set).
+   */
+  getHeatSystem(): HeatSystem | null {
+    return this.heatSystem;
   }
 
   /**
@@ -312,9 +352,39 @@ export class CultManagementSystem {
       return;
     }
 
-    // Check notoriety busted
+    // Check notoriety busted — now integrated with HeatSystem
     if (this.stats.notoriety >= CultManagementSystem.NOTORIETY_BUST_THRESHOLD) {
-      this.triggerLose('busted');
+      // If we have a heat system, let it handle the raid logic
+      if (this.heatSystem) {
+        // Sync heat with notoriety
+        this.heatSystem.syncNotoriety(this.stats.notoriety);
+
+        // If heat is at game-over threshold, the heat system triggers lose
+        if (this.heatSystem.getHeat() >= HEAT_CONFIG.GAME_OVER_THRESHOLD) {
+          this.triggerLose('busted');
+          return;
+        }
+
+        // If a raid is ready, execute it
+        if (this.heatSystem.isRaidReady()) {
+          const roster = this.getRoster();
+          const stats = this.getStats();
+          const result = this.heatSystem.executeRaid(roster, stats.wealth);
+
+          // Remove arrested cultists from roster
+          for (const arrestedId of result.arrestedEntityIds) {
+            this.removeMember(arrestedId);
+            // Destroy the entity in the world (if world reference available)
+            // The caller/system loop handles entity cleanup
+          }
+
+          // Confiscate funds
+          this.stats.wealth -= result.fundsConfiscated;
+        }
+      } else {
+        // No heat system — legacy behavior: immediate lose
+        this.triggerLose('busted');
+      }
       return;
     }
 
