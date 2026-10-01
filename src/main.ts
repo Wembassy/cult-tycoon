@@ -22,6 +22,7 @@ import { Job } from './components/Job';
 import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem } from './systems/JobSystem';
 import { AISystem } from './systems/AISystem';
+import { PathfindSystem } from './systems/PathfindSystem';
 import { BuildingSystem } from './systems/BuildingSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { FollowerFactory } from './systems/FollowerFactory';
@@ -29,6 +30,7 @@ import { EventSystem } from './systems/EventSystem';
 import { RitualSystem } from './systems/RitualSystem';
 import { TechTreeSystem } from './systems/TechTreeSystem';
 import { InvestigatorSystem } from './systems/InvestigatorSystem';
+import { CombatSystem } from './systems/CombatSystem';
 import { ResourceSystem } from './systems/ResourceSystem';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
@@ -57,11 +59,13 @@ class CultTycoonGame {
   private needsSystem: NeedsSystem;
   private jobSystem: JobSystem;
   private aiSystem: AISystem;
+  private pathfindSystem: PathfindSystem;
   private renderSystem: RenderSystem;
   private eventSystem: EventSystem;
   private ritualSystem: RitualSystem;
   private techTree: TechTreeSystem;
   private investigatorSystem: InvestigatorSystem;
+  private combatSystem: CombatSystem;
   private resourceSystem: ResourceSystem;
   private gameInstanceState: GameInstanceState;
   private factory: FollowerFactory;
@@ -127,6 +131,7 @@ class CultTycoonGame {
     this.needsSystem = new NeedsSystem();
     this.jobSystem = new JobSystem();
     this.aiSystem = new AISystem(this.map, this.pathfinder);
+    this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.buildingSystem = new BuildingSystem(this.map);
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.factory = new FollowerFactory(42);
@@ -189,6 +194,9 @@ class CultTycoonGame {
       99999,
     );
 
+    // Combat system — handles fights between investigators and followers
+    this.combatSystem = new CombatSystem(this.investigatorSystem, {}, 99999);
+
     // Game state store for resource tracking
     this.gameInstanceState = new GameInstanceState({
       faith: 100,
@@ -209,7 +217,7 @@ class CultTycoonGame {
       },
     );
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem];
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.resourceSystem];
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -607,6 +615,7 @@ class CultTycoonGame {
         this.sceneMgr.buildTiles();
         this.sceneMgr.syncEntities();
         this.pathfinder.invalidateCache();
+        this.pathfindSystem.invalidateCache();
       }
     } else {
       // Select mode — check for follower at this tile
@@ -660,6 +669,7 @@ class CultTycoonGame {
       this.sceneMgr.buildTiles();
       this.sceneMgr.syncEntities();
       this.pathfinder.invalidateCache();
+      this.pathfindSystem.invalidateCache();
       this.updateHUD();
     } else {
       this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
@@ -933,6 +943,7 @@ class CultTycoonGame {
 
     // Update investigator notoriety
     this.investigatorSystem.setNotoriety(this.cultNotoriety);
+    this.combatSystem.setNotoriety(this.cultNotoriety);
 
     // Check lose conditions
     this.checkLoseConditions();
@@ -1146,6 +1157,7 @@ class CultTycoonGame {
 
     // Reset systems
     this.investigatorSystem.reset();
+    this.combatSystem.reset();
     this.resourceSystem.reset();
     this.gameInstanceState = new GameInstanceState({
       faith: 100,
@@ -1163,7 +1175,7 @@ class CultTycoonGame {
         this.hud.logEvent(event.message, logType as any);
       },
     );
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem];
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem, this.combatSystem];
 
     // Rebuild map
     const worldGen = new WorldGen(12345);
