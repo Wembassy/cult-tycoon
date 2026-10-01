@@ -20,6 +20,8 @@ import { BuildingSystem } from './systems/BuildingSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { FollowerFactory } from './systems/FollowerFactory';
 import { EventSystem } from './systems/EventSystem';
+import { RitualSystem } from './systems/RitualSystem';
+import { TechTreeSystem } from './systems/TechTreeSystem';
 import { DataManager } from './data/DataManager';
 import { HUDManager, ResourceBarData, BuildPanelEntry } from './ui/HUDManager';
 
@@ -37,6 +39,8 @@ class CultTycoonGame {
   private aiSystem: AISystem;
   private renderSystem: RenderSystem;
   private eventSystem: EventSystem;
+  private ritualSystem: RitualSystem;
+  private techTree: TechTreeSystem;
   private factory: FollowerFactory;
   private systems: System[] = [];
   private lastTime = 0;
@@ -81,7 +85,24 @@ class CultTycoonGame {
       },
     );
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem];
+    // Tech tree
+    this.techTree = new TechTreeSystem((node) => {
+      this.hud.logEvent(`Researched: ${node.name}!`, 'success');
+      this.ritualSystem.unlockTech(node.id);
+    });
+
+    // Ritual system
+    this.ritualSystem = new RitualSystem(
+      ['basic_rituals'],
+      (ritual) => {
+        this.hud.logEvent(`Ritual started: ${ritual.name}`, 'info');
+      },
+      (result) => {
+        this.hud.logEvent(`Ritual complete: ${result.name} (+${result.influenceGain} influence)`, 'success');
+      },
+    );
+
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.eventSystem, this.ritualSystem];
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -177,14 +198,15 @@ class CultTycoonGame {
       totalSanity += n.sanity;
     }
     const pop = entities.length;
+    const maxPopBonus = this.techTree.getEffectBonus('maxPopulationBonus');
     const data: ResourceBarData = {
-      influence: 50,
+      influence: 50 + Math.floor(this.ritualSystem.getCompletedRituals().reduce((sum, r) => sum + r.influenceGain, 0)),
       wealth: 100,
       notoriety: 5,
       faith: pop > 0 ? totalFaith / pop : 100,
       morale: pop > 0 ? (totalFun + totalSanity) / (2 * pop) : 100,
       population: pop,
-      maxPopulation: 10,
+      maxPopulation: 10 + maxPopBonus,
     };
     this.hud.updateResourceBar(data);
   }
