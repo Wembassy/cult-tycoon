@@ -1,5 +1,6 @@
 /**
  * Renderer — Three.js renderer wrapper with scene and camera management.
+ * Includes lighting, fog, and day/night support.
  */
 
 import * as THREE from 'three';
@@ -9,33 +10,43 @@ export class Renderer {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private isoCamera: IsoCamera;
+  private ambientLight: THREE.AmbientLight;
+  private dirLight: THREE.DirectionalLight;
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x1a1a2e);
+    this.scene.background = new THREE.Color(0x0f0f1e);
+    this.scene.fog = new THREE.Fog(0x0f0f1e, 30, 80);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.1;
 
     // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-    this.scene.add(ambient);
+    this.ambientLight = new THREE.AmbientLight(0x6680aa, 0.4);
+    this.scene.add(this.ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(10, 20, 15);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 2048;
-    dirLight.shadow.mapSize.height = 2048;
-    dirLight.shadow.camera.near = 0.5;
-    dirLight.shadow.camera.far = 50;
-    dirLight.shadow.camera.left = -20;
-    dirLight.shadow.camera.right = 20;
-    dirLight.shadow.camera.top = 20;
-    dirLight.shadow.camera.bottom = -20;
-    this.scene.add(dirLight);
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    this.dirLight.position.set(15, 25, 10);
+    this.dirLight.castShadow = true;
+    this.dirLight.shadow.mapSize.width = 2048;
+    this.dirLight.shadow.mapSize.height = 2048;
+    this.dirLight.shadow.camera.near = 0.5;
+    this.dirLight.shadow.camera.far = 80;
+    this.dirLight.shadow.camera.left = -25;
+    this.dirLight.shadow.camera.right = 25;
+    this.dirLight.shadow.camera.top = 25;
+    this.dirLight.shadow.camera.bottom = -25;
+    this.dirLight.shadow.bias = -0.0005;
+    this.scene.add(this.dirLight);
+
+    // Hemisphere light for more natural ambient
+    const hemiLight = new THREE.HemisphereLight(0x8899bb, 0x332211, 0.3);
+    this.scene.add(hemiLight);
 
     this.isoCamera = new IsoCamera(canvas);
 
@@ -56,6 +67,14 @@ export class Renderer {
 
   get camera(): IsoCamera {
     return this.isoCamera;
+  }
+
+  get ambient(): THREE.AmbientLight {
+    return this.ambientLight;
+  }
+
+  get directional(): THREE.DirectionalLight {
+    return this.dirLight;
   }
 
   render(): void {
