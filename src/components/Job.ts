@@ -7,6 +7,7 @@ export type JobType =
   | 'pray'
   | 'build'
   | 'haul'
+  | 'wander'
   | 'idle';
 
 export class Job implements Component {

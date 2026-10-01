@@ -25,11 +25,11 @@ export interface AISystemConfig {
 }
 
 const DEFAULT_CONFIG: AISystemConfig = {
-  moveSpeed: 0.5,
-  idleTimeout: 30,
+  moveSpeed: 0.08,      // tiles per tick — slower for more visible movement
+  idleTimeout: 15,      // ~0.5s at 30fps before wandering
   needsCooldown: 60,
   stuckTimeout: 50,
-  doneCooldown: 10,
+  doneCooldown: 5,      // short pause before next wander
 };
 
 export class AISystem {
@@ -92,7 +92,38 @@ export class AISystem {
           return 1;
         }
       }
-      // JobSystem will assign work if available; reset timer
+
+      // No job assigned — wander to a random nearby tile so followers look alive
+      const transform = world.getComponent(entity, Transform);
+      if (transform) {
+        const wanderRange = 12;
+        const targetX = Math.round(transform.x) + Math.floor((Math.random() - 0.5) * wanderRange * 2);
+        const targetY = Math.round(transform.y) + Math.floor((Math.random() - 0.5) * wanderRange * 2);
+
+        const path = this.pathfinder.findPath(
+          Math.round(transform.x),
+          Math.round(transform.y),
+          targetX,
+          targetY,
+        );
+
+        if (path.success && path.path.length > 1) {
+          ai.path = path.path;
+          ai.pathIndex = 1;
+          ai.state = 'moving';
+          ai.stateTimer = 0;
+
+          // Set a wander job so handleMoving knows this isn't a real job
+          const job = world.getComponent(entity, Job);
+          if (job) {
+            job.type = 'wander';
+            job.targetTile = { x: targetX, y: targetY };
+          }
+          return 1;
+        }
+      }
+
+      // Couldn't find a wander path — reset timer and try again later
       ai.stateTimer = 0;
     }
     return 0;
@@ -138,7 +169,18 @@ export class AISystem {
         if (ai.pathIndex >= ai.path.length) {
           ai.path = [];
           ai.pathIndex = 0;
-          ai.state = 'working';
+          // Wander jobs go to 'done' (then back to idle → wander again).
+          // Real jobs go to 'working' (JobSystem progresses work).
+          if (job && job.type !== 'wander' && job.type !== 'idle') {
+            ai.state = 'working';
+          } else {
+            ai.state = 'done';
+            // Clear wander job
+            if (job) {
+              job.type = 'idle';
+              job.targetTile = null;
+            }
+          }
           ai.stateTimer = 0;
           return 1;
         }

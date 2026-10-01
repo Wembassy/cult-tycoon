@@ -1,6 +1,8 @@
 /**
- * InputManager — Handles mouse picking, drag selection, camera controls,
- * and keyboard shortcuts for the game.
+ * InputManager — Handles mouse picking, drag selection, and keyboard shortcuts.
+ * Camera controls (pan, rotate, zoom, wheel) are handled by IsoCamera.
+ * Right-click cancel/deselect is handled by IsoCamera (via onRightClickWithoutDrag)
+ * so that right-drag can be used for camera rotation without triggering cancel.
  */
 
 export interface TileCoord { x: number; y: number }
@@ -34,13 +36,11 @@ export class InputManager {
   onDragEnd?: DragHandler;
   onDragUpdate?: DragHandler;
   onKeyPressed?: KeyHandler;
-  onCameraZoom?: (delta: number) => void;
 
   private boundMouseMove: (e: MouseEvent) => void;
   private boundMouseDown: (e: MouseEvent) => void;
   private boundMouseUp: (e: MouseEvent) => void;
   private boundKeyDown: (e: KeyboardEvent) => void;
-  private boundWheel: (e: WheelEvent) => void;
   private boundContextMenu: (e: Event) => void;
 
   constructor(canvas: HTMLCanvasElement, screenToTile: (x: number, y: number) => TileCoord) {
@@ -59,14 +59,14 @@ export class InputManager {
     this.boundMouseDown = this.handleMouseDown.bind(this);
     this.boundMouseUp = this.handleMouseUp.bind(this);
     this.boundKeyDown = this.handleKeyDown.bind(this);
-    this.boundWheel = this.handleWheel.bind(this);
     this.boundContextMenu = (e: Event) => e.preventDefault();
 
+    // Only listen for left-click (button 0) on canvas.
+    // Right-click (button 2) and middle-click (button 1) are handled by IsoCamera.
     this.canvas.addEventListener('mousemove', this.boundMouseMove);
     this.canvas.addEventListener('mousedown', this.boundMouseDown);
     window.addEventListener('mouseup', this.boundMouseUp);
     window.addEventListener('keydown', this.boundKeyDown);
-    this.canvas.addEventListener('wheel', this.boundWheel, { passive: false });
     this.canvas.addEventListener('contextmenu', this.boundContextMenu);
   }
 
@@ -87,27 +87,21 @@ export class InputManager {
   }
 
   private handleMouseDown(e: MouseEvent): void {
+    // Only handle left-click; right-click is handled by IsoCamera for rotation
+    if (e.button !== 0) return;
+
     const rect = this.canvas.getBoundingClientRect();
     const tile = this.screenToTile(e.clientX - rect.left, e.clientY - rect.top);
 
-    if (e.button === 0) {
-      // Left click
-      this.state.selectedTile = tile;
-      if (this.state.mode === 'build') {
-        this.state.isDragging = true;
-        this.state.dragStart = tile;
-        this.state.dragEnd = tile;
-        this.onDragStart?.(tile, e);
-      } else {
-        this.onTileClick?.(tile, e);
-      }
-    } else if (e.button === 2) {
-      // Right click — cancel/deselect
-      this.state.isDragging = false;
-      this.state.dragStart = null;
-      this.state.dragEnd = null;
-      this.state.selectedTile = null;
-      this.onTileRightClick?.(tile, e);
+    // Left click
+    this.state.selectedTile = tile;
+    if (this.state.mode === 'build') {
+      this.state.isDragging = true;
+      this.state.dragStart = tile;
+      this.state.dragEnd = tile;
+      this.onDragStart?.(tile, e);
+    } else {
+      this.onTileClick?.(tile, e);
     }
   }
 
@@ -143,11 +137,6 @@ export class InputManager {
     }
   }
 
-  private handleWheel(e: WheelEvent): void {
-    e.preventDefault();
-    this.onCameraZoom?.(-e.deltaY * 0.001);
-  }
-
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -155,7 +144,6 @@ export class InputManager {
     this.canvas.removeEventListener('mousedown', this.boundMouseDown);
     window.removeEventListener('mouseup', this.boundMouseUp);
     window.removeEventListener('keydown', this.boundKeyDown);
-    this.canvas.removeEventListener('wheel', this.boundWheel);
     this.canvas.removeEventListener('contextmenu', this.boundContextMenu);
   }
 }

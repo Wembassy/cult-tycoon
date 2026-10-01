@@ -32,6 +32,8 @@ import { TechTreeSystem } from './systems/TechTreeSystem';
 import { InvestigatorSystem } from './systems/InvestigatorSystem';
 import { CombatSystem } from './systems/CombatSystem';
 import { ResourceSystem } from './systems/ResourceSystem';
+import { FogSystem } from './systems/FogSystem';
+import { FogOfWar } from './world/FogOfWar';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
 import { HUDManager, ResourceBarData, BuildPanelEntry } from './ui/HUDManager';
@@ -67,6 +69,8 @@ class CultTycoonGame {
   private investigatorSystem: InvestigatorSystem;
   private combatSystem: CombatSystem;
   private resourceSystem: ResourceSystem;
+  private fogOfWar: FogOfWar;
+  private fogSystem: FogSystem;
   private gameInstanceState: GameInstanceState;
   private factory: FollowerFactory;
   private systems: System[] = [];
@@ -118,14 +122,28 @@ class CultTycoonGame {
     this.world = new World();
     this.assets = new AssetLoader();
 
-    // World generation — larger map for more building space
+    // World generation — 64x64 large world with fog of war
     const worldGen = new WorldGen(12345);
-    this.map = worldGen.generate({ width: 32, height: 32, waterPools: 3, stonePatches: 4, dirtPatches: 5 });
+    this.map = worldGen.generate({ width: 64, height: 64, waterPools: 8, stonePatches: 10, dirtPatches: 12 });
     this.pathfinder = new Pathfinder(this.map);
 
-    // Scene manager builds tile meshes
+    // Set map offset for raycaster-based tile picking
+    this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
+
+    // Fog of war — reveal starting area, 10-tile radius
+    this.fogOfWar = new FogOfWar(8);
+    const mapCenterX = Math.floor(this.map.width / 2);
+    const mapCenterY = Math.floor(this.map.height / 2);
+    this.fogOfWar.revealArea(mapCenterX, mapCenterY, 10);
+
+    // Scene manager builds tile meshes (fog applied during build)
     this.sceneMgr = new SceneManager(this.renderer.threeScene, this.world, this.map, this.assets);
+    this.sceneMgr.setFog(this.fogOfWar);
     this.sceneMgr.buildTiles();
+
+    // Center camera on map center and set initial zoom for 64x64 map
+    this.renderer.camera.setTarget(0, 0);
+    this.renderer.camera.setZoom(40);
 
     // Systems
     this.needsSystem = new NeedsSystem();
@@ -218,10 +236,22 @@ class CultTycoonGame {
       },
     );
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.resourceSystem];
+    // Fog system — updates visibility around followers every 10 ticks
+    this.fogSystem = new FogSystem(this.fogOfWar, 10);
+
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.resourceSystem];
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
+
+    // Right-click without drag → cancel/deselect (IsoCamera handles right-drag for rotation)
+    this.renderer.camera.onRightClickWithoutDrag = () => {
+      this.input.setMode('select');
+      this.selectedBuildItem = null;
+      this.selectedEntity = null;
+      this.hud.hideInspector();
+      this.highlightBuildPanel(null);
+    };
 
     // Inject CSS
     this.injectStyles();
@@ -233,15 +263,15 @@ class CultTycoonGame {
     this.hud = new HUDManager({ container: hudContainer });
     this.dialog = new DialogSystem();
 
-    // Spawn initial followers
-    this.spawnFollowers(4);
+    // Spawn initial followers at map center
+    this.spawnFollowers(6);
 
     // Set up HUD
     this.updateHUD();
     this.hud.setTimeMode('play');
     this.hud.updateTime(6, 1);
     this.hud.logEvent('Welcome to Cult Tycoon!', 'success');
-    this.hud.logEvent('Your cult begins with 4 followers.', 'info');
+    this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
     this.hud.logEvent('Press B for build mode, click objects in the panel.', 'info');
     this.hud.logEvent('Press T for tech tree, R for rituals.', 'info');
 
@@ -649,9 +679,12 @@ class CultTycoonGame {
   }
 
   private spawnFollowers(count: number): void {
-    let spawnX = 16, spawnY = 16;
-    for (let y = 14; y < 18; y++) {
-      for (let x = 14; x < 18; x++) {
+    // Spawn near map center
+    const centerX = Math.floor(this.map.width / 2);
+    const centerY = Math.floor(this.map.height / 2);
+    let spawnX = centerX, spawnY = centerY;
+    for (let y = centerY - 2; y <= centerY + 2; y++) {
+      for (let x = centerX - 2; x <= centerX + 2; x++) {
         const tile = this.map.getTile(x, y);
         if (tile && tile.terrain === 'grass' && !tile.occupied) {
           spawnX = x;
@@ -1007,6 +1040,9 @@ class CultTycoonGame {
     // Sync entity positions for animation
     this.sceneMgr.syncEntities();
 
+    // Update fog of war tile visuals (only tiles that changed)
+    this.sceneMgr.updateFog();
+
     // Update investigator notoriety
     this.investigatorSystem.setNotoriety(this.cultNotoriety);
     this.combatSystem.setNotoriety(this.cultNotoriety);
@@ -1244,24 +1280,31 @@ class CultTycoonGame {
         this.hud.logEvent(event.message, logType as any);
       },
     );
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem, this.combatSystem];
+    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem, this.combatSystem];
 
-    // Rebuild map
+    // Rebuild map — 64x64 with fog of war
     const worldGen = new WorldGen(12345);
-    this.map = worldGen.generate({ width: 32, height: 32, waterPools: 3, stonePatches: 4, dirtPatches: 5 });
+    this.map = worldGen.generate({ width: 64, height: 64, waterPools: 8, stonePatches: 10, dirtPatches: 12 });
     this.pathfinder = new Pathfinder(this.map);
+    this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
+
+    // Reset fog of war
+    this.fogOfWar = new FogOfWar(8);
+    this.fogOfWar.revealArea(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2), 10);
+    this.fogSystem = new FogSystem(this.fogOfWar, 10);
+    this.sceneMgr.setFog(this.fogOfWar);
     this.sceneMgr.buildTiles();
 
-    // Spawn initial followers
-    this.spawnFollowers(4);
+    // Spawn initial followers at map center
+    this.spawnFollowers(6);
 
     // Update HUD
     this.updateHUD();
     this.hud.updateTime(6, 1);
     this.hud.logEvent('New game started!', 'success');
-    this.hud.logEvent('Your cult begins with 4 followers.', 'info');
+    this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
 
     this.setTimeMode('play');
   }

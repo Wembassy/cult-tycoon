@@ -9,6 +9,7 @@ import type { TileMap } from '../world/TileMap';
 import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
 import type { AssetLoader } from './AssetLoader';
+import { FogOfWar } from '../world/FogOfWar';
 
 // Richer terrain colors
 const TERRAIN_COLORS: Record<string, number> = {
@@ -41,6 +42,7 @@ export class SceneManager {
   private world: World;
   private map: TileMap;
   private assets: AssetLoader | null = null;
+  private fog: FogOfWar | null = null;
   private lastAnimTime: number = 0;
 
   constructor(scene: THREE.Scene, world: World, map: TileMap, assets?: AssetLoader) {
@@ -57,6 +59,50 @@ export class SceneManager {
   }
 
   setAssetLoader(assets: AssetLoader): void { this.assets = assets; }
+
+  setFog(fog: FogOfWar): void { this.fog = fog; }
+
+  /**
+   * Update tile appearance based on fog of war state.
+   * Call after FogSystem updates fog state.
+   * Only modifies tiles whose visibility changed.
+   */
+  updateFog(): void {
+    if (!this.fog) return;
+
+    // Update tiles that changed visibility
+    for (const tileCoord of this.fog.getNewlyVisible()) {
+      const mesh = this.tileMeshes.get(`${tileCoord.x},${tileCoord.y}`);
+      if (mesh) {
+        // Restore original color (recompute from terrain)
+        const tile = this.map.getTile(tileCoord.x, tileCoord.y);
+        if (tile) {
+          const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
+          const noiseVal = Math.sin(tileCoord.x * 0.5) * Math.cos(tileCoord.y * 0.5) + Math.sin((tileCoord.x + tileCoord.y) * 0.3);
+          const variation = noiseVal * 0.06;
+          const finalColor = new THREE.Color(color).offsetHSL(0, 0, variation);
+          (mesh.material as THREE.MeshStandardMaterial).color.copy(finalColor);
+          (mesh.material as THREE.MeshStandardMaterial).opacity = 1;
+          (mesh.material as THREE.MeshStandardMaterial).transparent = false;
+          mesh.visible = true;
+        }
+      }
+    }
+
+    for (const tileCoord of this.fog.getNewlyHidden()) {
+      const mesh = this.tileMeshes.get(`${tileCoord.x},${tileCoord.y}`);
+      if (mesh) {
+        // Dim explored tiles, hide hidden tiles
+        if (this.fog.isExplored(tileCoord.x, tileCoord.y)) {
+          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.3);
+          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
+          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.5;
+        } else {
+          mesh.visible = false;
+        }
+      }
+    }
+  }
 
   buildTiles(): void {
     while (this.tileGroup.children.length > 0) {
@@ -141,6 +187,21 @@ export class SceneManager {
     ground.position.y = -0.1;
     ground.receiveShadow = true;
     this.tileGroup.add(ground);
+
+    // Apply fog of war if set — hide all tiles initially (fog will reveal them)
+    if (this.fog) {
+      for (const [key, mesh] of this.tileMeshes) {
+        const [tx, ty] = key.split(',').map(Number);
+        const state = this.fog.getState(tx, ty);
+        if (state === 'hidden') {
+          mesh.visible = false;
+        } else if (state === 'explored') {
+          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.3);
+          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
+          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.5;
+        }
+      }
+    }
   }
 
   private createDecorMesh(decor: string): THREE.Mesh | null {
@@ -267,8 +328,8 @@ export class SceneManager {
           const cloned = this.assets.clone(assetPath);
           if (cloned) {
             // Polygon Minis: root Armature node has translation ~[0, 1.0, -0.47].
-            // Scale to ~0.6 so they're ~1.2 units tall — fits 1x1 tiles nicely.
-            const modelScale = 0.6;
+            // Scale to ~0.06 so they're ~0.12 units tall — small relative to trees/rocks.
+            const modelScale = 0.06;
             cloned.scale.setScalar(modelScale);
             cloned.updateMatrixWorld(true);
 
@@ -337,6 +398,15 @@ export class SceneManager {
       const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
       const targetX = transform.x + offset.x + 0.5;
       const targetZ = transform.y + offset.z + 0.5;
+
+      // Hide entities in unexplored fog areas
+      if (this.fog && !this.fog.isVisible(Math.round(transform.x), Math.round(transform.y))) {
+        obj.visible = false;
+        continue;
+      } else {
+        obj.visible = true;
+      }
+
       obj.position.x += (targetX - obj.position.x) * 0.15;
       obj.position.z += (targetZ - obj.position.z) * 0.15;
 

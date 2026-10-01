@@ -316,12 +316,13 @@ describe('AISystem', () => {
     const transform = world.getComponent(entity, Transform)!;
     const job = world.getComponent(entity, Job)!;
 
+    job.type = 'build';
     job.targetTile = { x: 7, y: 5 };
     followerAI.state = 'moving';
     followerAI.stateTimer = 0;
 
-    // Run enough ticks to reach destination (distance 2, speed 0.5/tick = 4 ticks)
-    for (let i = 0; i < 20; i++) {
+    // Run enough ticks to reach destination (distance 2, speed 0.08/tick = ~25 ticks)
+    for (let i = 0; i < 50; i++) {
       ai.update(world, 1);
       if ((followerAI.state as string) === 'working') break;
     }
