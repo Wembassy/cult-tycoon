@@ -1,10 +1,11 @@
 /**
- * AssetLoader — Loads and caches GLB/glTF assets with Draco compression.
- * Falls back to primitive geometries when assets aren't available.
+ * AssetLoader — Loads and caches GLB/glTF assets.
+ * Uses SkeletonUtils for proper skinned mesh cloning.
  */
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 export interface LoadedAsset {
   scene: THREE.Group;
@@ -39,11 +40,16 @@ export class AssetLoader {
           };
           this.cache.set(url, asset);
           this.pending.delete(url);
+          console.log(`[AssetLoader] Loaded ${url}: ${asset.scene.children.length} children, ${asset.animations.length} animations`);
           resolve(asset);
         },
-        undefined,
+        (progress) => {
+          if (progress.total) {
+            console.log(`[AssetLoader] Loading ${url}: ${Math.round(progress.loaded / progress.total * 100)}%`);
+          }
+        },
         (err) => {
-          console.warn(`Failed to load asset: ${url}`, err);
+          console.warn(`[AssetLoader] Failed to load ${url}:`, err);
           this.pending.delete(url);
           resolve(null);
         },
@@ -61,6 +67,7 @@ export class AssetLoader {
       if (asset) results.set(url, asset);
     });
     await Promise.all(promises);
+    console.log(`[AssetLoader] loadAll complete: ${results.size}/${urls.length} assets cached`);
     return results;
   }
 
@@ -68,15 +75,20 @@ export class AssetLoader {
     return this.cache.get(url) ?? null;
   }
 
+  get cachedCount(): number {
+    return this.cache.size;
+  }
+
   clone(url: string): THREE.Group | null {
     const asset = this.cache.get(url);
-    if (!asset) return null;
-    const clone = asset.scene.clone(true);
-    clone.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.material = (child.material as THREE.Material).clone();
-      }
-    });
+    if (!asset) {
+      console.warn(`[AssetLoader] clone() — asset not in cache: ${url}`);
+      return null;
+    }
+    console.log(`[AssetLoader] clone() — cloning ${url}, scene children: ${asset.scene.children.length}`);
+    // Use SkeletonUtils.clone for proper skinned mesh support
+    const clone = SkeletonUtils.clone(asset.scene) as THREE.Group;
+    console.log(`[AssetLoader] clone() — result children: ${clone.children.length}, visible: ${clone.visible}`);
     return clone;
   }
 

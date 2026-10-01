@@ -227,12 +227,16 @@ export class SceneManager {
       // Replace placeholder with real asset if loaded
       if (obj && isPlaceholder) {
         const assetPath = this.getAssetPath(renderable.meshId);
-        if (assetPath && this.assets && this.assets.get(assetPath)) {
+        const cached = assetPath && this.assets ? this.assets.get(assetPath) : null;
+        if (cached) {
+          console.log(`[SceneManager] Replacing placeholder for entity ${entity}, meshId=${renderable.meshId}, path=${assetPath}`);
           this.entityGroup.remove(obj);
           this.disposeObject(obj);
           this.entityMeshes.delete(entity);
           this.entityMeshIsPlaceholder.delete(entity);
           obj = undefined;
+        } else {
+          console.log(`[SceneManager] Asset not cached yet for entity ${entity}, meshId=${renderable.meshId}, path=${assetPath}`);
         }
       }
 
@@ -241,13 +245,15 @@ export class SceneManager {
         if (assetPath && this.assets) {
           const cloned = this.assets.clone(assetPath);
           if (cloned) {
+            console.log(`[SceneManager] Loaded GLB for entity ${entity}: ${assetPath}, children=${cloned.children.length}`);
+            // Polygon Minis are ~2 units tall, scale up for game tiles
+            cloned.scale.setScalar(3.0);
             cloned.traverse((child) => {
               if (child instanceof THREE.Mesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
               }
             });
-            cloned.scale.setScalar(1.5);
             obj = cloned;
             this.entityGroup.add(obj);
             this.entityMeshes.set(entity, obj);
@@ -293,7 +299,21 @@ export class SceneManager {
 
   private getAssetPath(meshId: string): string | null {
     if (meshId.startsWith('follower')) {
-      const variants = ['/assets/models/followers/follower_novice.glb', '/assets/models/followers/follower_adept.glb', '/assets/models/followers/follower_priest.glb'];
+      // Real fantasy character GLBs — cult-appropriate variants
+      const variants = [
+        '/assets/models/followers/fantasy_wizard_01.glb',
+        '/assets/models/followers/fantasy_sorcerer_01.glb',
+        '/assets/models/followers/fantasy_witch_01.glb',
+        '/assets/models/followers/fantasy_druid_01.glb',
+        '/assets/models/followers/fantasy_bard_01.glb',
+        '/assets/models/followers/fantasy_gypsy_01.glb',
+        '/assets/models/followers/fantasy_rougemale_01.glb',
+        '/assets/models/followers/fantasy_malepeasant_01.glb',
+        '/assets/models/followers/fantasy_femalepeasant_01.glb',
+        '/assets/models/followers/dungeon_goblinshaman_01.glb',
+        '/assets/models/followers/adventure_viking_01.glb',
+        '/assets/models/followers/adventure_warrior_01.glb',
+      ];
       const hash = meshId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
       return variants[hash % variants.length];
     }

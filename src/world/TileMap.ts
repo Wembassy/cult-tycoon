@@ -4,6 +4,7 @@
  */
 
 export type TerrainType = 'grass' | 'dirt' | 'stone' | 'water';
+export type DecorType = 'none' | 'tree' | 'rock' | 'bush' | 'flower';
 
 export interface Tile {
   x: number;
@@ -12,6 +13,7 @@ export interface Tile {
   buildable: boolean;
   occupied: boolean;
   roomId: number | null;
+  decor: DecorType;
 }
 
 const TERRAIN_BUILDABLE: Record<TerrainType, boolean> = {
@@ -43,6 +45,7 @@ export class TileMap {
           buildable: true,
           occupied: false,
           roomId: null,
+          decor: 'none',
         });
       }
       this.tiles.push(row);

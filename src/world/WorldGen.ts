@@ -60,6 +60,50 @@ export class WorldGen {
       gen.drawBlob(map, Math.floor(gen.rng() * width), Math.floor(gen.rng() * height), 1 + Math.floor(gen.rng() * 3), 'dirt');
     }
 
+    // Scatter decorative elements
+    const treeCount = Math.floor(width * height * 0.04); // ~4% trees
+    const rockCount = Math.floor(width * height * 0.02); // ~2% rocks
+    const bushCount = Math.floor(width * height * 0.03); // ~3% bushes
+    const flowerCount = Math.floor(width * height * 0.02); // ~2% flowers
+
+    for (let i = 0; i < treeCount; i++) {
+      const x = Math.floor(gen.rng() * width);
+      const y = Math.floor(gen.rng() * height);
+      const tile = map.getTile(x, y);
+      if (tile && tile.terrain === 'grass' && !tile.occupied && tile.decor === 'none') {
+        tile.decor = 'tree';
+        tile.occupied = true;
+      }
+    }
+
+    for (let i = 0; i < rockCount; i++) {
+      const x = Math.floor(gen.rng() * width);
+      const y = Math.floor(gen.rng() * height);
+      const tile = map.getTile(x, y);
+      if (tile && (tile.terrain === 'stone' || tile.terrain === 'grass') && !tile.occupied && tile.decor === 'none') {
+        tile.decor = 'rock';
+        tile.occupied = true;
+      }
+    }
+
+    for (let i = 0; i < bushCount; i++) {
+      const x = Math.floor(gen.rng() * width);
+      const y = Math.floor(gen.rng() * height);
+      const tile = map.getTile(x, y);
+      if (tile && tile.terrain === 'grass' && !tile.occupied && tile.decor === 'none') {
+        tile.decor = 'bush';
+      }
+    }
+
+    for (let i = 0; i < flowerCount; i++) {
+      const x = Math.floor(gen.rng() * width);
+      const y = Math.floor(gen.rng() * height);
+      const tile = map.getTile(x, y);
+      if (tile && tile.terrain === 'grass' && !tile.occupied && tile.decor === 'none') {
+        tile.decor = 'flower';
+      }
+    }
+
     return map;
   }
 

@@ -682,10 +682,28 @@ class CultTycoonGame {
   }
 
   async preloadAssets(): Promise<void> {
+    console.log('[preloadAssets] Starting asset preload...');
+    const debugEl = document.createElement('div');
+    debugEl.id = 'debug-overlay';
+    debugEl.style.cssText = 'position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:11px;padding:8px;z-index:9999;pointer-events:none;max-width:400px;';
+    debugEl.textContent = 'Loading assets...';
+    document.body.appendChild(debugEl);
+
     const assetUrls = [
-      '/assets/models/followers/follower_novice.glb',
-      '/assets/models/followers/follower_adept.glb',
-      '/assets/models/followers/follower_priest.glb',
+      // Real fantasy character models
+      '/assets/models/followers/fantasy_wizard_01.glb',
+      '/assets/models/followers/fantasy_sorcerer_01.glb',
+      '/assets/models/followers/fantasy_witch_01.glb',
+      '/assets/models/followers/fantasy_druid_01.glb',
+      '/assets/models/followers/fantasy_bard_01.glb',
+      '/assets/models/followers/fantasy_gypsy_01.glb',
+      '/assets/models/followers/fantasy_rougemale_01.glb',
+      '/assets/models/followers/fantasy_malepeasant_01.glb',
+      '/assets/models/followers/fantasy_femalepeasant_01.glb',
+      '/assets/models/followers/dungeon_goblinshaman_01.glb',
+      '/assets/models/followers/adventure_viking_01.glb',
+      '/assets/models/followers/adventure_warrior_01.glb',
+      // Building models (old Blender-generated)
       '/assets/models/buildings/wall_straight.glb',
       '/assets/models/buildings/door.glb',
       '/assets/models/buildings/bed.glb',
@@ -695,8 +713,14 @@ class CultTycoonGame {
       '/assets/models/buildings/ritual_circle.glb',
     ];
     await this.assets.loadAll(assetUrls);
+    debugEl.textContent = `Assets cached: ${this.assets.cachedCount}/${assetUrls.length}`;
+    console.log('[preloadAssets] All assets loaded. Cached:', this.assets.cachedCount);
     // Re-sync entities now that assets are loaded
     this.sceneMgr.syncEntities();
+    debugEl.textContent += ' | syncEntities done';
+    console.log('[preloadAssets] syncEntities done. Starting game...');
+    // Remove debug overlay after 10 seconds
+    setTimeout(() => debugEl.remove(), 10000);
   }
 
   private gameLoop = (): void => {
@@ -795,8 +819,13 @@ class CultTycoonGame {
 }
 
 function init(): void {
+  console.log('[init] Starting Cult Tycoon...');
   const game = new CultTycoonGame();
   game.preloadAssets().then(() => {
+    console.log('[init] Preload complete, starting game loop');
+    game.start();
+  }).catch((err) => {
+    console.error('[init] Preload failed:', err);
     game.start();
   });
 }
