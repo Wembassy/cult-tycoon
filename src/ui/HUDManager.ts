@@ -88,18 +88,28 @@ export class HUDManager {
   }
 
   /**
-   * Update the resource bar with current cult stats
+   * Update the resource bar with current cult stats.
+   * Uses Synty SciFi sprite icons and bar sprites.
    */
   updateResourceBar(data: ResourceBarData): void {
     if (!this.resourceBar) return;
-    this.resourceBar.innerHTML = `
-      <div class="hud-stat">Influence: ${Math.floor(data.influence)}</div>
-      <div class="hud-stat">Wealth: ${Math.floor(data.wealth)}</div>
-      <div class="hud-stat">Notoriety: ${Math.floor(data.notoriety)}</div>
-      <div class="hud-stat">Faith: ${Math.floor(data.faith)}/100</div>
-      <div class="hud-stat">Morale: ${Math.floor(data.morale)}/100</div>
-      <div class="hud-stat">Pop: ${data.population}/${data.maxPopulation}</div>
-    `;
+    const stats = [
+      { label: 'Influence', value: Math.floor(data.influence), icon: 'scifi_icon_faith', barColor: '#a855f7', max: null },
+      { label: 'Wealth', value: Math.floor(data.wealth), icon: 'icon_wealth', barColor: '#fbbf24', max: null },
+      { label: 'Notoriety', value: Math.floor(data.notoriety), icon: 'scifi_icon_shield', barColor: '#ef4444', max: 100 },
+      { label: 'Faith', value: Math.floor(data.faith), icon: 'scifi_icon_health', barColor: '#3b82f6', max: 100 },
+      { label: 'Morale', value: Math.floor(data.morale), icon: 'scifi_icon_morale', barColor: '#10b981', max: 100 },
+      { label: 'Pop', value: `${data.population}/${data.maxPopulation}`, icon: 'scifi_icon_hunger', barColor: '#f97316', max: null },
+    ];
+    this.resourceBar.innerHTML = stats.map(s => {
+      return `
+        <div class="hud-stat" title="${s.label}">
+          <img src="/assets/ui/${s.icon}.png" class="hud-stat-icon" alt="${s.label}" />
+          <span class="hud-stat-value" style="color:${s.barColor};">${s.label}: ${s.value}${s.max !== null ? '/100' : ''}</span>
+          ${s.max !== null ? `<div class="hud-stat-bar"><div class="hud-stat-bar-fill" style="width:${Math.min(100, typeof s.value === 'number' ? s.value : 0)}%;background:${s.barColor};"></div></div>` : ''}
+        </div>
+      `;
+    }).join('');
   }
 
   /**
@@ -122,16 +132,33 @@ export class HUDManager {
   showInspector(data: InspectorData): void {
     if (!this.inspector) return;
     this.inspector.style.display = 'block';
+    const needIcons: Record<string, string> = {
+      hunger: 'scifi_icon_hunger',
+      faith: 'scifi_icon_faith',
+      fun: 'scifi_icon_morale',
+      sanity: 'scifi_icon_health',
+    };
+    const needsHtml = Object.entries(data.needs).map(([key, val]) => {
+      const icon = needIcons[key] || 'scifi_icon_health';
+      const pct = Math.min(100, Math.floor(val));
+      return `
+        <div class="hud-inspector-need-row">
+          <img src="/assets/ui/${icon}.png" class="hud-need-icon" alt="${key}" />
+          <span class="hud-need-label">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
+          <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${pct}%;"></div></div>
+          <span class="hud-need-value">${Math.floor(val)}/100</span>
+        </div>
+      `;
+    }).join('');
     this.inspector.innerHTML = `
       <div class="hud-inspector-name">${data.name}</div>
       <div class="hud-inspector-role">${data.role}</div>
-      <div class="hud-inspector-health">HP: ${data.health}/100</div>
-      <div class="hud-inspector-needs">
-        <div>Hunger: ${Math.floor(data.needs.hunger)}/100</div>
-        <div>Faith: ${Math.floor(data.needs.faith)}/100</div>
-        <div>Fun: ${Math.floor(data.needs.fun)}/100</div>
-        <div>Sanity: ${Math.floor(data.needs.sanity)}/100</div>
+      <div class="hud-inspector-health">
+        <img src="/assets/ui/scifi_icon_health.png" class="hud-need-icon" alt="HP" />
+        <span>HP: ${data.health}/100</span>
+        <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${data.health}%;background:#ef4444;"></div></div>
       </div>
+      <div class="hud-inspector-needs">${needsHtml}</div>
       <div class="hud-inspector-job">Job: ${data.job}</div>
       <div class="hud-inspector-traits">${data.traits.join(', ')}</div>
     `;

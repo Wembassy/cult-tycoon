@@ -53,13 +53,16 @@ export class DialogSystem {
         to { opacity: 1; }
       }
       .ds-card {
-        background: linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
         border: 2px solid rgba(168,85,247,0.4);
-        border-radius: 16px; padding: 32px 40px; text-align: center;
+        border-radius: 12px; padding: 32px 40px; text-align: center;
         max-width: 460px; min-width: 300px;
         box-shadow: 0 8px 40px rgba(0,0,0,0.6);
         color: #e0e0e0;
         animation: ds-slide-up 0.25s ease-out;
+        image-rendering: pixelated;
       }
       @keyframes ds-slide-up {
         from { transform: translateY(20px); opacity: 0; }

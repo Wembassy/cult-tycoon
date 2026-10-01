@@ -64,12 +64,15 @@ export class SettingsMenu {
         width: 460px;
         max-height: 85vh;
         overflow-y: auto;
-        background: linear-gradient(180deg, #1a0e2e 0%, #0f0820 100%);
+        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, #1a0e2e 0%, #0f0820 100%);
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
         border: 1px solid rgba(212, 175, 55, 0.25);
         border-radius: 8px;
         box-shadow: 0 0 40px rgba(0,0,0,0.8), 0 0 80px rgba(168, 85, 247, 0.1);
         padding: 32px 40px;
         animation: sm-slide-in 0.3s ease-out;
+        image-rendering: pixelated;
       }
 
       @keyframes sm-slide-in {

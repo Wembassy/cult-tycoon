@@ -40,11 +40,15 @@ export class StartMenu {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        background: radial-gradient(ellipse at center, #1a0a2e 0%, #0a0515 50%, #050208 100%);
+        background-image: url('/assets/ui/scifi_vignette.png'), radial-gradient(ellipse at center, #1a0a2e 0%, #0a0515 50%, #050208 100%);
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
+        background-position: center;
         font-family: 'Cinzel', 'Times New Roman', Georgia, serif;
         color: #d4af37;
         user-select: none;
         overflow: hidden;
+        image-rendering: pixelated;
       }
 
       #start-menu.hidden {
@@ -129,7 +133,9 @@ export class StartMenu {
         font-weight: 600;
         letter-spacing: 3px;
         color: #d4af37;
-        background: linear-gradient(180deg, rgba(30, 20, 50, 0.8), rgba(15, 10, 30, 0.9));
+        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(30, 20, 50, 0.8), rgba(15, 10, 30, 0.9));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
         border: 1px solid rgba(212, 175, 55, 0.3);
         border-radius: 4px;
         cursor: pointer;
@@ -137,6 +143,7 @@ export class StartMenu {
         text-transform: uppercase;
         position: relative;
         overflow: hidden;
+        image-rendering: pixelated;
       }
 
       #start-menu .sm-btn::before {

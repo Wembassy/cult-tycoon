@@ -280,120 +280,180 @@ class CultTycoonGame {
         color: #e0e0e0; font-size: 13px;
       }
 
-      /* Resource Bar — top center */
+      /* SciFi sprite image rendering — crisp pixel art */
+      .hud-stat-icon, .hud-need-icon {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        width: 20px; height: 20px;
+        flex-shrink: 0;
+        filter: brightness(0.9) sepia(0.3) hue-rotate(-20deg) saturate(0.8);
+      }
+
+      /* Resource Bar — top center, sprite panel background */
       .hud-resource-bar {
         position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 16px; padding: 8px 20px;
-        background: rgba(15, 15, 30, 0.85);
-        border: 1px solid rgba(100, 100, 160, 0.3);
-        border-radius: 8px; pointer-events: auto;
+        display: flex; gap: 12px; padding: 10px 24px;
+        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
+        background-position: center;
+        border: 1px solid rgba(100, 100, 160, 0.4);
+        border-radius: 6px; pointer-events: auto;
         backdrop-filter: blur(8px);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(168,85,247,0.1);
+        image-rendering: pixelated;
       }
       .hud-stat {
-        display: flex; align-items: center; gap: 4px;
-        font-weight: 600; white-space: nowrap;
+        display: flex; align-items: center; gap: 6px;
+        font-weight: 600; white-space: nowrap; font-size: 12px;
+        flex-direction: column; gap: 2px;
+        min-width: 70px;
       }
-      .hud-stat::before {
-        content: ''; display: inline-block; width: 8px; height: 8px;
-        border-radius: 50%; margin-right: 4px;
+      .hud-stat-icon {
+        width: 18px; height: 18px;
+        image-rendering: pixelated;
       }
-      .hud-stat:nth-child(1)::before { background: #a855f7; } /* Influence */
-      .hud-stat:nth-child(2)::before { background: #fbbf24; } /* Wealth */
-      .hud-stat:nth-child(3)::before { background: #ef4444; } /* Notoriety */
-      .hud-stat:nth-child(4)::before { background: #3b82f6; } /* Faith */
-      .hud-stat:nth-child(5)::before { background: #10b981; } /* Morale */
-      .hud-stat:nth-child(6)::before { background: #f97316; } /* Pop */
+      .hud-stat-value {
+        font-size: 11px; text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      }
+      .hud-stat-bar {
+        width: 60px; height: 4px;
+        background: rgba(0,0,0,0.5);
+        border-radius: 2px; overflow: hidden;
+        border: 1px solid rgba(100,100,160,0.2);
+      }
+      .hud-stat-bar-fill {
+        height: 100%; border-radius: 2px;
+        transition: width 0.3s ease;
+        box-shadow: 0 0 4px currentColor;
+      }
 
-      /* Build Panel — left side */
+      /* Build Panel — left side, sprite panel background */
       .hud-build-panel {
         position: absolute; top: 60px; left: 8px;
         width: 200px; max-height: 70vh; overflow-y: auto;
-        padding: 8px; background: rgba(15, 15, 30, 0.85);
-        border: 1px solid rgba(100, 100, 160, 0.3);
-        border-radius: 8px; pointer-events: auto;
+        padding: 10px;
+        background-image: url('/assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(15,15,30,0.92), rgba(10,10,25,0.94));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
+        border: 1px solid rgba(100, 100, 160, 0.4);
+        border-radius: 6px; pointer-events: auto;
         backdrop-filter: blur(8px);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(168,85,247,0.08);
+        image-rendering: pixelated;
       }
       .hud-build-entry {
         display: flex; align-items: center; gap: 8px;
         padding: 6px 8px; margin: 2px 0;
-        border-radius: 6px; cursor: pointer;
+        border-radius: 4px; cursor: pointer;
         transition: background 0.15s;
+        background: rgba(0,0,0,0.2);
       }
       .hud-build-entry:hover {
-        background: rgba(80, 80, 140, 0.3);
+        background: rgba(80, 80, 140, 0.4);
+        box-shadow: inset 0 0 0 1px rgba(168,85,247,0.2);
       }
       .hud-build-entry.selected {
-        background: rgba(168, 85, 247, 0.3);
+        background: rgba(168, 85, 247, 0.25);
         border: 1px solid rgba(168, 85, 247, 0.5);
+        box-shadow: 0 0 8px rgba(168,85,247,0.2);
       }
       .hud-build-icon { font-size: 18px; }
       .hud-build-label { flex: 1; font-size: 12px; }
       .hud-build-cost { color: #fbbf24; font-size: 11px; font-weight: 600; }
 
-      /* Inspector — right side */
+      /* Inspector — right side, sprite panel background */
       .hud-inspector {
         position: absolute; top: 60px; right: 8px;
-        width: 220px; padding: 12px;
-        background: rgba(15, 15, 30, 0.85);
-        border: 1px solid rgba(100, 100, 160, 0.3);
-        border-radius: 8px; pointer-events: auto;
+        width: 240px; padding: 14px;
+        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.92), rgba(10,10,25,0.94));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
+        border: 1px solid rgba(100, 100, 160, 0.4);
+        border-radius: 6px; pointer-events: auto;
         backdrop-filter: blur(8px);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(168,85,247,0.08);
         display: none;
+        image-rendering: pixelated;
       }
-      .hud-inspector-name { font-size: 16px; font-weight: 700; margin-bottom: 2px; color: #a855f7; }
+      .hud-inspector-name { font-size: 16px; font-weight: 700; margin-bottom: 2px; color: #a855f7; text-shadow: 0 0 8px rgba(168,85,247,0.3); }
       .hud-inspector-role { font-size: 11px; color: #888; margin-bottom: 8px; }
-      .hud-inspector-health { font-size: 12px; margin-bottom: 6px; }
+      .hud-inspector-health { font-size: 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+      .hud-inspector-health .hud-need-bar { flex: 1; }
       .hud-inspector-needs { font-size: 11px; line-height: 1.6; margin-bottom: 6px; }
-      .hud-inspector-needs div { display: flex; justify-content: space-between; }
+      .hud-inspector-need-row {
+        display: flex; align-items: center; gap: 6px; margin: 3px 0;
+      }
+      .hud-need-icon {
+        width: 16px; height: 16px;
+        image-rendering: pixelated;
+        filter: brightness(0.9) sepia(0.3) hue-rotate(-20deg) saturate(0.8);
+      }
+      .hud-need-label { min-width: 50px; color: #aaa; }
+      .hud-need-bar {
+        flex: 1; height: 6px; background: rgba(0,0,0,0.5);
+        border-radius: 3px; overflow: hidden;
+        border: 1px solid rgba(100,100,160,0.2);
+      }
+      .hud-need-bar-fill {
+        height: 100%; background: linear-gradient(90deg, #3b82f6, #a855f7);
+        border-radius: 3px; transition: width 0.3s ease;
+      }
+      .hud-need-value { min-width: 40px; text-align: right; color: #ccc; font-size: 10px; }
       .hud-inspector-job { font-size: 11px; color: #aaa; margin-bottom: 4px; }
       .hud-inspector-traits { font-size: 11px; color: #fbbf24; font-style: italic; }
 
-      /* Event Log — bottom right */
+      /* Event Log — bottom right, sprite panel background */
       .hud-event-log {
         position: absolute; bottom: 50px; right: 8px;
         width: 320px; max-height: 180px; overflow-y: auto;
-        padding: 8px; background: rgba(15, 15, 30, 0.85);
-        border: 1px solid rgba(100, 100, 160, 0.3);
-        border-radius: 8px; pointer-events: auto;
+        padding: 10px;
+        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
+        border: 1px solid rgba(100, 100, 160, 0.4);
+        border-radius: 6px; pointer-events: auto;
         backdrop-filter: blur(8px);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+        image-rendering: pixelated;
       }
       .hud-log-entry {
         font-size: 11px; padding: 2px 0; line-height: 1.4;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.6);
       }
       .hud-log-info { color: #aaa; }
       .hud-log-warning { color: #fbbf24; }
       .hud-log-danger { color: #ef4444; font-weight: 600; }
       .hud-log-success { color: #10b981; }
 
-      /* Time Controls — bottom center */
+      /* Time Controls — bottom center, sprite banner background */
       .hud-time-controls {
         position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 8px; align-items: center; padding: 6px 16px;
-        background: rgba(15, 15, 30, 0.85);
-        border: 1px solid rgba(100, 100, 160, 0.3);
-        border-radius: 8px; pointer-events: auto;
+        display: flex; gap: 8px; align-items: center; padding: 8px 20px;
+        background-image: url('/assets/ui/scifi_banner.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
+        background-size: 100% 100%, 100% 100%;
+        background-repeat: no-repeat;
+        border: 1px solid rgba(100, 100, 160, 0.4);
+        border-radius: 4px; pointer-events: auto;
         backdrop-filter: blur(8px);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+        image-rendering: pixelated;
       }
       .hud-time-btn {
-        background: none; border: 1px solid rgba(100,100,160,0.3);
-        color: #ccc; padding: 4px 12px; border-radius: 4px;
+        background: rgba(0,0,0,0.3); border: 1px solid rgba(100,100,160,0.3);
+        color: #ccc; padding: 4px 12px; border-radius: 3px;
         cursor: pointer; font-size: 12px; transition: all 0.15s;
       }
-      .hud-time-btn:hover { background: rgba(80,80,140,0.3); }
-      .hud-time-btn.active { background: rgba(168,85,247,0.3); border-color: rgba(168,85,247,0.5); color: #fff; }
-      .hud-time { font-size: 13px; font-weight: 600; color: #ccc; margin-right: 8px; }
+      .hud-time-btn:hover { background: rgba(80,80,140,0.4); }
+      .hud-time-btn.active { background: rgba(168,85,247,0.3); border-color: rgba(168,85,247,0.5); color: #fff; box-shadow: 0 0 8px rgba(168,85,247,0.2); }
+      .hud-time { font-size: 13px; font-weight: 600; color: #ccc; margin-right: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
 
       /* Tooltip */
       .hud-tooltip {
         position: absolute; padding: 6px 10px;
         background: rgba(15, 15, 30, 0.95);
         border: 1px solid rgba(100, 100, 160, 0.3);
-        border-radius: 6px; font-size: 11px;
+        border-radius: 4px; font-size: 11px;
         pointer-events: none; z-index: 200;
         max-width: 200px;
       }
@@ -404,6 +464,11 @@ class CultTycoonGame {
       .hud-build-panel::-webkit-scrollbar-thumb,
       .hud-event-log::-webkit-scrollbar-thumb {
         background: rgba(100,100,160,0.3); border-radius: 2px;
+      }
+
+      /* SciFi cursor — apply to game canvas and HUD */
+      #game-canvas, #hud {
+        cursor: url('/assets/ui/scifi_cursor.png') 4 4, auto;
       }
     `;
     document.head.appendChild(style);
@@ -1095,11 +1160,14 @@ class CultTycoonGame {
       style.id = 'overlay-styles';
       style.textContent = `
         .ov-card {
-          background: linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+          background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+          background-size: 100% 100%, 100% 100%;
+          background-repeat: no-repeat;
           border: 2px solid rgba(168,85,247,0.4);
-          border-radius: 16px; padding: 40px 48px; text-align: center;
+          border-radius: 12px; padding: 40px 48px; text-align: center;
           max-width: 480px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
           color: #e0e0e0;
+          image-rendering: pixelated;
         }
         .ov-card.win { border-color: rgba(168,85,247,0.6); box-shadow: 0 8px 40px rgba(168,85,247,0.3); }
         .ov-card.lose { border-color: rgba(239,68,68,0.5); box-shadow: 0 8px 40px rgba(239,68,68,0.3); }

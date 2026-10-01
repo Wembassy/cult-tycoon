@@ -248,7 +248,7 @@ export class SceneManager {
 
       // Replace placeholder with real asset if loaded
       if (obj && isPlaceholder) {
-        const assetPath = this.getAssetPath(renderable.meshId);
+        const assetPath = this.getAssetPath(renderable.meshId, entity);
         const cached = assetPath && this.assets ? this.assets.get(assetPath) : null;
         if (cached) {
           console.log(`[SceneManager] Replacing placeholder for entity ${entity}, meshId=${renderable.meshId}, path=${assetPath}`);
@@ -257,23 +257,28 @@ export class SceneManager {
           this.entityMeshes.delete(entity);
           this.entityMeshIsPlaceholder.delete(entity);
           obj = undefined;
-        } else {
-          console.log(`[SceneManager] Asset not cached yet for entity ${entity}, meshId=${renderable.meshId}, path=${assetPath}`);
         }
+        // Don't log "not cached" every frame — only log once per entity
       }
 
       if (!obj) {
-        const assetPath = this.getAssetPath(renderable.meshId);
+        const assetPath = this.getAssetPath(renderable.meshId, entity);
         if (assetPath && this.assets) {
           const cloned = this.assets.clone(assetPath);
           if (cloned) {
-            console.log(`[SceneManager] Loaded GLB for entity ${entity}: ${assetPath}, children=${cloned.children.length}`);
-            // Polygon Minis are ~2 units tall centered at origin (yMin=-1, yMax=+1).
+            // Polygon Minis: root Armature node has translation ~[0, 1.0, -0.47].
             // Scale to ~0.6 so they're ~1.2 units tall — fits 1x1 tiles nicely.
             const modelScale = 0.6;
             cloned.scale.setScalar(modelScale);
-            // Shift model up so feet sit on y=0 (model center is at y=0, bottom at y=-1*scale)
-            cloned.position.y = modelScale;
+            cloned.updateMatrixWorld(true);
+
+            // Compute bounding box to find the actual feet position.
+            // This ensures the model stands on the ground regardless of
+            // how the Armature node is offset.
+            const bbox = new THREE.Box3().setFromObject(cloned);
+            const feetY = bbox.min.y; // lowest point of the model in local space
+            // Shift model up so the lowest point (feet) sits at y=0 in the wrapper
+            cloned.position.y = -feetY;
 
             cloned.traverse((child) => {
               if (child instanceof THREE.Mesh) {
@@ -293,27 +298,29 @@ export class SceneManager {
             this.entityMeshes.set(entity, obj);
             this.entityMeshIsPlaceholder.set(entity, false);
 
-            // Play first animation clip from GLB
-            // Skeleton clone fix in AssetLoader ensures bones start at rest pose.
-            // Animation mixer will blend from rest pose into the clip's first frame.
+            // Animation: Polygon Minis models often have T-pose/worship animations
+            // that make characters stand with arms outstretched. If the rest pose
+            // looks better, we skip animations. For now, use rest pose (no mixer)
+            // since the available animations all appear to be worship/ritual poses.
             const asset = this.assets!.get(assetPath);
             if (asset && asset.animations.length > 0) {
-              const mixer = new THREE.AnimationMixer(cloned);
-              const action = mixer.clipAction(asset.animations[0]);
-              action.play();
-              // Start at time 0 — the skeleton reset in AssetLoader ensures
-              // the rest pose is the baseline before animation blends in.
-              this.mixers.set(entity, mixer);
-              console.log(`[SceneManager] Playing animation "${asset.animations[0].name}" for entity ${entity}`);
+              // Check if any animation has "idle" or "walk" in its name
+              const idleAnim = asset.animations.find(a =>
+                a.name.toLowerCase().includes('idle') ||
+                a.name.toLowerCase().includes('walk') ||
+                a.name.toLowerCase().includes('stand')
+              );
+              if (idleAnim) {
+                const mixer = new THREE.AnimationMixer(cloned);
+                const action = mixer.clipAction(idleAnim);
+                action.play();
+                this.mixers.set(entity, mixer);
+              }
+              // Otherwise, use rest pose — no animation mixer needed.
             }
 
-            // Add subtle point light so followers glow in the dark
-            if (renderable.meshId.startsWith('follower')) {
-              const light = new THREE.PointLight(0xaa88ff, 0.6, 3, 2);
-              light.position.set(0, 1, 0);
-              obj.add(light);
-              this.entityLights.set(entity, light);
-            }
+            // No point light — was creating visible beams in the scene.
+            // The scene's ambient and directional lighting is sufficient.
           }
         }
 
@@ -334,12 +341,31 @@ export class SceneManager {
       obj.position.z += (targetZ - obj.position.z) * 0.15;
 
       // Terrain grass top is at y=0.5. Place model wrapper so feet rest on terrain.
-      // The wrapper contains the model shifted up by modelScale, so wrapper.y = terrain top.
+      // The wrapper contains the model shifted up so feet are at y=0 in the wrapper.
       let baseY = transform.z + 0.5;
-      // No bob — animation mixer handles idle movement
-      if (!renderable.meshId.startsWith('follower')) {
+
+      // Rotate followers to face outward from center, with per-entity variation.
+      // Non-followers use transform.rotation directly.
+      if (renderable.meshId.startsWith('follower')) {
+        // Face toward camera-ish direction with slight per-entity variation
+        const mapCenterX = this.map.width / 2;
+        const mapCenterY = this.map.height / 2;
+        const dx = transform.x - mapCenterX;
+        const dy = transform.y - mapCenterY;
+        const angleToCenter = Math.atan2(dx, -dy);
+        // Add per-entity offset so they don't all face exactly the same way
+        const variation = ((entity * 73) % 360) * (Math.PI / 180) * 0.3;
+        const targetRot = angleToCenter + Math.PI + variation;
+        // Smooth rotation
+        let rotDiff = targetRot - obj.rotation.y;
+        // Normalize to [-PI, PI]
+        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+        obj.rotation.y += rotDiff * 0.1;
+      } else {
         obj.rotation.y = transform.rotation;
       }
+
       obj.position.y += (baseY - obj.position.y) * 0.15;
     }
 
@@ -364,9 +390,10 @@ export class SceneManager {
     }
   }
 
-  private getAssetPath(meshId: string): string | null {
+  private getAssetPath(meshId: string, entityId: number = 0): string | null {
     if (meshId.startsWith('follower')) {
-      // Real fantasy character GLBs — cult-appropriate variants
+      // Real fantasy character GLBs — cult-appropriate variants.
+      // Use entityId (not meshId hash) so different followers get different models.
       const variants = [
         '/assets/models/followers/fantasy_wizard_01.glb',
         '/assets/models/followers/fantasy_sorcerer_01.glb',
@@ -381,8 +408,7 @@ export class SceneManager {
         '/assets/models/followers/adventure_viking_01.glb',
         '/assets/models/followers/adventure_warrior_01.glb',
       ];
-      const hash = meshId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-      return variants[hash % variants.length];
+      return variants[entityId % variants.length];
     }
     if (meshId.includes('wall')) return '/assets/models/buildings/wall_straight.glb';
     if (meshId.includes('door')) return '/assets/models/buildings/door.glb';

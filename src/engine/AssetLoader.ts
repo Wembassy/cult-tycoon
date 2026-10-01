@@ -85,26 +85,26 @@ export class AssetLoader {
       console.warn(`[AssetLoader] clone() — asset not in cache: ${url}`);
       return null;
     }
-    console.log(`[AssetLoader] clone() — cloning ${url}, scene children: ${asset.scene.children.length}`);
-    // Use SkeletonUtils.clone for proper skinned mesh support
+    // Use SkeletonUtils.clone for proper skinned mesh support.
+    // This preserves the original inverse bind matrices (IBM) from the GLB file.
     const clone = SkeletonUtils.clone(asset.scene) as THREE.Group;
 
-    // Fix: After SkeletonUtils.clone, skinned meshes may have stale bone bindings.
-    // Re-bind the skeleton to ensure boneMatrices are computed from the rest pose.
+    // Update world matrices so bone world transforms are current.
+    // This ensures the skeleton's boneMatrices are correct without
+    // overwriting the IBM (which calculateInverses() would do).
+    clone.updateMatrixWorld(true);
+
+    // Recompute the bone texture and update the skeleton in rest pose.
+    // We do NOT call calculateInverses() — the IBM from the GLB file
+    // is already correct and recalculating from potentially-stale bone
+    // transforms can cause distortion (e.g., neck stretching).
     clone.traverse((child) => {
-      if (child instanceof THREE.SkinnedMesh) {
-        // Force skeleton to recompute bone inverses from current bone transforms
-        if (child.skeleton) {
-          child.skeleton.calculateInverses();
-          // Re-bind to update the GPU bone texture
-          child.skeleton.computeBoneTexture();
-          // Update bone matrices to rest pose
-          child.skeleton.update();
-        }
+      if (child instanceof THREE.SkinnedMesh && child.skeleton) {
+        child.skeleton.computeBoneTexture();
+        child.skeleton.update();
       }
     });
 
-    console.log(`[AssetLoader] clone() — result children: ${clone.children.length}, visible: ${clone.visible}`);
     return clone;
   }
 
