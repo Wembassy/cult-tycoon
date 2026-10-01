@@ -35,8 +35,8 @@ describe('IsoCamera', () => {
   });
 
   describe('Zoom', () => {
-    it('setZoom clamps to minimum 5', () => { camera.setZoom(1); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeGreaterThanOrEqual(5); });
-    it('setZoom clamps to maximum 100', () => { camera.setZoom(200); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeLessThanOrEqual(100); });
+    it('setZoom clamps to minimum 3', () => { camera.setZoom(1); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeGreaterThanOrEqual(3); });
+    it('setZoom clamps to maximum 130', () => { camera.setZoom(200); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeLessThanOrEqual(130); });
     it('setZoom accepts valid values', () => { camera.setZoom(70); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeCloseTo(70, 1); });
     it('wheel events adjust zoom target', () => { element._dispatch('wheel', { deltaY: 100, preventDefault: vi.fn() }); camera.update(0.016); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeLessThan(50); });
     it('wheel up increases zoom', () => { element._dispatch('wheel', { deltaY: -200, preventDefault: vi.fn() }); for (let i = 0; i < 100; i++) camera.update(0.016); expect(camera.getZoom()).toBeGreaterThan(50); });

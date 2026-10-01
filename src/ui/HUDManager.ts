@@ -23,7 +23,13 @@ export interface BuildPanelEntry {
   label: string;
   icon: string;
   cost: number;
-  category: 'walls' | 'floors' | 'objects' | 'rooms';
+  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure';
+}
+
+export interface BuildCategory {
+  id: string;
+  label: string;
+  icon: string;
 }
 
 export interface InspectorData {
@@ -48,6 +54,8 @@ export class HUDManager {
   private container: HTMLElement;
   private resourceBar: HTMLElement | null = null;
   private buildPanel: HTMLElement | null = null;
+  private buildBar: HTMLElement | null = null;
+  private buildItems: HTMLElement | null = null;
   private inspector: HTMLElement | null = null;
   private eventLog: HTMLElement | null = null;
   private timeControls: HTMLElement | null = null;
@@ -57,6 +65,7 @@ export class HUDManager {
   private _timeMode: TimeControlMode = 'play';
   private _currentTime = 0;
   private _currentDay = 1;
+  private _activeCategoryId: string | null = null;
 
   constructor(config: HUDConfig) {
     this.container = config.container;
@@ -68,16 +77,23 @@ export class HUDManager {
     this.container.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;font-family:sans-serif;';
 
     this.resourceBar = this.createElement('div', 'hud-resource-bar');
+    this.buildBar = this.createElement('div', 'hud-build-bar');
+    this.buildItems = this.createElement('div', 'hud-build-items');
     this.buildPanel = this.createElement('div', 'hud-build-panel');
     this.inspector = this.createElement('div', 'hud-inspector');
     this.eventLog = this.createElement('div', 'hud-event-log');
     this.timeControls = this.createElement('div', 'hud-time-controls');
 
     this.container.appendChild(this.resourceBar);
+    this.container.appendChild(this.buildItems);
+    this.container.appendChild(this.buildBar);
     this.container.appendChild(this.buildPanel);
     this.container.appendChild(this.inspector);
     this.container.appendChild(this.eventLog);
     this.container.appendChild(this.timeControls);
+
+    // Build items panel hidden by default
+    this.buildItems.style.display = 'none';
   }
 
   private createElement(tag: string, className: string): HTMLElement {
@@ -113,7 +129,63 @@ export class HUDManager {
   }
 
   /**
-   * Populate the build panel with available build options
+   * Set the build category bar (bottom horizontal bar).
+   */
+  setBuildCategories(categories: BuildCategory[]): void {
+    if (!this.buildBar) return;
+    this.buildBar.innerHTML = categories.map(c =>
+      `<div class="hud-build-cat ${c.id === this._activeCategoryId ? 'active' : ''}" data-cat="${c.id}" title="${c.label}">
+        <span class="hud-build-cat-icon">${c.icon}</span>
+        <span class="hud-build-cat-label">${c.label}</span>
+      </div>`
+    ).join('');
+  }
+
+  /**
+   * Show build items for a selected category (grid panel above the bottom bar).
+   */
+  setBuildItems(entries: BuildPanelEntry[], categoryId: string): void {
+    if (!this.buildItems) return;
+    this._activeCategoryId = categoryId;
+    this.buildItems.style.display = 'block';
+    this.buildItems.innerHTML = entries.map(e =>
+      `<div class="hud-build-item" data-id="${e.id}" data-cost="${e.cost}" title="${e.label} (${e.cost}g)">
+        <span class="hud-build-item-icon">${e.icon}</span>
+        <span class="hud-build-item-label">${e.label}</span>
+        <span class="hud-build-item-cost">${e.cost}g</span>
+      </div>`
+    ).join('');
+    // Refresh category bar active state
+    if (this.buildBar) {
+      this.buildBar.querySelectorAll('.hud-build-cat').forEach(el => {
+        el.classList.toggle('active', el.getAttribute('data-cat') === categoryId);
+      });
+    }
+  }
+
+  /**
+   * Hide the build items panel.
+   */
+  hideBuildItems(): void {
+    if (this.buildItems) this.buildItems.style.display = 'none';
+    this._activeCategoryId = null;
+    if (this.buildBar) {
+      this.buildBar.querySelectorAll('.hud-build-cat').forEach(el => el.classList.remove('active'));
+    }
+  }
+
+  /**
+   * Highlight a selected build item.
+   */
+  highlightBuildItem(itemId: string | null): void {
+    if (!this.buildItems) return;
+    this.buildItems.querySelectorAll('.hud-build-item').forEach(el => {
+      el.classList.toggle('selected', el.getAttribute('data-id') === itemId);
+    });
+  }
+
+  /**
+   * Legacy: Populate the build panel with available build options
    */
   setBuildPanel(entries: BuildPanelEntry[]): void {
     if (!this.buildPanel) return;
@@ -254,6 +326,8 @@ export class HUDManager {
   destroy(): void {
     this.container.innerHTML = '';
     this.resourceBar = null;
+    this.buildBar = null;
+    this.buildItems = null;
     this.buildPanel = null;
     this.inspector = null;
     this.eventLog = null;

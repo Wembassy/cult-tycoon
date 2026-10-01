@@ -36,7 +36,7 @@ import { FogSystem } from './systems/FogSystem';
 import { FogOfWar } from './world/FogOfWar';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
-import { HUDManager, ResourceBarData, BuildPanelEntry } from './ui/HUDManager';
+import { HUDManager, ResourceBarData, BuildPanelEntry, BuildCategory } from './ui/HUDManager';
 import { DialogSystem } from './ui/DialogSystem';
 import { StartMenu } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
@@ -90,6 +90,8 @@ class CultTycoonGame {
   private tickCount = 0;
   private selectedBuildItem: string | null = null;
   private selectedEntity: number | null = null;
+  private buildEntries: BuildPanelEntry[] = [];
+  private activeBuildCategory: string | null = null;
   private followerNames: Map<number, string> = new Map();
   private floatingTexts: { el: HTMLDivElement; life: number }[] = [];
 
@@ -246,11 +248,7 @@ class CultTycoonGame {
 
     // Right-click without drag → cancel/deselect (IsoCamera handles right-drag for rotation)
     this.renderer.camera.onRightClickWithoutDrag = () => {
-      this.input.setMode('select');
-      this.selectedBuildItem = null;
-      this.selectedEntity = null;
-      this.hud.hideInspector();
-      this.highlightBuildPanel(null);
+      this.closeBuildMenu();
     };
 
     // Inject CSS
@@ -358,19 +356,87 @@ class CultTycoonGame {
         box-shadow: 0 0 4px currentColor;
       }
 
-      /* Build Panel — left side, sprite panel background */
+      /* Build Bar — bottom center, horizontal category buttons (Prison Architect style) */
+      .hud-build-bar {
+        position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+        display: flex; gap: 4px; padding: 6px 8px;
+        background: linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
+        border: 1px solid rgba(80, 120, 180, 0.5);
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        pointer-events: auto;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 -2px 16px rgba(0,0,0,0.7), inset 0 1px 0 rgba(120,160,220,0.15);
+        z-index: 10;
+      }
+      .hud-build-cat {
+        display: flex; flex-direction: column; align-items: center; gap: 2px;
+        padding: 8px 14px; border-radius: 6px; cursor: pointer;
+        transition: all 0.15s; min-width: 64px;
+        background: rgba(0,0,0,0.25);
+        border: 1px solid transparent;
+      }
+      .hud-build-cat:hover {
+        background: rgba(50, 80, 130, 0.5);
+        border-color: rgba(100, 150, 220, 0.3);
+      }
+      .hud-build-cat.active {
+        background: rgba(40, 80, 160, 0.6);
+        border-color: rgba(120, 180, 255, 0.6);
+        box-shadow: 0 0 12px rgba(80, 140, 220, 0.3), inset 0 1px 0 rgba(150,200,255,0.2);
+      }
+      .hud-build-cat-icon { font-size: 22px; line-height: 1; }
+      .hud-build-cat-label {
+        font-size: 10px; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.5px; color: #a0b8d8;
+      }
+      .hud-build-cat.active .hud-build-cat-label { color: #e0f0ff; }
+
+      /* Build Items — grid panel above the bottom bar */
+      .hud-build-items {
+        position: absolute; bottom: 72px; left: 50%; transform: translateX(-50%);
+        display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px;
+        background: linear-gradient(180deg, rgba(18,26,42,0.96), rgba(14,20,35,0.98));
+        border: 1px solid rgba(80, 120, 180, 0.4);
+        border-radius: 8px;
+        pointer-events: auto;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(120,160,220,0.1);
+        max-width: 560px; z-index: 9;
+      }
+      .hud-build-item {
+        display: flex; flex-direction: column; align-items: center; gap: 3px;
+        padding: 8px 10px; width: 72px; border-radius: 6px; cursor: pointer;
+        transition: all 0.12s;
+        background: rgba(0,0,0,0.3);
+        border: 1px solid rgba(60, 80, 120, 0.2);
+      }
+      .hud-build-item:hover {
+        background: rgba(50, 80, 140, 0.5);
+        border-color: rgba(100, 160, 240, 0.4);
+        transform: translateY(-1px);
+      }
+      .hud-build-item.selected {
+        background: rgba(60, 120, 200, 0.5);
+        border-color: rgba(140, 200, 255, 0.7);
+        box-shadow: 0 0 10px rgba(80, 150, 240, 0.4);
+      }
+      .hud-build-item-icon { font-size: 24px; line-height: 1; }
+      .hud-build-item-label {
+        font-size: 10px; font-weight: 500; text-align: center;
+        color: #b0c4e0; line-height: 1.2;
+      }
+      .hud-build-item-cost {
+        font-size: 10px; font-weight: 700; color: #fbbf24;
+      }
+
+      /* Legacy Build Panel — left side (hidden, kept for compat) */
       .hud-build-panel {
         position: absolute; top: 60px; left: 8px;
         width: 200px; max-height: 70vh; overflow-y: auto;
-        padding: 10px;
-        background-image: url('/assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(15,15,30,0.92), rgba(10,10,25,0.94));
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
-        border: 1px solid rgba(100, 100, 160, 0.4);
+        padding: 10px; display: none;
+        background: rgba(15,15,30,0.92); border: 1px solid rgba(100,100,160,0.4);
         border-radius: 6px; pointer-events: auto;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(168,85,247,0.08);
-        image-rendering: pixelated;
       }
       .hud-build-entry {
         display: flex; align-items: center; gap: 8px;
@@ -505,19 +571,33 @@ class CultTycoonGame {
   }
 
   private setupBuildPanel(): void {
-    const buildEntries: BuildPanelEntry[] = [
-      { id: 'wall', label: 'Wall', icon: '🧱', cost: 5, category: 'walls' },
-      { id: 'floor', label: 'Floor', icon: '⬜', cost: 2, category: 'floors' },
-      { id: 'door', label: 'Door', icon: '🚪', cost: 8, category: 'walls' },
-      ...DataManager.getObjects().map(obj => ({
+    // Define build categories (Prison Architect style bottom bar)
+    const categories: BuildCategory[] = [
+      { id: 'structure', label: 'Build', icon: '🧱' },
+      { id: 'objects', label: 'Objects', icon: '📦' },
+      { id: 'ritual', label: 'Ritual', icon: '🔮' },
+      { id: 'rooms', label: 'Rooms', icon: '🏠' },
+      { id: 'demolish', label: 'Demolish', icon: '❌' },
+    ];
+    this.hud.setBuildCategories(categories);
+
+    // Build all items grouped by category
+    const allObjects = DataManager.getObjects();
+    this.buildEntries = [
+      { id: 'wall', label: 'Wall', icon: '🧱', cost: 5, category: 'structure' },
+      { id: 'floor', label: 'Floor', icon: '⬜', cost: 2, category: 'structure' },
+      { id: 'door', label: 'Door', icon: '🚪', cost: 8, category: 'structure' },
+      ...allObjects.map(obj => ({
         id: obj.id,
         label: obj.name,
         icon: obj.category === 'ritual' ? '🔮' : obj.category === 'kitchen' ? '🍲' : obj.category === 'furniture' ? '🛏️' : obj.category === 'research' ? '📚' : obj.category === 'storage' ? '📦' : obj.category === 'decor' ? '🔥' : obj.category === 'wellness' ? '🧘' : '📦',
         cost: obj.cost,
-        category: 'objects' as const,
+        category: obj.category === 'ritual' ? 'ritual' : 'objects' as BuildPanelEntry['category'],
       })),
     ];
-    this.hud.setBuildPanel(buildEntries);
+
+    // Also keep legacy panel populated (hidden, but available if needed)
+    this.hud.setBuildPanel(this.buildEntries);
   }
 
   private setupKeyboardShortcuts(): void {
@@ -525,26 +605,17 @@ class CultTycoonGame {
       if (e.target instanceof HTMLInputElement) return;
       switch (e.key.toLowerCase()) {
         case 'b':
-          this.input.setMode('build');
-          this.selectedBuildItem = 'wall';
-          this.highlightBuildPanel('wall');
+          this.openBuildCategory('structure');
           this.hud.logEvent('Build mode: select an item, then click the map.', 'info');
           break;
         case 'x':
-          this.input.setMode('demolish');
-          this.selectedBuildItem = null;
-          this.highlightBuildPanel(null);
+          this.openBuildCategory('demolish');
           this.hud.logEvent('Demolish mode: click to remove.', 'info');
           break;
         case 'escape':
           if (this.gameState === 'playing') {
-            // If in build/demolish mode, exit that first
             if (this.input.getMode() !== 'select') {
-              this.input.setMode('select');
-              this.selectedBuildItem = null;
-              this.selectedEntity = null;
-              this.hud.hideInspector();
-              this.highlightBuildPanel(null);
+              this.closeBuildMenu();
             } else {
               this.openPauseMenu();
             }
@@ -573,7 +644,43 @@ class CultTycoonGame {
   }
 
   private setupHUDInteractions(): void {
-    // Build panel click handlers
+    // Build category bar click handler (bottom bar)
+    const buildBar = this.hud['buildBar'];
+    if (buildBar) {
+      buildBar.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const cat = target.closest('.hud-build-cat') as HTMLElement;
+        if (!cat) return;
+        const catId = cat.getAttribute('data-cat');
+        if (!catId) return;
+        this.openBuildCategory(catId);
+      });
+    }
+
+    // Build items grid click handler (panel above bar)
+    const buildItems = this.hud['buildItems'];
+    if (buildItems) {
+      buildItems.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const item = target.closest('.hud-build-item') as HTMLElement;
+        if (!item) return;
+        const id = item.getAttribute('data-id');
+        const cost = parseInt(item.getAttribute('data-cost') || '0');
+        if (!id) return;
+
+        if (this.activeBuildCategory === 'demolish') {
+          this.input.setMode('demolish');
+          this.selectedBuildItem = null;
+        } else {
+          this.input.setMode('build');
+          this.selectedBuildItem = id;
+          this.hud.logEvent(`Selected: ${item.querySelector('.hud-build-item-label')?.textContent} (${cost}g)`, 'info');
+        }
+        this.hud.highlightBuildItem(id);
+      });
+    }
+
+    // Legacy build panel click handlers (kept for compat)
     const panel = this.hud['buildPanel'];
     if (panel) {
       panel.addEventListener('click', (e) => {
@@ -605,12 +712,55 @@ class CultTycoonGame {
   }
 
   private highlightBuildPanel(id: string | null): void {
+    // Update both legacy panel and new item grid
     const panel = this.hud['buildPanel'];
-    if (!panel) return;
-    panel.querySelectorAll('.hud-build-entry').forEach(el => {
-      const elId = (el as HTMLElement).getAttribute('data-id');
-      el.classList.toggle('selected', elId === id);
-    });
+    if (panel) {
+      panel.querySelectorAll('.hud-build-entry').forEach(el => {
+        const elId = (el as HTMLElement).getAttribute('data-id');
+        el.classList.toggle('selected', elId === id);
+      });
+    }
+    this.hud.highlightBuildItem(id);
+  }
+
+  /**
+   * Open a build category — shows items in the grid panel above the bottom bar.
+   */
+  private openBuildCategory(categoryId: string): void {
+    this.activeBuildCategory = categoryId;
+
+    if (categoryId === 'demolish') {
+      this.input.setMode('demolish');
+      this.selectedBuildItem = null;
+      this.hud.setBuildItems([], categoryId);
+      this.hud.hideBuildItems();
+      this.hud.logEvent('Demolish mode: click to remove.', 'info');
+      return;
+    }
+
+    // Filter items by category
+    const items = this.buildEntries.filter(e => e.category === categoryId);
+    this.hud.setBuildItems(items, categoryId);
+    this.input.setMode('build');
+
+    // Auto-select first item
+    if (items.length > 0) {
+      this.selectedBuildItem = items[0].id;
+      this.hud.highlightBuildItem(items[0].id);
+    }
+  }
+
+  /**
+   * Close the build menu entirely — return to select mode.
+   */
+  private closeBuildMenu(): void {
+    this.input.setMode('select');
+    this.selectedBuildItem = null;
+    this.activeBuildCategory = null;
+    this.selectedEntity = null;
+    this.hud.hideBuildItems();
+    this.hud.hideInspector();
+    this.hud.highlightBuildItem(null);
   }
 
   private setTimeMode(mode: 'pause' | 'play' | 'fast'): void {

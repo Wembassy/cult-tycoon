@@ -15,8 +15,8 @@
 import * as THREE from 'three';
 
 export const TILE_SIZE = 1;
-const MIN_ZOOM = 5;
-const MAX_ZOOM = 100;
+const MIN_ZOOM = 3;
+const MAX_ZOOM = 130;
 const LERP_FACTOR = 0.12;
 const CAMERA_DISTANCE = 60;
 // 30° from vertical = 60° from horizontal — very dramatic low angle
