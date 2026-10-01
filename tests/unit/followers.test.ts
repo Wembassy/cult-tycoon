@@ -360,7 +360,7 @@ describe('FollowerFactory', () => {
 
     const traits = world.getComponent(follower.entityId, Traits)!;
     expect(traits.traits.length).toBeGreaterThanOrEqual(1);
-    expect(traits.traits.length).toBeLessThanOrEqual(3);
+    expect(traits.traits.length).toBeLessThanOrEqual(2);
   });
 
   it('should spawn multiple followers', () => {

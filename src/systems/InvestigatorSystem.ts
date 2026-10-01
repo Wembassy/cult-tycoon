@@ -9,6 +9,7 @@ import type { World } from '../ecs/World';
 import { Transform } from '../components/Transform';
 import { FollowerAI } from '../components/FollowerAI';
 import { Needs } from '../components/Needs';
+import { Traits } from '../components/Traits';
 import { TileMap } from '../world/TileMap';
 import { Pathfinder } from '../world/Pathfinder';
 
@@ -309,6 +310,20 @@ export class InvestigatorSystem {
               inv.path = edgeResult.success ? edgeResult.path : [{ x: 0, y: 0 }];
               inv.pathIndex = 0;
             }
+
+            // Apply morale loss to followers from investigation
+            // Paranoid followers lose 20% more morale (fun + sanity)
+            const followers = world.query([Needs, FollowerAI, Traits]);
+            for (const fEntity of followers) {
+              const fTraits = world.getComponent(fEntity, Traits)!;
+              const fNeeds = world.getComponent(fEntity, Needs)!;
+              const moraleLossMult = fTraits.getInvestigationMoraleLossMult();
+              const baseMoraleLoss = 5; // base morale damage from investigation
+              const actualLoss = baseMoraleLoss * moraleLossMult;
+              fNeeds.fun = Math.max(0, fNeeds.fun - actualLoss);
+              fNeeds.sanity = Math.max(0, fNeeds.sanity - actualLoss);
+            }
+
             this.callbacks.onInvestigatorInspectComplete?.(inv);
           }
           break;

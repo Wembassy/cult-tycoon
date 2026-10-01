@@ -26,9 +26,10 @@ const TRAIT_MULT: Partial<Record<TraitType, Partial<Record<keyof NeedsConfig, nu
   lazy: { hungerDecay: 1.3, funDecay: 0.7 },
   zealous: { faithDecay: 0.5 },
   doubter: { faithDecay: 1.5 },
-  hardy: { hungerDecay: 0.8, sanityDecay: 0.8 },
+  hardy: { hungerDecay: 0.75, sanityDecay: 0.8 },
   fragile: { sanityDecay: 1.5, hungerDecay: 1.2 },
   insomniac: { sanityDecay: 1.3 },
+  devoted: { faithDecay: 0.7 },
 };
 
 export class NeedsSystem {
