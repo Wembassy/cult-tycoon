@@ -51,25 +51,23 @@ export interface MissionEvent {
   choices: MissionChoice[];
 }
 
+export interface MissionOutcome {
+  money?: number;
+  influence?: number;
+  prGain?: number;
+  heatReduction?: number;
+  heatGain?: number;
+  injuryChance?: number;
+  decorItemId?: string;
+  text: string;
+}
+
 export interface MissionChoice {
   label: string;
   skillCheck?: { skill: string; difficulty: number };
   outcomes: {
-    success: {
-      money?: number;
-      influence?: number;
-      prGain?: number;
-      heatReduction?: number;
-      decorItemId?: string;
-      text: string;
-    };
-    failure: {
-      money?: number;
-      influence?: number;
-      heatGain?: number;
-      injuryChance?: number;
-      text: string;
-    };
+    success: MissionOutcome;
+    failure: MissionOutcome;
   };
 }
 
@@ -116,7 +114,7 @@ export const MISSION_TEMPLATES: Record<string, MissionTemplate> = {
               success: {
                 text: 'Your cultists politely decline and continue distributing flyers. No harm done.',
               },
-              failure: {},
+              failure: { text: "Nothing notable happens." },
             },
           },
         ],
@@ -161,7 +159,7 @@ export const MISSION_TEMPLATES: Record<string, MissionTemplate> = {
                 prGain: 5,
                 text: 'The selfless act is noticed by the community. Your reputation improves.',
               },
-              failure: {},
+              failure: { text: "Nothing notable happens." },
             },
           },
         ],
@@ -398,7 +396,7 @@ export const MISSION_TEMPLATES: Record<string, MissionTemplate> = {
                 money: 0,
                 text: 'The rug is expensive but gorgeous. It will boost compound prestige significantly.',
               },
-              failure: {},
+              failure: { text: "Nothing notable happens." },
             },
           },
         ],
@@ -448,7 +446,7 @@ export const MISSION_TEMPLATES: Record<string, MissionTemplate> = {
                 money: 50,
                 text: 'The business owner respects the principle and gives a modest donation anyway.',
               },
-              failure: {},
+              failure: { text: "Nothing notable happens." },
             },
           },
         ],
