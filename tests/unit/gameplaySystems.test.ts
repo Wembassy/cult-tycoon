@@ -146,73 +146,67 @@ describe('TechTreeSystem', () => {
     system = new TechTreeSystem((node) => unlocked.push(node));
   });
 
-  it('should load tech nodes from DataManager', () => {
-    const nodes = system.getNodes();
-    expect(nodes.length).toBe(22);
+  it('should load tech nodes from TechTreeData', () => {
+    const nodes = system.getTree();
+    expect(nodes.length).toBe(16);
     expect(nodes[0].id).toBeTruthy();
-    expect(nodes[0].cost).toBeGreaterThan(0);
+    expect(nodes[0].cost.influence).toBeGreaterThan(0);
   });
 
   it('should have tier 1 nodes available by default', () => {
     const available = system.getAvailable();
-    const tier1 = available.filter(n => n.tier === 1);
-    expect(tier1.length).toBeGreaterThan(0);
+    expect(available.length).toBeGreaterThan(0);
   });
 
-  it('should not have tier 2+ nodes available without prerequisites', () => {
+  it('should not have dependent nodes available without prerequisites', () => {
     const available = system.getAvailable();
-    const tier2 = available.filter(n => n.tier === 2 && n.requires);
-    expect(tier2.length).toBe(0);
+    // recreation requires beds_ii — should not be available yet
+    const dep = available.find(n => n.id === 'recreation');
+    expect(dep).toBeUndefined();
   });
 
   it('should unlock a node with enough influence', () => {
-    const result = system.unlock('basic_rituals', 100);
+    const result = system.unlock('beds_ii', 100, 0);
     expect(result.success).toBe(true);
-    expect(system.isUnlocked('basic_rituals')).toBe(true);
+    expect(system.isUnlocked('beds_ii')).toBe(true);
     expect(unlocked.length).toBe(1);
   });
 
   it('should fail to unlock without enough influence', () => {
-    const result = system.unlock('basic_rituals', 10);
+    const result = system.unlock('beds_ii', 1, 0);
     expect(result.success).toBe(false);
     expect(result.reason).toContain('influence');
   });
 
   it('should fail to unlock already unlocked node', () => {
-    system.unlock('basic_rituals', 100);
-    const result = system.unlock('basic_rituals', 100);
+    system.unlock('beds_ii', 100, 0);
+    const result = system.unlock('beds_ii', 100, 0);
     expect(result.success).toBe(false);
     expect(result.reason).toContain('Already');
   });
 
   it('should make dependent nodes available after unlocking prerequisite', () => {
-    // advanced_rituals requires basic_rituals
-    expect(system.isUnlocked('advanced_rituals')).toBe(false);
-    const beforeAvailable = system.getAvailable().find(n => n.id === 'advanced_rituals');
+    // recreation requires beds_ii
+    expect(system.isUnlocked('recreation')).toBe(false);
+    const beforeAvailable = system.getAvailable().find(n => n.id === 'recreation');
     expect(beforeAvailable).toBeUndefined();
-    system.unlock('basic_rituals', 100);
-    const afterAvailable = system.getAvailable().find(n => n.id === 'advanced_rituals');
+    system.unlock('beds_ii', 100, 0);
+    const afterAvailable = system.getAvailable().find(n => n.id === 'recreation');
     expect(afterAvailable).toBeDefined();
   });
 
   it('should get unlocked content ids', () => {
-    system.unlock('basic_rituals', 100);
+    system.unlock('beds_ii', 100, 0);
     const content = system.getUnlockedContent();
-    expect(content).toContain('morning_prayer');
-    expect(content).toContain('offerings');
-  });
-
-  it('should calculate effect multipliers', () => {
-    // No unlocks yet — multiplier is 1
-    expect(system.getEffectMultiplier('skillGainMult')).toBe(1);
-    // Unlock follower_education (skillGainMult: 2.0)
-    system.unlock('follower_education', 200);
-    expect(system.getEffectMultiplier('skillGainMult')).toBe(2);
+    // beds_ii unlocks 'better_bed' object
+    expect(content.length).toBeGreaterThan(0);
+    expect(content).toContain('better_bed');
   });
 
   it('should calculate effect bonuses', () => {
-    expect(system.getEffectBonus('maxPopulationBonus')).toBe(0);
-    system.unlock('recruitment_ii', 100);
-    expect(system.getEffectBonus('maxPopulationBonus')).toBe(10);
+    // recruitment_ii gives maxPopulationPlus: 10
+    expect(system.getEffectBonus('maxPopulationPlus')).toBe(0);
+    system.unlock('recruitment_ii', 100, 0);
+    expect(system.getEffectBonus('maxPopulationPlus')).toBe(10);
   });
 });

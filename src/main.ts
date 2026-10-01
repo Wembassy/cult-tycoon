@@ -39,9 +39,8 @@ import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
 import { MissionSystem } from './systems/MissionSystem';
 import { PrestigeSystem } from './systems/PrestigeSystem';
-import { HeatSystem, HEAT_CONFIG } from './systems/HeatSystem';
+import { HeatSystem } from './systems/HeatSystem';
 import { Prestige } from './components/Prestige';
-import { OnMission } from './components/OnMission';
 import { DECOR_ITEMS } from './data/DecorItems';
 import { RoomGraph } from './world/RoomGraph';
 import { FogOfWar } from './world/FogOfWar';
@@ -283,7 +282,7 @@ class CultTycoonGame {
 
     // Mission system — sends cultists on external missions for rewards
     this.missionSystem = new MissionSystem(
-      (missionId, event, choices) => {
+      (missionId, event, _choices) => {
         this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
         // Auto-resolve with first choice for now (player can choose manually when UI is built)
         const result = this.missionSystem.resolveEventChoice(missionId, 0, this.world);
@@ -291,7 +290,7 @@ class CultTycoonGame {
           this.hud.logEvent(`Mission outcome: ${result.text}`, result.success ? 'success' : 'danger');
         }
       },
-      (missionId, templateId, success, rewards) => {
+      (_missionId, templateId, success, rewards) => {
         // Apply mission rewards to cult resources
         if (rewards.money) this.cultWealth += rewards.money;
         if (rewards.influence) this.cultInfluence += rewards.influence;
@@ -1078,6 +1077,7 @@ class CultTycoonGame {
         this.sceneMgr.syncEntities();
         this.pathfinder.invalidateCache();
         this.pathfindSystem.invalidateCache();
+        this.roomGraph.invalidate();
       }
     } else {
       // Select mode — check for follower at this tile
@@ -1136,6 +1136,18 @@ class CultTycoonGame {
       this.sceneMgr.syncEntities();
       this.pathfinder.invalidateCache();
       this.pathfindSystem.invalidateCache();
+
+      // Invalidate room graph when structure changes
+      if (item === 'wall' || item === 'door' || item === 'floor') {
+        this.roomGraph.invalidate();
+      }
+
+      // Handle decor placement — attach to room's Prestige component
+      if (item.startsWith('decor_')) {
+        const decorId = item.replace('decor_', '');
+        this.handleDecorPlacement(x, y, decorId);
+      }
+
       this.updateHUD();
     } else {
       this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
@@ -1144,6 +1156,38 @@ class CultTycoonGame {
 
   private onTileHover(x: number, y: number): void {
     this.sceneMgr.highlightTile(x, y);
+  }
+
+  /**
+   * Handle decor item placement — find or create a room entity with Prestige
+   * component and add the decor to it.
+   */
+  private handleDecorPlacement(x: number, y: number, decorId: string): void {
+    const room = this.roomGraph.getRoomAt(x, y);
+    if (!room) {
+      this.hud.logEvent(`Decor placed at (${x}, ${y}) but no room detected here.`, 'warning');
+      return;
+    }
+
+    // Find or create a Prestige entity for this room
+    let roomEntity = this.roomEntities.get(room.id);
+    if (roomEntity === undefined) {
+      roomEntity = this.world.createEntity();
+      const prestige = new Prestige(roomEntity);
+      // Base prestige from room area (bigger rooms start with slightly more)
+      (prestige as Prestige & { baseLevel?: number }).baseLevel = Math.min(3, Math.floor(room.area / 20));
+      this.world.addComponent(roomEntity, prestige);
+      this.roomEntities.set(room.id, roomEntity);
+    }
+
+    const success = this.prestigeSystem.addDecor(this.world, roomEntity, decorId);
+    if (success) {
+      const decorDef = DECOR_ITEMS[decorId];
+      this.hud.logEvent(
+        `Decor placed: ${decorDef?.name ?? decorId} (+${decorDef?.prestigeValue ?? 0} prestige)`,
+        'success',
+      );
+    }
   }
 
   private showFloatingText(text: string, tileX: number, tileY: number, color: string = '#fff'): void {
@@ -1410,6 +1454,36 @@ class CultTycoonGame {
       system.update(this.world, dt);
     }
 
+    // Update MissionSystem (doesn't extend System, called manually)
+    this.missionSystem.update(this.world, dt);
+
+    // Update PrestigeSystem (doesn't extend System, called manually)
+    this.prestigeSystem.update(this.world, dt);
+
+    // Update HeatSystem (different update signature: dt only, no world)
+    this.heatSystem.update(dt);
+
+    // Sync notoriety to heat (notoriety is the passive heat component)
+    this.heatSystem.syncNotoriety(this.cultNotoriety);
+
+    // Check for police raids
+    if (this.heatSystem.isRaidReady()) {
+      const roster = this.world.query([Needs, FollowerAI]);
+      if (roster.length > 0) {
+        const raidResult = this.heatSystem.executeRaid(roster, this.cultWealth);
+        this.cultWealth -= raidResult.fundsConfiscated;
+        for (const arrestedId of raidResult.arrestedEntityIds) {
+          this.world.destroyEntity(arrestedId);
+          this.followerNames.delete(arrestedId);
+        }
+        this.hud.logEvent(
+          `🚨 Police raid! ${raidResult.arrestedEntityIds.length} cultist(s) arrested, ${raidResult.fundsConfiscated}g confiscated.`,
+          'danger',
+        );
+        this.sceneMgr.syncEntities();
+      }
+    }
+
     // Sync GameState resources with main.ts properties
     this.gameInstanceState.resources.funds = this.cultWealth;
     this.gameInstanceState.resources.influence = this.cultInfluence;
@@ -1425,6 +1499,7 @@ class CultTycoonGame {
     if (newDay !== this.currentDay) {
       this.currentDay = newDay;
       this.hud.logEvent(`Day ${newDay} begins.`, 'info');
+      this.heatSystem.advanceDay();
       // Daily influence from faith
       const entities = this.world.query([Needs]);
       let avgFaith = 0;
@@ -1678,6 +1753,28 @@ class CultTycoonGame {
     this.investigatorSystem.reset();
     this.combatSystem.reset();
     this.resourceSystem.reset();
+    this.heatSystem.reset();
+    this.missionSystem = new MissionSystem(
+      (missionId, event, _choices) => {
+        this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
+        const result = this.missionSystem.resolveEventChoice(missionId, 0, this.world);
+        if (result) {
+          this.hud.logEvent(`Mission outcome: ${result.text}`, result.success ? 'success' : 'danger');
+        }
+      },
+      (_missionId, templateId, success, rewards) => {
+        if (rewards.money) this.cultWealth += rewards.money;
+        if (rewards.influence) this.cultInfluence += rewards.influence;
+        if (rewards.heatReduction) this.heatSystem.reduceHeat(rewards.heatReduction);
+        if (rewards.heatGain) this.heatSystem.addHeat(rewards.heatGain, 'mission');
+        this.hud.logEvent(
+          `Mission ${success ? 'succeeded' : 'failed'}: ${templateId}`,
+          success ? 'success' : 'danger',
+        );
+      },
+    );
+    this.prestigeSystem = new PrestigeSystem();
+    this.roomEntities.clear();
     this.gameInstanceState = new GameInstanceState({
       faith: 100,
       funds: this.cultWealth,
@@ -1695,6 +1792,8 @@ class CultTycoonGame {
       },
     );
     this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.schedulingSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem, this.combatSystem];
+    // Note: MissionSystem, PrestigeSystem, and HeatSystem are updated manually
+    // in simulate() because they don't extend the System base class.
 
     // Rebuild map — 64x64 with fog of war
     const worldGen = new WorldGen(12345);
@@ -1703,6 +1802,9 @@ class CultTycoonGame {
     this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
+
+    // Rebuild room graph for new map
+    this.roomGraph = new RoomGraph(this.map);
 
     // Reset fog of war
     this.fogOfWar = new FogOfWar(8);
