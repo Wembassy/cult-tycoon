@@ -81,6 +81,23 @@ export class Renderer {
     this.renderer.render(this.scene, this.isoCamera.camera);
   }
 
+  /**
+   * Set the renderer pixel ratio (for graphics quality scaling).
+   */
+  setPixelRatio(ratio: number): void {
+    this.renderer.setPixelRatio(window.devicePixelRatio * ratio);
+  }
+
+  /**
+   * Set the shadow map size (for graphics quality scaling).
+   */
+  setShadowMapSize(size: number): void {
+    this.dirLight.shadow.mapSize.width = size;
+    this.dirLight.shadow.mapSize.height = size;
+    this.dirLight.shadow.map?.dispose();
+    this.dirLight.shadow.map = null as unknown as THREE.WebGLRenderTarget;
+  }
+
   dispose(): void {
     window.removeEventListener('resize', this.onResize);
     this.renderer.dispose();
