@@ -132,6 +132,7 @@ class CultTycoonGame {
     this.jobSystem = new JobSystem();
     this.aiSystem = new AISystem(this.map, this.pathfinder);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
+    this.pathfindSystem.bindWorld(this.world);
     this.buildingSystem = new BuildingSystem(this.map);
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.factory = new FollowerFactory(42);
@@ -1181,6 +1182,8 @@ class CultTycoonGame {
     const worldGen = new WorldGen(12345);
     this.map = worldGen.generate({ width: 32, height: 32, waterPools: 3, stonePatches: 4, dirtPatches: 5 });
     this.pathfinder = new Pathfinder(this.map);
+    this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
+    this.pathfindSystem.bindWorld(this.world);
     this.sceneMgr.buildTiles();
 
     // Spawn initial followers
