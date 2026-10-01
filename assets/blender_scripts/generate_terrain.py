@@ -8,10 +8,13 @@ Usage:
     blender --background --python generate_terrain.py -- [--output-dir PATH]
 """
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 try:
     import bpy
     import bmesh
     import math
+    from mathutils import Matrix
     import os
     import sys
     import random
@@ -62,7 +65,7 @@ def build_terrain_tile(name, color, height_variation=0.02, seed=42):
             edge_dist = min(i, j, SUBDIVISIONS - i, SUBDIVISIONS - j)
             edge_factor = min(edge_dist / 2.0, 1.0)
             z = BASE_THICKNESS + rng.uniform(-height_variation, height_variation) * edge_factor
-            row.append(bm.verts.new(x, y, z))
+            row.append(bm.verts.new((x, y, z)))
         top_verts.append(row)
 
     # Bottom surface (flat)
@@ -72,7 +75,7 @@ def build_terrain_tile(name, color, height_variation=0.02, seed=42):
         for i in range(SUBDIVISIONS + 1):
             x = -half + i * step
             y = -half + j * step
-            row.append(bm.verts.new(x, y, 0.0))
+            row.append(bm.verts.new((x, y, 0.0)))
         bottom_verts.append(row)
 
     # Top faces

@@ -71,7 +71,7 @@ def export_glb(obj: bpy.types.Object, filepath: str):
         bpy.ops.export_scene.gltf(
             filepath=filepath,
             export_format='GLB',
-            export_draco_mesh_compression_enable=True,
+            export_draco_mesh_compression_enable=False,
             export_draco_mesh_compression_level=6,
             use_selection=True,
             export_apply=True,

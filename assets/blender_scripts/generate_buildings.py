@@ -7,10 +7,13 @@ Usage:
     blender --background --python generate_buildings.py -- [--output-dir PATH]
 """
 
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 try:
     import bpy
     import bmesh
     import math
+    from mathutils import Matrix
     import os
     import sys
     from blender_utils import clear_scene, make_flat_material, add_edge_split, apply_flat_shading, export_glb
@@ -79,10 +82,10 @@ def add_box(bm, size, location):
     sx, sy, sz = [s / 2 for s in size]
     lx, ly, lz = location
     verts = [
-        bm.verts.new(lx-sx, ly-sy, lz-sz), bm.verts.new(lx+sx, ly-sy, lz-sz),
-        bm.verts.new(lx+sx, ly+sy, lz-sz), bm.verts.new(lx-sx, ly+sy, lz-sz),
-        bm.verts.new(lx-sx, ly-sy, lz+sz), bm.verts.new(lx+sx, ly-sy, lz+sz),
-        bm.verts.new(lx+sx, ly+sy, lz+sz), bm.verts.new(lx-sx, ly+sy, lz+sz),
+        bm.verts.new((lx-sx, ly-sy, lz-sz)), bm.verts.new((lx+sx, ly-sy, lz-sz)),
+        bm.verts.new((lx+sx, ly+sy, lz-sz)), bm.verts.new((lx-sx, ly+sy, lz-sz)),
+        bm.verts.new((lx-sx, ly-sy, lz+sz)), bm.verts.new((lx+sx, ly-sy, lz+sz)),
+        bm.verts.new((lx+sx, ly+sy, lz+sz)), bm.verts.new((lx-sx, ly+sy, lz+sz)),
     ]
     faces = [
         (verts[0],verts[1],verts[2],verts[3]), (verts[4],verts[7],verts[6],verts[5]),
@@ -100,16 +103,16 @@ def add_cylinder(bm, radius, depth, location, segments=8):
     for i in range(segments):
         angle = 2 * math.pi * i / segments
         x, y = lx + radius * math.cos(angle), ly + radius * math.sin(angle)
-        bottom_verts.append(bm.verts.new(x, y, lz - depth/2))
-        top_verts.append(bm.verts.new(x, y, lz + depth/2))
+        bottom_verts.append(bm.verts.new((x, y, lz - depth/2)))
+        top_verts.append(bm.verts.new((x, y, lz + depth/2)))
     for i in range(segments):
         ni = (i + 1) % segments
         bm.faces.new([bottom_verts[i], bottom_verts[ni], top_verts[ni], top_verts[i]])
-    top_center = bm.verts.new(lx, ly, lz + depth/2)
+    top_center = bm.verts.new((lx, ly, lz + depth/2))
     for i in range(segments):
         ni = (i + 1) % segments
         bm.faces.new([top_verts[i], top_verts[ni], top_center])
-    bot_center = bm.verts.new(lx, ly, lz - depth/2)
+    bot_center = bm.verts.new((lx, ly, lz - depth/2))
     for i in range(segments):
         ni = (i + 1) % segments
         bm.faces.new([bot_center, bottom_verts[ni], bottom_verts[i]])
