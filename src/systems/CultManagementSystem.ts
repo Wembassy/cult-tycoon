@@ -11,6 +11,7 @@ import { Job } from '../components/Job';
 import { Skills } from '../components/Skills';
 import { Traits } from '../components/Traits';
 import { Health, StatusEffect } from '../components/Health';
+import { QualityTier, TIER_FAITH_COST, ALL_TIERS } from '../components/CultistTier';
 
 export type GameState = 'playing' | 'won' | 'lost';
 
@@ -55,6 +56,7 @@ export interface RecruitmentCandidate {
   interest: number;    // 0-100, how interested they are
   traits: string[];
   estimatedCost: number;
+  tier: QualityTier;
 }
 
 export interface TechUnlock {
@@ -160,17 +162,45 @@ export class CultManagementSystem {
     for (let i = 0; i < count; i++) {
       const baseInterest = 20 + this.stats.notoriety * 0.3 + this.leader.charisma * 5;
       const interest = Math.min(100, baseInterest + this.rng() * 20);
-      const cost = Math.floor(10 + interest * 0.5);
+
+      // Determine tier based on notoriety (proxy for PR level)
+      const tier = this.generateCandidateTier(this.stats.notoriety);
+      const faithCost = TIER_FAITH_COST[tier];
+
       candidates.push({
         id: `cand_${Date.now()}_${i}`,
         name: names[Math.floor(this.rng() * names.length)],
         interest: Math.floor(interest),
         traits: ['zealous', 'hardy', 'scholar'].slice(0, 1 + Math.floor(this.rng() * 2)),
-        estimatedCost: cost,
+        estimatedCost: faithCost,
+        tier,
       });
     }
     this.candidates = candidates;
     return candidates;
+  }
+
+  /**
+   * Generate a quality tier for a candidate based on PR level (notoriety proxy).
+   * Higher notoriety = chance of better quality recruits.
+   */
+  private generateCandidateTier(prLevel: number): QualityTier {
+    const clampedPr = Math.max(0, Math.min(100, prLevel));
+    // Center index shifts from 0 (very_poor) to 5 (incredible) as PR goes 0→100
+    const center = (clampedPr / 100) * (ALL_TIERS.length - 1);
+
+    const weights = ALL_TIERS.map((_, i) => {
+      const distance = Math.abs(i - center);
+      return Math.exp(-(distance * distance) / 2);
+    });
+
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let roll = this.rng() * totalWeight;
+    for (let i = 0; i < weights.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) return ALL_TIERS[i];
+    }
+    return ALL_TIERS[0];
   }
 
   /**
@@ -200,6 +230,7 @@ export class CultManagementSystem {
     world.addComponent(entity, health);
 
     const ai = new FollowerAI(entity);
+    ai.tier = candidate.tier;
     world.addComponent(entity, ai);
 
     const success = this.recruitMember(entity, candidate.estimatedCost);

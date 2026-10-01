@@ -1,4 +1,5 @@
 import type { Component } from '../ecs/Component';
+import type { QualityTier } from './CultistTier';
 
 export type AIState =
   | 'idle'
@@ -14,4 +15,5 @@ export class FollowerAI implements Component {
   path: { x: number; y: number }[] = [];
   pathIndex = 0;
   stateTimer = 0;  // time in current state
+  tier: QualityTier = 'very_poor';
 }

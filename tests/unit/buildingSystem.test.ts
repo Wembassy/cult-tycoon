@@ -188,9 +188,9 @@ describe('BuildingSystem — Room Detection', () => {
 
     const room = bs.detectRoom(4, 4);
     expect(room).not.toBeNull();
-    const success = bs.setRoomType(room!.id, 'dormitory');
+    const success = bs.setRoomType(room!.id, 'bedroom');
     expect(success).toBe(true);
-    expect(bs.getRoom(room!.id)!.type).toBe('dormitory');
+    expect(bs.getRoom(room!.id)!.type).toBe('bedroom');
   });
 
   it('should list all rooms', () => {

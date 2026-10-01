@@ -12,13 +12,14 @@
 import { TileMap } from '../world/TileMap';
 
 export type RoomType =
-  | 'dormitory'
-  | 'mess_hall'
-  | 'prayer_room'
-  | 'research_room'
+  | 'lobby'
+  | 'temple'
   | 'kitchen'
-  | 'ritual_room'
-  | 'storage'
+  | 'canteen'
+  | 'bedroom'
+  | 'bathroom'
+  | 'research_office'
+  | 'recreation_room'
   | 'generic';
 
 export interface RoomNode {
@@ -118,7 +119,7 @@ export class RoomGraph {
   }
 
   /**
-   * Set the type of a room (e.g., dormitory, mess_hall).
+   * Set the type of a room (e.g., bedroom, canteen).
    * Does not require recompute — just updates the property.
    */
   setRoomType(roomId: number, type: RoomType): boolean {

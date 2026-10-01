@@ -249,13 +249,13 @@ describe('RoomGraph — Room Properties', () => {
     const rooms = graph.getAllRooms();
     const id = rooms[0].id;
 
-    const result = graph.setRoomType(id, 'dormitory');
+    const result = graph.setRoomType(id, 'bedroom');
     expect(result).toBe(true);
-    expect(graph.getRoom(id)!.type).toBe('dormitory');
+    expect(graph.getRoom(id)!.type).toBe('bedroom');
   });
 
   it('should return false when setting type of non-existent room', () => {
-    expect(graph.setRoomType(999, 'dormitory')).toBe(false);
+    expect(graph.setRoomType(999, 'bedroom')).toBe(false);
   });
 
   it('should report correct area', () => {

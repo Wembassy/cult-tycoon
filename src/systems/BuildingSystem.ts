@@ -8,7 +8,16 @@ import { TileMap } from '../world/TileMap';
 export type BuildType = 'wall' | 'floor' | 'door' | 'object';
 export type WallVariant = 'straight' | 'corner' | 'tjunction' | 'end';
 export type FloorVariant = 'stone' | 'wood' | 'grass';
-export type RoomType = 'dormitory' | 'mess_hall' | 'prayer_room' | 'research_room' | 'kitchen' | 'ritual_room' | 'storage' | 'generic';
+export type RoomType =
+  | 'lobby'
+  | 'temple'
+  | 'kitchen'
+  | 'canteen'
+  | 'bedroom'
+  | 'bathroom'
+  | 'research_office'
+  | 'recreation_room'
+  | 'generic';
 
 export interface BuildResult {
   success: boolean;

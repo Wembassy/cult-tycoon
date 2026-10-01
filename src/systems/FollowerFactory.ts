@@ -13,6 +13,7 @@ import { Traits, TraitType, ALL_TRAITS } from '../components/Traits';
 import { Health } from '../components/Health';
 import { Inventory } from '../components/Inventory';
 import { FollowerAI } from '../components/FollowerAI';
+import { QualityTier, ALL_TIERS, TIER_SKILL_RANGE } from '../components/CultistTier';
 
 const NAMES = [
   'Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank', 'Grace', 'Henry',
@@ -29,6 +30,7 @@ export interface FollowerSpawnConfig {
   name?: string;
   traits?: TraitType[];
   seed?: number;
+  prLevel?: number; // 0-100, higher = better quality recruits
 }
 
 export interface Follower {
@@ -82,14 +84,18 @@ export class FollowerFactory {
     job.type = 'idle';
     world.addComponent(entity, job);
 
-    // Skills — randomized starting skills
+    // Skills — randomized starting skills based on tier
+    const prLevel = config.prLevel ?? 0;
+    const tier = this.generateTier(prLevel);
+    const [minSkill, maxSkill] = TIER_SKILL_RANGE[tier];
+    const skillRoll = () => minSkill + Math.floor(this.rng() * (maxSkill - minSkill + 1));
     const skills = new Skills(entity);
-    skills.cooking = 1 + Math.floor(this.rng() * 3);
-    skills.research = 1 + Math.floor(this.rng() * 3);
-    skills.construction = 1 + Math.floor(this.rng() * 3);
-    skills.faith = 2 + Math.floor(this.rng() * 4);
-    skills.combat = 1 + Math.floor(this.rng() * 2);
-    skills.social = 1 + Math.floor(this.rng() * 4);
+    skills.cooking = skillRoll();
+    skills.research = skillRoll();
+    skills.construction = skillRoll();
+    skills.faith = skillRoll();
+    skills.combat = skillRoll();
+    skills.social = skillRoll();
     world.addComponent(entity, skills);
 
     // Traits — 1-3 random traits
@@ -117,6 +123,7 @@ export class FollowerFactory {
     // FollowerAI — start idle
     const ai = new FollowerAI(entity);
     ai.state = 'idle';
+    ai.tier = tier;
     world.addComponent(entity, ai);
 
     const name = config.name ?? NAMES[this.nameIdx++ % NAMES.length];
@@ -135,5 +142,35 @@ export class FollowerFactory {
       followers.push(this.spawn(world, { x, y }));
     }
     return followers;
+  }
+
+  /**
+   * Generate a quality tier based on the cult's PR level (0-100).
+   * Higher PR = better quality recruits.
+   * Returns a weighted random tier.
+   */
+  generateTier(prLevel: number): QualityTier {
+    // Weighted distribution: each tier gets a weight based on PR level.
+    // At PR 0: mostly very_poor/poor
+    // At PR 50: mostly average/good
+    // At PR 100: mostly good/very_good/incredible
+    const clampedPr = Math.max(0, Math.min(100, prLevel));
+
+    // Center index shifts from 0 (very_poor) to 5 (incredible) as PR goes 0→100
+    const center = (clampedPr / 100) * (ALL_TIERS.length - 1);
+
+    const weights = ALL_TIERS.map((_, i) => {
+      const distance = Math.abs(i - center);
+      // Gaussian-like falloff
+      return Math.exp(-(distance * distance) / 2);
+    });
+
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let roll = this.rng() * totalWeight;
+    for (let i = 0; i < weights.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) return ALL_TIERS[i];
+    }
+    return ALL_TIERS[0];
   }
 }
