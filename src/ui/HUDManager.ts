@@ -85,6 +85,7 @@ export class HUDManager {
   onOpenTechTree?: () => void;
   onOpenMissions?: () => void;
   onOpenSchedule?: () => void;
+  onOpenRituals?: () => void;
 
   constructor(config: HUDConfig) {
     this.container = config.container;
@@ -150,6 +151,7 @@ export class HUDManager {
       <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
       <button class="hud-top-btn" data-panel="missions" title="Missions">🎯 Missions</button>
       <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
+      <button class="hud-top-btn" data-panel="rituals" title="Rituals (R)">🔮 Rituals</button>
     `;
     this.topBar.querySelectorAll('.hud-top-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -158,6 +160,7 @@ export class HUDManager {
           case 'techtree': this.onOpenTechTree ? this.onOpenTechTree() : this.toggleTechTreePanel(); break;
           case 'missions': this.onOpenMissions ? this.onOpenMissions() : this.toggleMissionPanel(); break;
           case 'schedule': this.onOpenSchedule ? this.onOpenSchedule() : this.toggleSchedulePanel(); break;
+          case 'rituals': this.onOpenRituals?.(); break;
         }
       });
     });
