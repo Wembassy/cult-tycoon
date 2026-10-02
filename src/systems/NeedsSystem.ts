@@ -31,13 +31,13 @@ export interface NeedsConfig {
 }
 
 const DEFAULT_CONFIG: NeedsConfig = {
-  hungerDecay: 0.15,
-  faithDecay: 0.08,
-  funDecay: 0.10,
-  sanityDecay: 0.05,
-  energyDecay: 0.12,
-  bladderDecay: 0.20,
-  hygieneDecay: 0.08,
+  hungerDecay: 0.12,
+  faithDecay: 0.064,
+  funDecay: 0.08,
+  sanityDecay: 0.04,
+  energyDecay: 0.096,
+  bladderDecay: 0.16,
+  hygieneDecay: 0.064,
 };
 
 const TRAIT_MULT: Partial<Record<TraitType, Partial<Record<keyof NeedsConfig, number>>>> = {

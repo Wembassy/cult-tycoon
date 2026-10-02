@@ -1,6 +1,8 @@
 /**
  * SceneManager — Three.js scene graph for Cult Tycoon.
  * Dramatic 3D terrain, detailed follower models, environmental decor.
+ * Enhanced building rendering with 3D walls, floors, doors, room labels,
+ * work stations, and improved follower visuals with tier colors and status.
  */
 
 import * as THREE from 'three';
@@ -8,8 +10,12 @@ import type { World } from '../ecs/World';
 import type { TileMap } from '../world/TileMap';
 import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
+import { FollowerAI } from '../components/FollowerAI';
+import { Needs } from '../components/Needs';
 import type { AssetLoader } from './AssetLoader';
 import { FogOfWar } from '../world/FogOfWar';
+import type { BuildingSystem } from '../systems/BuildingSystem';
+import { TIER_COLORS, getBuildingModel, getWorkStation, type WorkStationConfig } from '../data/BuildingModels';
 
 // Richer terrain colors
 const TERRAIN_COLORS: Record<string, number> = {
@@ -29,10 +35,24 @@ const TERRAIN_HEIGHT: Record<string, number> = {
 
 const TILE_SIZE = 1;
 
+// Display names for room types (used for floating labels)
+const ROOM_TYPE_NAMES: Record<string, string> = {
+  lobby: 'Lobby',
+  temple: 'Temple',
+  kitchen: 'Kitchen',
+  canteen: 'Canteen',
+  bedroom: 'Bedroom',
+  bathroom: 'Bathroom',
+  research_office: 'Research',
+  recreation_room: 'Recreation',
+  generic: 'Room',
+};
+
 export class SceneManager {
   private scene: THREE.Scene;
   private tileGroup: THREE.Group;
   private entityGroup: THREE.Group;
+  private buildingGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
   private tileMeshes: Map<string, THREE.Mesh> = new Map();
   private entityMeshes: Map<number, THREE.Object3D> = new Map();
@@ -44,6 +64,9 @@ export class SceneManager {
   private assets: AssetLoader | null = null;
   private fog: FogOfWar | null = null;
   private lastAnimTime: number = 0;
+  private buildingSystem: BuildingSystem | null = null;
+  private followerNames: Map<number, string> = new Map();
+  private buildingFillLight: THREE.DirectionalLight | null = null;
 
   constructor(scene: THREE.Scene, world: World, map: TileMap, assets?: AssetLoader) {
     this.scene = scene;
@@ -54,13 +77,25 @@ export class SceneManager {
     this.tileGroup.name = 'tiles';
     this.entityGroup = new THREE.Group();
     this.entityGroup.name = 'entities';
+    this.buildingGroup = new THREE.Group();
+    this.buildingGroup.name = 'buildings';
     this.scene.add(this.tileGroup);
     this.scene.add(this.entityGroup);
+    this.scene.add(this.buildingGroup);
+
+    // Fill light to enhance isometric view — softens shadows from the front
+    this.buildingFillLight = new THREE.DirectionalLight(0x99bbdd, 0.35);
+    this.buildingFillLight.position.set(-10, 15, -10);
+    this.scene.add(this.buildingFillLight);
   }
 
   setAssetLoader(assets: AssetLoader): void { this.assets = assets; }
 
   setFog(fog: FogOfWar): void { this.fog = fog; }
+
+  setBuildingSystem(bs: BuildingSystem): void { this.buildingSystem = bs; }
+
+  setFollowerNames(names: Map<number, string>): void { this.followerNames = names; }
 
   /**
    * Update tile appearance based on fog of war state.
@@ -294,6 +329,289 @@ export class SceneManager {
     }
   }
 
+  // ─── Text Sprite Helper ──────────────────────────────────────
+
+  /**
+   * Create a floating text label as a THREE.Sprite using CanvasTexture.
+   */
+  private createTextSprite(text: string, color = '#ffffff', fontSize = 32): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    ctx.font = `bold ${fontSize}px Segoe UI, sans-serif`;
+    const metrics = ctx.measureText(text);
+    canvas.width = Math.ceil(metrics.width + 16);
+    canvas.height = fontSize + 12;
+
+    // Re-set font after canvas resize (context resets)
+    ctx.font = `bold ${fontSize}px Segoe UI, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 1);
+    ctx.fillStyle = color;
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const material = new THREE.SpriteMaterial({ map: texture, depthTest: true, depthWrite: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(canvas.width / 100, canvas.height / 100, 1);
+    return sprite;
+  }
+
+  // ─── Building Rendering ──────────────────────────────────────
+
+  /**
+   * Sync building visuals — walls, floors, doors, room labels, work stations.
+   * Called when BuildingSystem is dirty (after build/demolish).
+   */
+  syncBuildings(bs: BuildingSystem): void {
+    // Clear existing building meshes
+    while (this.buildingGroup.children.length > 0) {
+      const child = this.buildingGroup.children[0];
+      this.buildingGroup.remove(child);
+      this.disposeObject(child);
+    }
+
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+
+    // Render walls as extruded boxes
+    for (const tileKey of bs.wallTiles) {
+      const [x, y] = tileKey.split(',').map(Number);
+      const tile = this.map.getTile(x, y);
+      if (!tile) continue;
+
+      // Determine room type for color
+      const roomId = tile.roomId;
+      const room = roomId !== null ? bs.getRoom(roomId) : null;
+      const model = room ? getBuildingModel(room.type) : getBuildingModel('generic');
+
+      const wallGeom = new THREE.BoxGeometry(0.95, 1.6, 0.95);
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: model.color,
+        flatShading: true,
+        roughness: 0.85,
+      });
+      const wall = new THREE.Mesh(wallGeom, wallMat);
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+      wall.position.set(x + offset.x + 0.5, height + 0.8, y + offset.z + 0.5);
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      this.buildingGroup.add(wall);
+    }
+
+    // Render doors as distinct meshes (shorter, different color, arched top)
+    for (const tileKey of bs.doorTiles) {
+      const [x, y] = tileKey.split(',').map(Number);
+      const tile = this.map.getTile(x, y);
+      if (!tile) continue;
+
+      const doorGeom = new THREE.BoxGeometry(0.8, 1.2, 0.2);
+      const doorMat = new THREE.MeshStandardMaterial({
+        color: 0x5a3a2a,
+        flatShading: true,
+        roughness: 0.7,
+        emissive: 0x2a1a0a,
+        emissiveIntensity: 0.1,
+      });
+      const door = new THREE.Mesh(doorGeom, doorMat);
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+      door.position.set(x + offset.x + 0.5, height + 0.6, y + offset.z + 0.5);
+      door.castShadow = true;
+      door.receiveShadow = true;
+      this.buildingGroup.add(door);
+
+      // Door frame — two small posts
+      const postGeom = new THREE.BoxGeometry(0.1, 1.4, 0.1);
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x4a3020, flatShading: true });
+      const post1 = new THREE.Mesh(postGeom, postMat);
+      post1.position.set(x + offset.x + 0.5 - 0.4, height + 0.7, y + offset.z + 0.5);
+      post1.castShadow = true;
+      this.buildingGroup.add(post1);
+      const post2 = new THREE.Mesh(postGeom, postMat);
+      post2.position.set(x + offset.x + 0.5 + 0.4, height + 0.7, y + offset.z + 0.5);
+      post2.castShadow = true;
+      this.buildingGroup.add(post2);
+    }
+
+    // Render floors as flat planes with slight color variation
+    for (const tileKey of bs.floorTiles) {
+      const [x, y] = tileKey.split(',').map(Number);
+      const tile = this.map.getTile(x, y);
+      if (!tile) continue;
+
+      const roomId = tile.roomId;
+      const room = roomId !== null ? bs.getRoom(roomId) : null;
+      const model = room ? getBuildingModel(room.type) : getBuildingModel('generic');
+
+      const floorGeom = new THREE.PlaneGeometry(0.95, 0.95);
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: model.color,
+        flatShading: true,
+        roughness: 0.6,
+        side: THREE.DoubleSide,
+      });
+      const floor = new THREE.Mesh(floorGeom, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+      floor.position.set(x + offset.x + 0.5, height + 0.02, y + offset.z + 0.5);
+      floor.receiveShadow = true;
+      this.buildingGroup.add(floor);
+    }
+
+    // Render placed objects (beds, altars, etc.)
+    for (const obj of bs.getAllObjects()) {
+      const tile = this.map.getTile(obj.x, obj.y);
+      if (!tile) continue;
+
+      const objMesh = this.createObjectMesh(obj.type);
+      if (objMesh) {
+        const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+        objMesh.position.set(obj.x + offset.x + 0.5, height, obj.y + offset.z + 0.5);
+        this.buildingGroup.add(objMesh);
+      }
+    }
+
+    // Render room labels and work stations
+    for (const room of bs.getAllRooms()) {
+      if (room.tiles.length === 0) continue;
+
+      // Compute room center
+      let cx = 0, cy = 0;
+      for (const t of room.tiles) { cx += t.x; cy += t.y; }
+      cx /= room.tiles.length;
+      cy /= room.tiles.length;
+
+      const height = TERRAIN_HEIGHT['grass'] ?? 0.5;
+      const labelX = cx + offset.x;
+      const labelZ = cy + offset.z;
+
+      // Room label floating above
+      const roomTypeDef = ROOM_TYPE_NAMES[room.type] ?? room.type;
+      const label = this.createTextSprite(roomTypeDef, '#aaccff', 28);
+      label.position.set(labelX, height + 2.5, labelZ);
+      this.buildingGroup.add(label);
+
+      // Work station at room center
+      const station = this.createWorkStation(room.type);
+      if (station) {
+        station.position.set(labelX, height, labelZ);
+        this.buildingGroup.add(station);
+      }
+    }
+  }
+
+  /**
+   * Create a work station mesh for a room type.
+   */
+  private createWorkStation(roomType: string): THREE.Object3D | null {
+    const config = getWorkStation(roomType);
+    if (!config) return null;
+
+    const root = new THREE.Group();
+    const color = config.color;
+
+    if (config.geometry === 'cylinder') {
+      const geom = new THREE.CylinderGeometry(config.dimensions[0], config.dimensions[0], config.dimensions[1], 12);
+      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.y = config.yOffset;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      root.add(mesh);
+
+      // Add a small top detail
+      if (roomType === 'bathroom') {
+        const lidGeom = new THREE.BoxGeometry(config.dimensions[0] * 1.5, 0.05, config.dimensions[2] * 1.5);
+        const lidMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, flatShading: true });
+        const lid = new THREE.Mesh(lidGeom, lidMat);
+        lid.position.y = config.yOffset + config.dimensions[1] / 2;
+        lid.castShadow = true;
+        root.add(lid);
+      }
+    } else if (config.geometry === 'sphere') {
+      const r = config.dimensions[0];
+      const geom = new THREE.SphereGeometry(r, 12, 8);
+      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.6 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.y = config.yOffset + r;
+      mesh.castShadow = true;
+      root.add(mesh);
+    } else if (config.geometry === 'cone') {
+      const geom = new THREE.ConeGeometry(config.dimensions[0], config.dimensions[1], 8);
+      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.y = config.yOffset;
+      mesh.castShadow = true;
+      root.add(mesh);
+    } else {
+      // Box geometry (default)
+      const [w, h, d] = config.dimensions;
+      const geom = new THREE.BoxGeometry(w, h, d);
+      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.y = config.yOffset;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      root.add(mesh);
+
+      // Add details for specific work stations
+      if (roomType === 'temple') {
+        // Add candle on top of altar
+        const candleGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.15, 6);
+        const candleMat = new THREE.MeshStandardMaterial({
+          color: 0xffddaa,
+          emissive: 0xff8833,
+          emissiveIntensity: 0.5,
+        });
+        const candle = new THREE.Mesh(candleGeom, candleMat);
+        candle.position.y = h / 2 + 0.1;
+        root.add(candle);
+
+        // Small point light for altar candle
+        const light = new THREE.PointLight(0xff9944, 0.5, 3, 2);
+        light.position.y = h / 2 + 0.2;
+        root.add(light);
+      } else if (roomType === 'research_office') {
+        // Add book on desk
+        const bookGeom = new THREE.BoxGeometry(0.3, 0.06, 0.2);
+        const bookMat = new THREE.MeshStandardMaterial({ color: 0xaa3333, flatShading: true });
+        const book = new THREE.Mesh(bookGeom, bookMat);
+        book.position.y = h / 2 + 0.03;
+        book.castShadow = true;
+        root.add(book);
+      } else if (roomType === 'kitchen') {
+        // Add pot on stove
+        const potGeom = new THREE.CylinderGeometry(0.15, 0.12, 0.15, 8);
+        const potMat = new THREE.MeshStandardMaterial({ color: 0x555555, flatShading: true, metalness: 0.3 });
+        const pot = new THREE.Mesh(potGeom, potMat);
+        pot.position.y = h / 2 + 0.08;
+        pot.castShadow = true;
+        root.add(pot);
+      } else if (roomType === 'recreation_room') {
+        // Add game piece (small sphere)
+        const pieceGeom = new THREE.SphereGeometry(0.08, 8, 6);
+        const pieceMat = new THREE.MeshStandardMaterial({ color: 0xff6644, flatShading: true });
+        const piece = new THREE.Mesh(pieceGeom, pieceMat);
+        piece.position.y = h / 2 + 0.08;
+        piece.castShadow = true;
+        root.add(piece);
+      }
+    }
+
+    return root;
+  }
+
+  /**
+   * Create an object mesh from a placed object type string.
+   * Delegates to createPlaceholderMesh for geometry, but wraps in a group.
+   */
+  private createObjectMesh(objType: string): THREE.Object3D | null {
+    const mesh = this.createPlaceholderMesh(objType, 0);
+    if (!mesh) return null;
+    return mesh;
+  }
+
   syncEntities(): void {
     const entities = this.world.query([Transform, Renderable]);
     const seen = new Set<number>();
@@ -492,34 +810,78 @@ export class SceneManager {
 
   private createPlaceholderMesh(meshId: string, entityId: number = 0): THREE.Mesh {
     if (meshId.startsWith('follower')) {
-      // Detailed follower: body + robe + head
+      // Enhanced follower: capsule body with tier color + head + status indicator + name label
       const root = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
 
-      // Robe (cone) — colored by entity hash
-      const robeColors = [0x8b4eae, 0x4e8bae, 0xae8b4e, 0x4eae8b, 0xae4e8b, 0x8bae4e];
-      const robeColor = robeColors[entityId % robeColors.length] ?? 0x8b4eae;
-      const robeGeom = new THREE.ConeGeometry(0.5, 1.2, 8);
-      const robeMat = new THREE.MeshStandardMaterial({ color: robeColor, flatShading: true, roughness: 0.8, emissive: robeColor, emissiveIntensity: 0.15 });
-      const robe = new THREE.Mesh(robeGeom, robeMat);
-      robe.position.y = 0.6;
-      robe.castShadow = true;
-      root.add(robe);
+      // Determine tier color from FollowerAI component
+      let tierColor = TIER_COLORS['average'] ?? 0x4a7fc1;
+      let aiState: string = 'idle';
+      if (entityId > 0) {
+        const ai = this.world.getComponent(entityId, FollowerAI);
+        if (ai) {
+          tierColor = TIER_COLORS[ai.tier] ?? TIER_COLORS['average'] ?? 0x4a7fc1;
+          aiState = ai.state;
+        }
+      }
+
+      // Body — capsule geometry colored by tier
+      const bodyGeom = new THREE.CapsuleGeometry(0.28, 0.6, 6, 12);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: tierColor,
+        flatShading: true,
+        roughness: 0.7,
+        emissive: tierColor,
+        emissiveIntensity: 0.1,
+      });
+      const body = new THREE.Mesh(bodyGeom, bodyMat);
+      body.position.y = 0.65;
+      body.castShadow = true;
+      root.add(body);
 
       // Head (sphere)
-      const headGeom = new THREE.SphereGeometry(0.22, 8, 6);
+      const headGeom = new THREE.SphereGeometry(0.2, 10, 8);
       const headMat = new THREE.MeshStandardMaterial({ color: 0xe0c0a0, flatShading: true, roughness: 0.6 });
       const head = new THREE.Mesh(headGeom, headMat);
-      head.position.y = 1.4;
+      head.position.y = 1.25;
       head.castShadow = true;
       root.add(head);
 
-      // Hood (cone, same color as robe)
-      const hoodGeom = new THREE.ConeGeometry(0.28, 0.4, 6);
-      const hoodMat = new THREE.MeshStandardMaterial({ color: robeColor, flatShading: true, roughness: 0.8 });
+      // Hood (cone, same color as body)
+      const hoodGeom = new THREE.ConeGeometry(0.26, 0.35, 6);
+      const hoodMat = new THREE.MeshStandardMaterial({ color: tierColor, flatShading: true, roughness: 0.8 });
       const hood = new THREE.Mesh(hoodGeom, hoodMat);
-      hood.position.y = 1.55;
+      hood.position.y = 1.38;
       hood.castShadow = true;
       root.add(hood);
+
+      // Status indicator — small sphere above head
+      let statusColor = 0x000000;
+      let showStatus = false;
+      if (aiState === 'working') { statusColor = 0x00ff00; showStatus = true; }
+      else if (aiState === 'sleeping') { statusColor = 0x4444ff; showStatus = true; }
+      else if (aiState === 'needs') { statusColor = 0xff0000; showStatus = true; }
+
+      if (showStatus) {
+        const dotGeom = new THREE.SphereGeometry(0.06, 8, 6);
+        const dotMat = new THREE.MeshStandardMaterial({
+          color: statusColor,
+          emissive: statusColor,
+          emissiveIntensity: 0.8,
+        });
+        const dot = new THREE.Mesh(dotGeom, dotMat);
+        dot.position.y = 1.7;
+        root.add(dot);
+      }
+
+      // Name label floating above
+      if (entityId > 0) {
+        const name = this.followerNames.get(entityId);
+        if (name) {
+          const label = this.createTextSprite(name, '#dddddd', 24);
+          label.position.y = 1.95;
+          root.add(label);
+        }
+      }
 
       return root;
     }

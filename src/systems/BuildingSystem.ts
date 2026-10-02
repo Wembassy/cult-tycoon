@@ -55,6 +55,10 @@ export class BuildingSystem {
   private rooms: Map<number, Room> = new Map();
   private nextRoomId = 1;
   private nextObjectId = 1;
+  private _wallTiles: Set<string> = new Set();
+  private _doorTiles: Set<string> = new Set();
+  private _floorTiles: Set<string> = new Set();
+  private _dirty = false;
 
   constructor(map: TileMap) {
     this.map = map;
@@ -68,6 +72,10 @@ export class BuildingSystem {
       return { success: false, message: 'Tile not buildable', tilesAffected: [], cost: 0 };
     }
     this.map.setOccupied(x, y, true);
+    this._wallTiles.add(`${x},${y}`);
+    this._floorTiles.delete(`${x},${y}`);
+    this._doorTiles.delete(`${x},${y}`);
+    this._dirty = true;
     return { success: true, message: 'Wall placed', tilesAffected: [{ x, y }], cost: COSTS.wall };
   }
 
@@ -82,7 +90,8 @@ export class BuildingSystem {
     if (tile.occupied) {
       return { success: false, message: 'Tile occupied', tilesAffected: [], cost: 0 };
     }
-    // Floor doesn't block the tile but marks it as having a floor
+    this._floorTiles.add(`${x},${y}`);
+    this._dirty = true;
     return { success: true, message: 'Floor placed', tilesAffected: [{ x, y }], cost: COSTS.floor };
   }
 
@@ -100,6 +109,9 @@ export class BuildingSystem {
       return { success: false, message: 'Door requires adjacent wall', tilesAffected: [], cost: 0 };
     }
     this.map.setOccupied(x, y, true);
+    this._doorTiles.add(`${x},${y}`);
+    this._wallTiles.delete(`${x},${y}`);
+    this._dirty = true;
     return { success: true, message: 'Door placed', tilesAffected: [{ x, y }], cost: COSTS.door };
   }
 
@@ -114,6 +126,7 @@ export class BuildingSystem {
     const obj: PlacedObject = { id, objectId, x, y, rotation };
     this.objects.set(id, obj);
     this.map.setOccupied(x, y, true);
+    this._dirty = true;
     return { success: true, message: 'Object placed', tilesAffected: [{ x, y }], cost: COSTS.object };
   }
 
@@ -137,7 +150,11 @@ export class BuildingSystem {
       }
     }
 
+    this._wallTiles.delete(`${x},${y}`);
+    this._doorTiles.delete(`${x},${y}`);
+    this._floorTiles.delete(`${x},${y}`);
     this.map.setOccupied(x, y, false);
+    this._dirty = true;
 
     // Clear room assignment if tile was part of a room
     if (tile.roomId !== null) {
@@ -323,6 +340,21 @@ export class BuildingSystem {
   getAllObjects(): PlacedObject[] {
     return Array.from(this.objects.values());
   }
+
+  /** Set of "x,y" strings for wall tiles. */
+  get wallTiles(): Set<string> { return this._wallTiles; }
+
+  /** Set of "x,y" strings for door tiles. */
+  get doorTiles(): Set<string> { return this._doorTiles; }
+
+  /** Set of "x,y" strings for floor tiles. */
+  get floorTiles(): Set<string> { return this._floorTiles; }
+
+  /** True when building state has changed since last sync. */
+  get isDirty(): boolean { return this._dirty; }
+
+  /** Clear the dirty flag after rendering sync. */
+  clearDirty(): void { this._dirty = false; }
 
   /**
    * Refresh a room after tile changes (re-check enclosure)

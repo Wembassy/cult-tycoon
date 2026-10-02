@@ -100,7 +100,7 @@ class CultTycoonGame {
   private running = true;
 
   // Game state
-  private cultWealth = 100;
+  private cultWealth = 200;
   private cultInfluence = 50;
   private cultNotoriety = 5;
   private currentHour = 6;
@@ -328,9 +328,11 @@ class CultTycoonGame {
     // Room graph for room detection (used by prestige system)
     this.roomGraph = new RoomGraph(this.map);
 
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.schedulingSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.resourceSystem];
-    // Note: MissionSystem, PrestigeSystem, and HeatSystem are updated manually
+    this.systems = [this.needsSystem, this.schedulingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
+    // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
     // in simulate() because they don't extend the System base class.
+    // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
+    //        Ritual → Investigator → Combat → Fog, then Prestige → Heat → Mission
 
     // Input
     this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
@@ -1284,7 +1286,7 @@ class CultTycoonGame {
       faith: pop > 0 ? totalFaith / pop : 100,
       morale: pop > 0 ? (totalFun + totalSanity) / (2 * pop) : 100,
       population: pop,
-      maxPopulation: 10 + maxPopBonus,
+      maxPopulation: 8 + maxPopBonus,
     };
     this.hud.updateResourceBar(data);
 
@@ -1454,17 +1456,20 @@ class CultTycoonGame {
       system.update(this.world, dt);
     }
 
-    // Update MissionSystem (doesn't extend System, called manually)
-    this.missionSystem.update(this.world, dt);
-
     // Update PrestigeSystem (doesn't extend System, called manually)
+    // Runs after ResourceSystem in the loop (position 7)
     this.prestigeSystem.update(this.world, dt);
 
     // Update HeatSystem (different update signature: dt only, no world)
+    // Runs after CultManagementSystem would run (position 9)
     this.heatSystem.update(dt);
 
     // Sync notoriety to heat (notoriety is the passive heat component)
     this.heatSystem.syncNotoriety(this.cultNotoriety);
+
+    // Update MissionSystem (doesn't extend System, called manually)
+    // Runs after HeatSystem (position 10)
+    this.missionSystem.update(this.world, dt);
 
     // Check for police raids
     if (this.heatSystem.isRaidReady()) {
@@ -1739,7 +1744,7 @@ class CultTycoonGame {
     // Reset game state
     this.gameEnded = false;
     this._popZeroTimer = 0;
-    this.cultWealth = 100;
+    this.cultWealth = 200;
     this.cultInfluence = 50;
     this.cultNotoriety = 5;
     this.currentHour = 6;
@@ -1791,9 +1796,11 @@ class CultTycoonGame {
         this.hud.logEvent(event.message, logType as any);
       },
     );
-    this.systems = [this.needsSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.fogSystem, this.schedulingSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.resourceSystem, this.combatSystem];
-    // Note: MissionSystem, PrestigeSystem, and HeatSystem are updated manually
+    this.systems = [this.needsSystem, this.schedulingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
+    // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
     // in simulate() because they don't extend the System base class.
+    // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
+    //        Ritual → Investigator → Combat → Fog, then Prestige → Heat → Mission
 
     // Rebuild map — 64x64 with fog of war
     const worldGen = new WorldGen(12345);
@@ -2073,7 +2080,7 @@ class CultTycoonGame {
       faith: 0,
       morale: 0,
       population: this.world.query([Needs]).length,
-      maxPopulation: 10 + this.techTree.getEffectBonus('maxPopulationPlus'),
+      maxPopulation: 8 + this.techTree.getEffectBonus('maxPopulationPlus'),
       leaderName: 'The Founder',
       leaderTitle: 'Cult Leader',
       day: this.currentDay,

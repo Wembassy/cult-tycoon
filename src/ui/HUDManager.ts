@@ -312,23 +312,30 @@ export class HUDManager {
   }
 
   /**
+   * Generate HTML for an icon with fallback emoji if the image fails to load.
+   */
+  private iconHtml(icon: string, fallback: string, className: string = 'hud-stat-icon'): string {
+    return `<img src="/assets/ui/${icon}.png" class="${className}" alt="${fallback}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';" /><span style="display:none;font-size:14px;line-height:20px;">${fallback}</span>`;
+  }
+
+  /**
    * Update the resource bar with current cult stats.
    * Uses Synty SciFi sprite icons and bar sprites.
    */
   updateResourceBar(data: ResourceBarData): void {
     if (!this.resourceBar) return;
     const stats = [
-      { label: 'Influence', value: Math.floor(data.influence), icon: 'scifi_icon_faith', barColor: '#a855f7', max: null },
-      { label: 'Wealth', value: Math.floor(data.wealth), icon: 'icon_wealth', barColor: '#fbbf24', max: null },
-      { label: 'Notoriety', value: Math.floor(data.notoriety), icon: 'scifi_icon_shield', barColor: '#ef4444', max: 100 },
-      { label: 'Faith', value: Math.floor(data.faith), icon: 'scifi_icon_health', barColor: '#3b82f6', max: 100 },
-      { label: 'Morale', value: Math.floor(data.morale), icon: 'scifi_icon_morale', barColor: '#10b981', max: 100 },
-      { label: 'Pop', value: `${data.population}/${data.maxPopulation}`, icon: 'scifi_icon_hunger', barColor: '#f97316', max: null },
+      { label: 'Influence', value: Math.floor(data.influence), icon: 'scifi_icon_faith', fallback: '🔮', barColor: '#a855f7', max: null },
+      { label: 'Wealth', value: Math.floor(data.wealth), icon: 'icon_wealth', fallback: '💰', barColor: '#fbbf24', max: null },
+      { label: 'Notoriety', value: Math.floor(data.notoriety), icon: 'scifi_icon_shield', fallback: '🛡️', barColor: '#ef4444', max: 100 },
+      { label: 'Faith', value: Math.floor(data.faith), icon: 'scifi_icon_health', fallback: '❤️', barColor: '#3b82f6', max: 100 },
+      { label: 'Morale', value: Math.floor(data.morale), icon: 'scifi_icon_morale', fallback: '😊', barColor: '#10b981', max: 100 },
+      { label: 'Pop', value: `${data.population}/${data.maxPopulation}`, icon: 'scifi_icon_hunger', fallback: '👥', barColor: '#f97316', max: null },
     ];
     this.resourceBar.innerHTML = stats.map(s => {
       return `
         <div class="hud-stat" title="${s.label}">
-          <img src="/assets/ui/${s.icon}.png" class="hud-stat-icon" alt="${s.label}" />
+          ${this.iconHtml(s.icon, s.fallback)}
           <span class="hud-stat-value" style="color:${s.barColor};">${s.label}: ${s.value}${s.max !== null ? '/100' : ''}</span>
           ${s.max !== null ? `<div class="hud-stat-bar"><div class="hud-stat-bar-fill" style="width:${Math.min(100, typeof s.value === 'number' ? s.value : 0)}%;background:${s.barColor};"></div></div>` : ''}
         </div>
@@ -412,21 +419,21 @@ export class HUDManager {
   showInspector(data: InspectorData): void {
     if (!this.inspector) return;
     this.inspector.style.display = 'block';
-    const needIcons: Record<string, string> = {
-      hunger: 'scifi_icon_hunger',
-      faith: 'scifi_icon_faith',
-      fun: 'scifi_icon_morale',
-      sanity: 'scifi_icon_health',
-      energy: 'scifi_icon_energy',
-      bladder: 'scifi_icon_thirst',
-      hygiene: 'scifi_icon_clean',
+    const needIcons: Record<string, { icon: string; fallback: string }> = {
+      hunger: { icon: 'scifi_icon_hunger', fallback: '🍖' },
+      faith: { icon: 'scifi_icon_faith', fallback: '🔮' },
+      fun: { icon: 'scifi_icon_morale', fallback: '🎮' },
+      sanity: { icon: 'scifi_icon_health', fallback: '🧠' },
+      energy: { icon: 'scifi_icon_energy', fallback: '⚡' },
+      bladder: { icon: 'scifi_icon_thirst', fallback: '🚽' },
+      hygiene: { icon: 'scifi_icon_clean', fallback: '🧼' },
     };
     const needsHtml = Object.entries(data.needs).map(([key, val]) => {
-      const icon = needIcons[key] || 'scifi_icon_health';
+      const { icon, fallback } = needIcons[key] || { icon: 'scifi_icon_health', fallback: '❓' };
       const pct = Math.min(100, Math.floor(val));
       return `
         <div class="hud-inspector-need-row">
-          <img src="/assets/ui/${icon}.png" class="hud-need-icon" alt="${key}" />
+          ${this.iconHtml(icon, fallback, 'hud-need-icon')}
           <span class="hud-need-label">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
           <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${pct}%;"></div></div>
           <span class="hud-need-value">${Math.floor(val)}/100</span>
@@ -437,7 +444,7 @@ export class HUDManager {
       <div class="hud-inspector-name">${data.name}</div>
       <div class="hud-inspector-role">${data.role}</div>
       <div class="hud-inspector-health">
-        <img src="/assets/ui/scifi_icon_health.png" class="hud-need-icon" alt="HP" />
+        ${this.iconHtml('scifi_icon_health', '❤️', 'hud-need-icon')}
         <span>HP: ${data.health}/100</span>
         <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${data.health}%;background:#ef4444;"></div></div>
       </div>

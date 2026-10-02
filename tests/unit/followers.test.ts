@@ -97,8 +97,8 @@ describe('NeedsSystem', () => {
     needs.update(world, 10);
 
     // With 1.3x multiplier, hunger should decay more than default
-    const defaultDecay = 0.15 * 10;
-    const lazyDecay = 0.15 * 1.3 * 10;
+    const defaultDecay = 0.12 * 10;
+    const lazyDecay = 0.12 * 1.3 * 10;
     expect(startHunger - n.hunger).toBeCloseTo(lazyDecay, 1);
     expect(startHunger - n.hunger).toBeGreaterThan(defaultDecay);
   });

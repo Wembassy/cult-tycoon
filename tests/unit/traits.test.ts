@@ -258,8 +258,8 @@ describe('Traits in NeedsSystem', () => {
 
     needs.update(world, 10);
 
-    // Default hunger decay: 0.15 * 0.75 (hardy) * 10 = 1.125
-    const expectedDecay = 0.15 * 0.75 * 10;
+    // Default hunger decay: 0.12 * 0.75 (hardy) * 10 = 0.9
+    const expectedDecay = 0.12 * 0.75 * 10;
     expect(startHunger - n.hunger).toBeCloseTo(expectedDecay, 1);
   });
 
@@ -270,8 +270,8 @@ describe('Traits in NeedsSystem', () => {
 
     needs.update(world, 10);
 
-    // Default faith decay: 0.08 * 0.7 (devoted) * 10 = 0.56
-    const expectedDecay = 0.08 * 0.7 * 10;
+    // Default faith decay: 0.064 * 0.7 (devoted) * 10 = 0.448
+    const expectedDecay = 0.064 * 0.7 * 10;
     expect(startFaith - n.faith).toBeCloseTo(expectedDecay, 1);
   });
 });

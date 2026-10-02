@@ -56,7 +56,7 @@ const DEFAULT_CONFIG: ResourceConfig = {
   haulMaterialsRate: 0.15,
   foodConsumptionPerFollower: 0.08,
   fundsUpkeepPerFollower: 0.02,
-  notorietyGrowthRate: 0.002,
+  notorietyGrowthRate: 0.0014,
   shortageThresholds: {
     food: 10,
     funds: 10,
