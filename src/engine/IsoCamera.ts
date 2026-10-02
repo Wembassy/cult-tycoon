@@ -50,6 +50,7 @@ export class IsoCamera {
 
   // Map offset for tile coordinate conversion (world position of tile (0,0) corner)
   private mapOffset = { x: 0, z: 0 };
+  private mapBounds: { halfWidth: number; halfHeight: number; padding: number } | null = null;
 
   // Mouse controls
   private isMousePanning = false;
@@ -153,18 +154,34 @@ export class IsoCamera {
   }
 
   /**
+   * Clamp camera panning to the playable map so the player cannot lose the compound off-screen.
+   */
+  setMapBounds(width: number, height: number, padding: number = 6): void {
+    this.mapBounds = {
+      halfWidth: Math.max(0, width / 2),
+      halfHeight: Math.max(0, height / 2),
+      padding: Math.max(0, padding),
+    };
+    this.clampTargetOffset();
+  }
+
+  /**
    * Screen-aligned pan. dx = right on screen, dy = up on screen.
    * Uses camera orientation to convert to world-space ground movement.
    */
   panScreen(dx: number, dy: number): void {
     this.targetOffset.addScaledVector(this.groundRight, dx);
     this.targetOffset.addScaledVector(this.groundForward, dy);
+    this.clampTargetOffset();
   }
 
   /** Legacy pan alias — now screen-aligned (dx=right, dz=up on screen). */
   pan(dx: number, dz: number): void { this.panScreen(dx, dz); }
 
-  setTarget(x: number, z: number): void { this.targetOffset.set(x, 0, z); }
+  setTarget(x: number, z: number): void {
+    this.targetOffset.set(x, 0, z);
+    this.clampTargetOffset();
+  }
   getOffset(): THREE.Vector3 { return this.currentOffset.clone(); }
 
   /**
@@ -266,11 +283,13 @@ export class IsoCamera {
    */
   private processKeyboardPan(dt: number): void {
     let dx = 0, dy = 0;
-    const speed = PAN_SPEED * dt;
-    if (this.keysPressed.has('w') || this.keysPressed.has('W')) dy += speed;
-    if (this.keysPressed.has('s') || this.keysPressed.has('S')) dy -= speed;
-    if (this.keysPressed.has('a') || this.keysPressed.has('A')) dx -= speed;
-    if (this.keysPressed.has('d') || this.keysPressed.has('D')) dx += speed;
+    // Keep movement feeling similar at every zoom level.
+    const zoomScale = THREE.MathUtils.clamp(50 / Math.max(this.currentZoom, 1), 0.45, 2.2);
+    const speed = PAN_SPEED * dt * zoomScale;
+    if (this.keysPressed.has('w') || this.keysPressed.has('W') || this.keysPressed.has('ArrowUp')) dy += speed;
+    if (this.keysPressed.has('s') || this.keysPressed.has('S') || this.keysPressed.has('ArrowDown')) dy -= speed;
+    if (this.keysPressed.has('a') || this.keysPressed.has('A') || this.keysPressed.has('ArrowLeft')) dx -= speed;
+    if (this.keysPressed.has('d') || this.keysPressed.has('D') || this.keysPressed.has('ArrowRight')) dx += speed;
     if (dx !== 0 || dy !== 0) this.panScreen(dx, dy);
   }
 
@@ -278,6 +297,9 @@ export class IsoCamera {
     this.keysPressed.add(e.key);
     if (e.key === 'q' || e.key === 'Q') this.rotateCounterClockwise();
     else if (e.key === 'e' || e.key === 'E') this.rotateClockwise();
+    else if (e.key === 'Home') this.setTarget(0, 0);
+    else if (e.key === '+' || e.key === '=') this.setZoom(this.targetZoom + 8);
+    else if (e.key === '-' || e.key === '_') this.setZoom(this.targetZoom - 8);
   }
 
   private onKeyUp(e: KeyboardEvent): void { this.keysPressed.delete(e.key); }
@@ -323,6 +345,7 @@ export class IsoCamera {
       const worldDy = -deltaY / this.currentZoom * MOUSE_PAN_SPEED;
       this.targetOffset.addScaledVector(this.groundRight, worldDx);
       this.targetOffset.addScaledVector(this.groundForward, worldDy);
+      this.clampTargetOffset();
     }
 
     if (this.isMouseRotating) {
@@ -364,6 +387,15 @@ export class IsoCamera {
         this.onRightClickWithoutDrag?.();
       }
     }
+  }
+
+  private clampTargetOffset(): void {
+    if (!this.mapBounds) return;
+    const { halfWidth, halfHeight, padding } = this.mapBounds;
+    const maxX = Math.max(0, halfWidth + padding);
+    const maxZ = Math.max(0, halfHeight + padding);
+    this.targetOffset.x = THREE.MathUtils.clamp(this.targetOffset.x, -maxX, maxX);
+    this.targetOffset.z = THREE.MathUtils.clamp(this.targetOffset.z, -maxZ, maxZ);
   }
 
   private onBlur(): void {
