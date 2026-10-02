@@ -164,6 +164,7 @@ class CultTycoonGame {
 
     // Set map offset for raycaster-based tile picking
     this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
+    this.renderer.camera.setMapBounds(this.map.width, this.map.height);
 
     // Fog of war — reveal starting area, 10-tile radius
     this.fogOfWar = new FogOfWar(8);
@@ -392,6 +393,7 @@ class CultTycoonGame {
     this.hud.onOpenTechTree = () => this.openTechTreePanel();
     this.hud.onOpenMissions = () => this.openMissionPanel();
     this.hud.onOpenSchedule = () => this.openSchedulePanel();
+    this.hud.onOpenRituals = () => this.showRitualMenu();
     this.hud.onTechTreeUnlock = (techId) => this.unlockTechFromPanel(techId);
     this.hud.onSendMission = (templateId, cultistIds) => this.startMissionFromPanel(templateId, cultistIds);
     this.hud.onAssignShift = (entityId, shift) => {
@@ -790,6 +792,9 @@ class CultTycoonGame {
         case 'm':
           this.openMissionPanel();
           break;
+        case '?':
+          this.showControlsHelp();
+          break;
         case ' ': // Space
           e.preventDefault();
           this.togglePause();
@@ -894,9 +899,11 @@ class CultTycoonGame {
     if (categoryId === 'demolish') {
       this.input.setMode('demolish');
       this.selectedBuildItem = null;
-      this.hud.setBuildItems([], categoryId);
-      this.hud.hideBuildItems();
-      this.hud.logEvent('Demolish mode: click to remove.', 'info');
+      this.hud.setBuildItems([
+        { id: 'demolish_tool', label: 'Demolish', icon: '❌', cost: 0, category: 'demolish' },
+      ], categoryId);
+      this.hud.highlightBuildItem('demolish_tool');
+      this.hud.logEvent('Demolish mode: click a built tile or object to remove it.', 'info');
       return;
     }
 
@@ -937,6 +944,23 @@ class CultTycoonGame {
     } else {
       this.setTimeMode('pause');
     }
+  }
+
+  private showControlsHelp(): void {
+    this.dialog.show({
+      title: 'Controls',
+      icon: '⌨️',
+      body: [
+        '<p><b>Move camera:</b> WASD or Arrow Keys</p>',
+        '<p><b>Zoom:</b> Mouse Wheel or +/-</p>',
+        '<p><b>Rotate:</b> Q / E or right-drag</p>',
+        '<p><b>Pan:</b> Middle-mouse drag</p>',
+        '<p><b>Recenter:</b> Home</p>',
+        '<p><b>Build:</b> B · <b>Demolish:</b> X · <b>Cancel:</b> Right-click / Esc</p>',
+        '<p><b>Tech:</b> T · <b>Missions:</b> M · <b>Rituals:</b> R · <b>Pause:</b> Space</p>',
+      ].join(''),
+      buttons: [{ label: 'Got it', style: 'primary' }],
+    });
   }
 
   private openMissionPanel(): void {
@@ -1911,6 +1935,7 @@ class CultTycoonGame {
     this.map = worldGen.generate({ width: 64, height: 64, waterPools: 8, stonePatches: 10, dirtPatches: 12 });
     this.pathfinder = new Pathfinder(this.map);
     this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
+    this.renderer.camera.setMapBounds(this.map.width, this.map.height);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
 
