@@ -1144,6 +1144,7 @@ class CultTycoonGame {
     } else if (this.input.getMode() === 'demolish') {
       const result = this.buildingSystem.demolish(x, y);
       if (result.success) {
+        this.jobSystem.cancelJob(`station:${x}:${y}`);
         this.hud.logEvent(`Demolished at (${x}, ${y})`, 'info');
         this.audio.play('destroy');
         this.sceneMgr.buildTiles();
@@ -1215,6 +1216,11 @@ class CultTycoonGame {
         this.roomGraph.invalidate();
       }
 
+      // Functional objects create persistent workstation jobs.
+      if (objDef) {
+        this.registerWorkstationJob(x, y, item);
+      }
+
       // Handle decor placement — attach to room's Prestige component
       if (item.startsWith('decor_')) {
         const decorId = item.replace('decor_', '');
@@ -1225,6 +1231,57 @@ class CultTycoonGame {
     } else {
       this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
     }
+  }
+
+  private registerWorkstationJob(x: number, y: number, objectId: string): void {
+    const stationTypes: Record<string, { type: 'cook' | 'research' | 'pray' | 'haul'; skill: keyof Skills; priority: number }> = {
+      cookpot: { type: 'cook', skill: 'cooking', priority: 7 },
+      cauldron: { type: 'cook', skill: 'cooking', priority: 8 },
+      garden_plot: { type: 'cook', skill: 'cooking', priority: 5 },
+      farm_plot: { type: 'cook', skill: 'cooking', priority: 6 },
+      research_desk: { type: 'research', skill: 'research', priority: 7 },
+      library_shelf: { type: 'research', skill: 'research', priority: 8 },
+      altar: { type: 'pray', skill: 'faith', priority: 7 },
+      sacrificial_altar: { type: 'pray', skill: 'faith', priority: 9 },
+      offering_bowl: { type: 'pray', skill: 'faith', priority: 5 },
+      incense_burner: { type: 'pray', skill: 'faith', priority: 5 },
+      prayer_beads: { type: 'pray', skill: 'faith', priority: 5 },
+      storage_box: { type: 'haul', skill: 'construction', priority: 3 },
+      warehouse: { type: 'haul', skill: 'construction', priority: 4 },
+    };
+    const station = stationTypes[objectId];
+    if (!station) return;
+
+    const targetTile = this.findAdjacentWorkTile(x, y);
+    if (!targetTile) {
+      this.hud.logEvent(`No accessible work tile beside ${objectId}; station will remain idle.`, 'warning');
+      return;
+    }
+
+    this.jobSystem.cancelJob(`station:${x}:${y}`);
+    this.jobSystem.postJob({
+      id: `station:${x}:${y}`,
+      type: station.type,
+      targetTile,
+      priority: station.priority,
+      duration: 100000,
+      requiredSkill: station.skill,
+      minSkillLevel: 1,
+    });
+    this.hud.logEvent(`Workstation ready: ${objectId.replaceAll('_', ' ')}`, 'success');
+  }
+
+  private findAdjacentWorkTile(x: number, y: number): { x: number; y: number } | null {
+    const candidates = [
+      { x: x + 1, y },
+      { x: x - 1, y },
+      { x, y: y + 1 },
+      { x, y: y - 1 },
+    ];
+    return candidates.find(tile => {
+      const mapTile = this.map.getTile(tile.x, tile.y);
+      return !!mapTile && mapTile.buildable && !mapTile.occupied;
+    }) ?? null;
   }
 
   private onTileHover(x: number, y: number): void {
@@ -1560,9 +1617,19 @@ class CultTycoonGame {
   }
 
   private simulate(dt: number): void {
+    // ResourceSystem owns the continuous economy. Seed it from player-facing state
+    // before simulation, then read its results back immediately afterward.
+    this.gameInstanceState.resources.funds = this.cultWealth;
+    this.gameInstanceState.resources.influence = this.cultInfluence;
+    this.gameInstanceState.resources.notoriety = this.cultNotoriety;
+
     for (const system of this.systems) {
       system.update(this.world, dt);
     }
+
+    this.cultWealth = this.gameInstanceState.resources.funds;
+    this.cultInfluence = this.gameInstanceState.resources.influence;
+    this.cultNotoriety = this.gameInstanceState.resources.notoriety;
 
     // Update PrestigeSystem (doesn't extend System, called manually)
     // Runs after ResourceSystem in the loop (position 7)
@@ -1597,11 +1664,6 @@ class CultTycoonGame {
       }
     }
 
-    // Sync GameState resources with main.ts properties
-    this.gameInstanceState.resources.funds = this.cultWealth;
-    this.gameInstanceState.resources.influence = this.cultInfluence;
-    this.gameInstanceState.resources.notoriety = this.cultNotoriety;
-
     // Time progression: 1 game day = 30 real seconds at 1x speed
     // 30 ticks/sec * 30 sec = 900 ticks per day
     this.tickCount += dt;
@@ -1625,9 +1687,6 @@ class CultTycoonGame {
         this.cultInfluence += dailyInfluence;
       }
     }
-
-    // Sync back notoriety from ResourceSystem (it grows it slowly)
-    this.cultNotoriety = this.gameInstanceState.resources.notoriety;
 
     // Update HUD every 30 ticks (~1 second)
     const tickFloor = Math.floor(this.tickCount);
