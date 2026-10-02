@@ -65,6 +65,7 @@ export class HUDManager {
   private eventLog: HTMLElement | null = null;
   private timeControls: HTMLElement | null = null;
   private topBar: HTMLElement | null = null;
+  private objectiveStrip: HTMLElement | null = null;
   private techTreePanel: TechTreePanel | null = null;
   private missionPanel: MissionPanel | null = null;
   private schedulePanel: SchedulePanel | null = null;
@@ -81,6 +82,9 @@ export class HUDManager {
   onSendMission?: (templateId: string, cultistIds: number[]) => void;
   onAssignShift?: (entityId: number, shift: 'morning' | 'afternoon' | 'night') => void;
   onAutoAssignShifts?: () => void;
+  onOpenTechTree?: () => void;
+  onOpenMissions?: () => void;
+  onOpenSchedule?: () => void;
 
   constructor(config: HUDConfig) {
     this.container = config.container;
@@ -99,9 +103,11 @@ export class HUDManager {
     this.eventLog = this.createElement('div', 'hud-event-log');
     this.timeControls = this.createElement('div', 'hud-time-controls');
     this.topBar = this.createElement('div', 'hud-top-bar');
+    this.objectiveStrip = this.createElement('div', 'hud-objective-strip');
 
     this.container.appendChild(this.resourceBar);
     this.container.appendChild(this.topBar);
+    this.container.appendChild(this.objectiveStrip);
     this.container.appendChild(this.buildItems);
     this.container.appendChild(this.buildBar);
     this.container.appendChild(this.buildPanel);
@@ -134,6 +140,8 @@ export class HUDManager {
 
     this.setupTopBar();
     this.injectTopBarStyles();
+    this.setObjective('Establish the compound', 'Build basic shelter, inspect your followers, then choose your first research or mission.');
+    this.renderTimeControls();
   }
 
   private setupTopBar(): void {
@@ -147,9 +155,9 @@ export class HUDManager {
       btn.addEventListener('click', (e) => {
         const panel = (e.currentTarget as HTMLElement).dataset.panel;
         switch (panel) {
-          case 'techtree': this.toggleTechTreePanel(); break;
-          case 'missions': this.toggleMissionPanel(); break;
-          case 'schedule': this.toggleSchedulePanel(); break;
+          case 'techtree': this.onOpenTechTree ? this.onOpenTechTree() : this.toggleTechTreePanel(); break;
+          case 'missions': this.onOpenMissions ? this.onOpenMissions() : this.toggleMissionPanel(); break;
+          case 'schedule': this.onOpenSchedule ? this.onOpenSchedule() : this.toggleSchedulePanel(); break;
         }
       });
     });
@@ -204,6 +212,36 @@ export class HUDManager {
         border-color: rgba(168, 85, 247, 0.5);
         color: #fff;
         box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+      }
+
+      .hud-objective-strip {
+        position: absolute;
+        top: 62px;
+        left: 50%;
+        transform: translateX(-50%);
+        min-width: 340px;
+        max-width: min(680px, 70vw);
+        padding: 8px 14px;
+        background: linear-gradient(180deg, rgba(18,24,38,0.94), rgba(10,14,24,0.96));
+        border: 1px solid rgba(100,150,220,0.35);
+        border-radius: 7px;
+        box-shadow: 0 2px 14px rgba(0,0,0,0.45);
+        text-align: center;
+        pointer-events: none;
+        z-index: 8;
+      }
+      .hud-objective-title {
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #dbeafe;
+      }
+      .hud-objective-detail {
+        margin-top: 2px;
+        font-size: 11px;
+        color: #94a3b8;
+        line-height: 1.35;
       }
     `;
     document.head.appendChild(style);
@@ -494,26 +532,46 @@ export class HUDManager {
   }
 
   /**
-   * Set time control mode
+   * Set time control mode without replacing the clock.
    */
   setTimeMode(mode: TimeControlMode): void {
     this._timeMode = mode;
-    if (!this.timeControls) return;
-    const modes: TimeControlMode[] = ['pause', 'play', 'fast'];
-    this.timeControls.innerHTML = modes.map(m =>
-      `<button class="hud-time-btn ${m === mode ? 'active' : ''}" data-mode="${m}">${m}</button>`
-    ).join('');
+    this.renderTimeControls();
   }
 
   /**
-   * Update the time display
+   * Update the clock without replacing the controls.
    */
   updateTime(hour: number, day: number): void {
     this._currentTime = hour;
     this._currentDay = day;
+    this.renderTimeControls();
+  }
+
+  private renderTimeControls(): void {
     if (!this.timeControls) return;
-    const timeStr = `Day ${day}, ${Math.floor(hour).toString().padStart(2, '0')}:00`;
-    this.timeControls.innerHTML = `<span class="hud-time">${timeStr}</span>`;
+    const timeStr = `Day ${this._currentDay} · ${Math.floor(this._currentTime).toString().padStart(2, '0')}:00`;
+    const buttons: { mode: TimeControlMode; label: string; title: string }[] = [
+      { mode: 'pause', label: '⏸', title: 'Pause (Space)' },
+      { mode: 'play', label: '▶', title: 'Normal speed (1)' },
+      { mode: 'fast', label: '▶▶', title: 'Fast speed (2)' },
+    ];
+    this.timeControls.innerHTML =
+      `<span class="hud-time">${timeStr}</span>` +
+      buttons.map(btn =>
+        `<button class="hud-time-btn ${btn.mode === this._timeMode ? 'active' : ''}" data-mode="${btn.mode}" title="${btn.title}">${btn.label}</button>`
+      ).join('');
+  }
+
+  setObjective(title: string, detail: string): void {
+    if (!this.objectiveStrip) return;
+    this.objectiveStrip.style.display = 'block';
+    this.objectiveStrip.innerHTML =
+      `<div class="hud-objective-title">Objective · ${title}</div><div class="hud-objective-detail">${detail}</div>`;
+  }
+
+  clearObjective(): void {
+    if (this.objectiveStrip) this.objectiveStrip.style.display = 'none';
   }
 
   /**
@@ -554,6 +612,7 @@ export class HUDManager {
     this.eventLog = null;
     this.timeControls = null;
     this.topBar = null;
+    this.objectiveStrip = null;
     this.eventLogEntries = [];
   }
 }
