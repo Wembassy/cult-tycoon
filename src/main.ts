@@ -939,45 +939,6 @@ class CultTycoonGame {
     }
   }
 
-  private setupActionButtons(): void {
-    const btnContainer = document.createElement('div');
-    btnContainer.id = 'hud-action-buttons';
-    btnContainer.style.cssText = `
-      position: absolute; top: 8px; right: 8px; display: flex; gap: 6px;
-      pointer-events: auto; z-index: 100;
-    `;
-    const hudEl = document.getElementById('hud');
-    if (hudEl) hudEl.appendChild(btnContainer);
-
-    const buttons: { label: string; icon: string; action: () => void }[] = [
-      { label: 'Tech Tree', icon: '🔬', action: () => this.showTechTree() },
-      { label: 'Missions', icon: '🗺️', action: () => this.showMissionMenu() },
-      { label: 'Rituals', icon: '🔮', action: () => this.showRitualMenu() },
-    ];
-
-    for (const btn of buttons) {
-      const el = document.createElement('button');
-      el.className = 'hud-action-btn';
-      el.innerHTML = `<span class="hud-action-icon">${btn.icon}</span><span class="hud-action-label">${btn.label}</span>`;
-      el.style.cssText = `
-        background: rgba(15,15,30,0.9); border: 1px solid rgba(100,100,160,0.4);
-        color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer;
-        font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px;
-        transition: all 0.15s; backdrop-filter: blur(8px);
-      `;
-      el.addEventListener('mouseenter', () => {
-        el.style.background = 'rgba(50,50,80,0.9)';
-        el.style.borderColor = 'rgba(168,85,247,0.4)';
-      });
-      el.addEventListener('mouseleave', () => {
-        el.style.background = 'rgba(15,15,30,0.9)';
-        el.style.borderColor = 'rgba(100,100,160,0.4)';
-      });
-      el.addEventListener('click', () => btn.action());
-      btnContainer.appendChild(el);
-    }
-  }
-
   private openMissionPanel(): void {
     const entities = this.world.query([Needs, FollowerAI]);
     const cultists = entities.map((entityId) => {
@@ -1108,7 +1069,13 @@ class CultTycoonGame {
             const participants = entities.slice(0, ritual.minFollowers);
             const started = this.ritualSystem.startRitual(ritual.id, participants);
             if (started) {
-              this.cultInfluence -= ritual.faithCost;
+              if (ritual.faithCost > 0 && participants.length > 0) {
+                const faithPerParticipant = ritual.faithCost / participants.length;
+                for (const entityId of participants) {
+                  const needs = this.world.getComponent(entityId, Needs);
+                  if (needs) needs.faith = Math.max(0, needs.faith - faithPerParticipant);
+                }
+              }
               if (ritual.wealthCost) this.cultWealth -= ritual.wealthCost;
               this.hud.logEvent(`Ritual begun: ${ritual.name}`, 'success');
               this.updateHUD();
@@ -1342,22 +1309,16 @@ class CultTycoonGame {
     let totalFaith = 0;
     let totalFun = 0;
     let totalSanity = 0;
-    let workingCount = 0;
 
     for (const e of entities) {
       const n = this.world.getComponent(e, Needs)!;
       totalFaith += n.faith;
       totalFun += n.fun;
       totalSanity += n.sanity;
-      const ai = this.world.getComponent(e, FollowerAI);
-      if (ai?.state === 'working') workingCount++;
     }
 
     const pop = entities.length;
     const maxPopBonus = this.techTree.getEffectBonus('maxPopulationPlus');
-
-    // Resource generation: working followers generate wealth
-    this.cultWealth += workingCount * 0.05;
 
     const data: ResourceBarData = {
       influence: Math.floor(this.cultInfluence),
