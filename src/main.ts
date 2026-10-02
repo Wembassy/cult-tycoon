@@ -186,6 +186,8 @@ class CultTycoonGame {
     this.pathfindSystem.bindWorld(this.world);
     this.buildingSystem = new BuildingSystem(this.map);
     this.renderSystem = new RenderSystem(this.sceneMgr);
+    this.renderSystem.setBuildingSystem(this.buildingSystem);
+    this.renderSystem.setFollowerNames(this.followerNames);
     this.factory = new FollowerFactory(42);
 
     // Event system

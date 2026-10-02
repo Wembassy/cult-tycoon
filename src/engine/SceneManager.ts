@@ -11,11 +11,10 @@ import type { TileMap } from '../world/TileMap';
 import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
 import { FollowerAI } from '../components/FollowerAI';
-import { Needs } from '../components/Needs';
 import type { AssetLoader } from './AssetLoader';
 import { FogOfWar } from '../world/FogOfWar';
 import type { BuildingSystem } from '../systems/BuildingSystem';
-import { TIER_COLORS, getBuildingModel, getWorkStation, type WorkStationConfig } from '../data/BuildingModels';
+import { TIER_COLORS, getBuildingModel, getWorkStation } from '../data/BuildingModels';
 
 // Richer terrain colors
 const TERRAIN_COLORS: Record<string, number> = {
@@ -96,6 +95,9 @@ export class SceneManager {
   setBuildingSystem(bs: BuildingSystem): void { this.buildingSystem = bs; }
 
   setFollowerNames(names: Map<number, string>): void { this.followerNames = names; }
+
+  /** Get the current BuildingSystem reference (if set). */
+  getBuildingSystem(): BuildingSystem | null { return this.buildingSystem; }
 
   /**
    * Update tile appearance based on fog of war state.
@@ -464,7 +466,7 @@ export class SceneManager {
       const tile = this.map.getTile(obj.x, obj.y);
       if (!tile) continue;
 
-      const objMesh = this.createObjectMesh(obj.type);
+      const objMesh = this.createObjectMesh(obj.objectId);
       if (objMesh) {
         const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
         objMesh.position.set(obj.x + offset.x + 0.5, height, obj.y + offset.z + 0.5);
@@ -982,5 +984,7 @@ export class SceneManager {
     this.entityLights.clear();
     this.scene.remove(this.tileGroup);
     this.scene.remove(this.entityGroup);
+    this.scene.remove(this.buildingGroup);
+    if (this.buildingFillLight) this.scene.remove(this.buildingFillLight);
   }
 }
