@@ -30,3 +30,6 @@ assets/downloads/*.zip
 assets/downloads/hud_gui/
 assets/downloads/*.zip
 assets/downloads/hud_gui/
+## Local gameplay captures
+/screenshot*.png
+/glb-test*.png

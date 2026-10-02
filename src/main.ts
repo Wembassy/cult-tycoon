@@ -284,13 +284,35 @@ class CultTycoonGame {
 
     // Mission system — sends cultists on external missions for rewards
     this.missionSystem = new MissionSystem(
-      (missionId, event, _choices) => {
+      (missionId, event, choices) => {
         this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
-        // Auto-resolve with first choice for now (player can choose manually when UI is built)
-        const result = this.missionSystem.resolveEventChoice(missionId, 0, this.world);
-        if (result) {
-          this.hud.logEvent(`Mission outcome: ${result.text}`, result.success ? 'success' : 'danger');
-        }
+
+        // Mission events are player decisions. Pause simulation while the modal is open
+        // so the mission cannot advance or resolve behind the player's choice.
+        const previousTimeMode = this.timeMode;
+        this.setTimeMode('pause');
+
+        this.dialog.show({
+          title: 'Mission Decision',
+          icon: '🎯',
+          body: `<p>${event.text}</p><p style="color:#888;font-size:12px;">Choose how your cultists should respond.</p>`,
+          modal: true,
+          buttons: choices.map((choice, choiceIndex) => ({
+            label: choice.skillCheck
+              ? `${choice.label} [${choice.skillCheck.skill} ${choice.skillCheck.difficulty}]`
+              : choice.label,
+            onClick: () => {
+              const result = this.missionSystem.resolveEventChoice(missionId, choiceIndex, this.world);
+              if (result) {
+                this.hud.logEvent(
+                  `Mission outcome: ${result.text}`,
+                  result.success ? 'success' : 'danger',
+                );
+              }
+              this.setTimeMode(previousTimeMode);
+            },
+          })),
+        });
       },
       (_missionId, templateId, success, rewards) => {
         // Apply mission rewards to cult resources
@@ -1575,11 +1597,8 @@ class CultTycoonGame {
       return;
     }
 
-    // Notoriety busted
-    if (this.cultNotoriety >= 100) {
-      this.showLoseOverlay('busted');
-      return;
-    }
+    // HeatSystem owns threat escalation: protests at 50, raids at 100,
+    // and a terminal crackdown at the critical heat threshold.
 
     // Population zero tracking
     if (pop <= 0) {
@@ -1646,7 +1665,7 @@ class CultTycoonGame {
     const reasons: Record<string, { icon: string; title: string; desc: string }> = {
       abandoned: { icon: '👻', title: 'Your cult has been abandoned', desc: 'All your followers have left. The cult is no more.' },
       bankruptcy: { icon: '💸', title: 'Your cult is bankrupt', desc: 'Wealth has dropped below -50g. The cult cannot sustain itself.' },
-      busted: { icon: '🚨', title: 'Your cult has been busted', desc: 'Notoriety reached 100. Authorities raided and shut you down.' },
+      busted: { icon: '🚨', title: 'Your cult has been busted', desc: 'Heat reached a critical level. Authorities overwhelmed the compound and shut the cult down.' },
     };
     const r = reasons[reason];
     const stats = this.gatherStats();
@@ -1762,12 +1781,35 @@ class CultTycoonGame {
     this.resourceSystem.reset();
     this.heatSystem.reset();
     this.missionSystem = new MissionSystem(
-      (missionId, event, _choices) => {
+      (missionId, event, choices) => {
         this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
-        const result = this.missionSystem.resolveEventChoice(missionId, 0, this.world);
-        if (result) {
-          this.hud.logEvent(`Mission outcome: ${result.text}`, result.success ? 'success' : 'danger');
-        }
+
+        // Mission events are player decisions. Pause simulation while the modal is open
+        // so the mission cannot advance or resolve behind the player's choice.
+        const previousTimeMode = this.timeMode;
+        this.setTimeMode('pause');
+
+        this.dialog.show({
+          title: 'Mission Decision',
+          icon: '🎯',
+          body: `<p>${event.text}</p><p style="color:#888;font-size:12px;">Choose how your cultists should respond.</p>`,
+          modal: true,
+          buttons: choices.map((choice, choiceIndex) => ({
+            label: choice.skillCheck
+              ? `${choice.label} [${choice.skillCheck.skill} ${choice.skillCheck.difficulty}]`
+              : choice.label,
+            onClick: () => {
+              const result = this.missionSystem.resolveEventChoice(missionId, choiceIndex, this.world);
+              if (result) {
+                this.hud.logEvent(
+                  `Mission outcome: ${result.text}`,
+                  result.success ? 'success' : 'danger',
+                );
+              }
+              this.setTimeMode(previousTimeMode);
+            },
+          })),
+        });
       },
       (_missionId, templateId, success, rewards) => {
         if (rewards.money) this.cultWealth += rewards.money;
