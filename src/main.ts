@@ -22,6 +22,8 @@ import { Renderable } from './components/Renderable';
 import { Health } from './components/Health';
 import { Traits } from './components/Traits';
 import { Job } from './components/Job';
+import { Skills } from './components/Skills';
+import { Schedule, type Shift } from './components/Schedule';
 import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem } from './systems/JobSystem';
 import { AISystem } from './systems/AISystem';
@@ -386,6 +388,21 @@ class CultTycoonGame {
     this.hud = new HUDManager({ container: hudContainer });
     this.dialog = new DialogSystem();
 
+    // Player-facing management panels.
+    this.hud.onOpenTechTree = () => this.openTechTreePanel();
+    this.hud.onOpenMissions = () => this.openMissionPanel();
+    this.hud.onOpenSchedule = () => this.openSchedulePanel();
+    this.hud.onTechTreeUnlock = (techId) => this.unlockTechFromPanel(techId);
+    this.hud.onSendMission = (templateId, cultistIds) => this.startMissionFromPanel(templateId, cultistIds);
+    this.hud.onAssignShift = (entityId, shift) => {
+      this.schedulingSystem.assignShift(this.world, entityId, shift);
+      this.openSchedulePanel();
+    };
+    this.hud.onAutoAssignShifts = () => {
+      this.schedulingSystem.autoAssignShifts(this.world);
+      this.openSchedulePanel();
+    };
+
     // Spawn initial followers at map center
     this.spawnFollowers(6);
 
@@ -397,9 +414,6 @@ class CultTycoonGame {
     this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
     this.hud.logEvent('Press B for build mode, click objects in the panel.', 'info');
     this.hud.logEvent('Press T for tech tree, R for rituals, M for missions.', 'info');
-
-    // Add action buttons to HUD (top-right corner)
-    this.setupActionButtons();
 
     // Populate build panel
     this.setupBuildPanel();
@@ -768,13 +782,13 @@ class CultTycoonGame {
           }
           break;
         case 't':
-          this.showTechTree();
+          this.openTechTreePanel();
           break;
         case 'r':
           this.showRitualMenu();
           break;
         case 'm':
-          this.showMissionMenu();
+          this.openMissionPanel();
           break;
         case ' ': // Space
           e.preventDefault();
@@ -964,103 +978,145 @@ class CultTycoonGame {
     }
   }
 
-  private showMissionMenu(): void {
-    const missions = this.missionSystem.getAvailableMissions();
-    const activeMissions = this.missionSystem.getActiveMissions();
+  private openMissionPanel(): void {
     const entities = this.world.query([Needs, FollowerAI]);
+    const cultists = entities.map((entityId) => {
+      const ai = this.world.getComponent(entityId, FollowerAI)!;
+      const skills = this.world.getComponent(entityId, Skills) ?? new Skills(entityId);
+      return {
+        id: entityId,
+        name: this.followerNames.get(entityId) ?? `Cultist ${entityId}`,
+        tier: ai.tier,
+        skills: {
+          cooking: skills.cooking,
+          research: skills.research,
+          construction: skills.construction,
+          faith: skills.faith,
+          combat: skills.combat,
+          social: skills.social,
+        },
+        onMission: this.missionSystem.isOnMission(entityId, this.world),
+      };
+    });
 
-    // Filter out cultists already on missions
-    const availableCultists = entities.filter(e => !this.missionSystem.isOnMission(e, this.world));
-
-    this.hud.logEvent(
-      `Missions: ${missions.length} available, ${activeMissions.length} active, ${availableCultists.length} cultists ready`,
-      'info',
-    );
-
-    for (const mission of missions) {
-      this.hud.logEvent(
-        `  📋 ${mission.name} — ${mission.description} (${mission.minCultists}-${mission.maxCultists} cultists, ${mission.duration}h)`,
-        'info',
-      );
-    }
-
-    // Auto-start the cheapest mission if we have enough cultists and no active missions
-    if (activeMissions.length === 0 && availableCultists.length > 0) {
-      const startable = missions.filter(m => availableCultists.length >= m.minCultists);
-      if (startable.length > 0) {
-        const mission = startable[0];
-        const cultistIds = availableCultists.slice(0, Math.min(mission.maxCultists, availableCultists.length));
-        const result = this.missionSystem.startMission(mission.id, cultistIds, this.world);
-        if (result.success) {
-          this.hud.logEvent(
-            `Started mission: ${mission.name} (${cultistIds.length} cultists sent)`,
-            'success',
-          );
-        } else {
-          this.hud.logEvent(`Failed to start mission: ${result.reason}`, 'warning');
-        }
-      } else {
-        this.hud.logEvent('Not enough available cultists for any mission.', 'warning');
-      }
-    } else if (activeMissions.length > 0) {
-      for (const am of activeMissions) {
-        this.hud.logEvent(
-          `  ⏳ ${am.templateId}: ${Math.floor(am.progress * 100)}% complete`,
-          'info',
-        );
-      }
-    }
+    this.hud.showMissionPanel({
+      cultists,
+      activeMissions: this.missionSystem.getActiveMissions(),
+    });
   }
 
-  private showTechTree(): void {
-    const nodes = this.techTree.getTree();
-    const available = this.techTree.getAvailable();
-    const unlocked = this.techTree.getUnlocked();
+  private startMissionFromPanel(templateId: string, cultistIds: number[]): void {
+    const result = this.missionSystem.startMission(templateId, cultistIds, this.world);
+    if (result.success) {
+      this.hud.logEvent(`Mission launched: ${templateId} with ${cultistIds.length} cultist(s).`, 'success');
+      this.audio.play('ui-select');
+    } else {
+      this.hud.logEvent(`Mission could not start: ${result.reason ?? 'unknown reason'}`, 'warning');
+    }
+    this.openMissionPanel();
+  }
 
-    this.hud.logEvent(`Tech Tree: ${unlocked.length}/${nodes.length} unlocked, ${available.length} available`, 'info');
-    for (const node of available.slice(0, 3)) {
-      const canAfford = this.cultInfluence >= node.cost.influence;
-      this.hud.logEvent(`  ${canAfford ? '✅' : '🔒'} ${node.name} (${node.cost.influence} influence) — ${node.description}`, canAfford ? 'success' : 'info');
+  private openTechTreePanel(): void {
+    this.hud.showTechTreePanel({
+      unlockedIds: this.techTree.getUnlocked().map(node => node.id),
+      influence: this.cultInfluence,
+      faith: this.cultFaith,
+    });
+  }
+
+  private unlockTechFromPanel(techId: string): void {
+    const node = this.techTree.getTree().find(candidate => candidate.id === techId);
+    if (!node) {
+      this.hud.logEvent('Unknown research node.', 'warning');
+      return;
     }
 
-    // Auto-unlock if we can afford the cheapest available
-    const cheapest = available.sort((a, b) => a.cost.influence - b.cost.influence)[0];
-    if (cheapest && this.cultInfluence >= cheapest.cost.influence) {
-      const result = this.techTree.unlock(cheapest.id, this.cultInfluence, this.cultFaith);
-      if (result.success) {
-        this.cultInfluence -= cheapest.cost.influence;
-        this.hud.logEvent(`Auto-researched: ${cheapest.name}!`, 'success');
-      }
+    const result = this.techTree.unlock(techId, this.cultInfluence, this.cultFaith);
+    if (result.success) {
+      this.cultInfluence -= node.cost.influence;
+      this.hud.logEvent(`Research completed: ${node.name}`, 'success');
+      this.audio.play('level-up');
+    } else {
+      this.hud.logEvent(`Research blocked: ${result.reason ?? 'requirements not met'}`, 'warning');
     }
+    this.openTechTreePanel();
+    this.updateHUD();
+  }
+
+  private openSchedulePanel(): void {
+    const entities = this.world.query([FollowerAI]);
+    const cultists = entities.map((entityId) => {
+      const ai = this.world.getComponent(entityId, FollowerAI)!;
+      const schedule = this.world.getComponent(entityId, Schedule);
+      const health = this.world.getComponent(entityId, Health);
+      const activity: 'working' | 'eating' | 'free' | 'sleeping' =
+        ai.state === 'working' ? 'working' :
+        ai.state === 'sleeping' ? 'sleeping' :
+        ai.state === 'needs' ? 'eating' : 'free';
+
+      return {
+        id: entityId,
+        name: this.followerNames.get(entityId) ?? `Cultist ${entityId}`,
+        tier: ai.tier,
+        shift: (schedule?.shift ?? 'morning') as Shift,
+        activity,
+        health: health?.hp ?? 100,
+      };
+    });
+
+    this.hud.showSchedulePanel({
+      cultists,
+      currentHour: this.currentHour,
+    });
   }
 
   private showRitualMenu(): void {
     const available = this.ritualSystem.getAvailableRituals();
     const entities = this.world.query([Needs, FollowerAI]);
-    this.hud.logEvent(`Rituals available: ${available.length}`, 'info');
-    for (const ritual of available) {
-      const canStart = this.ritualSystem.canStartRitual(
-        ritual.id,
-        entities,
-        this.cultInfluence,
-        this.cultWealth,
-      );
-      this.hud.logEvent(`  ${canStart.ok ? '✅' : '🔒'} ${ritual.name} — ${ritual.description}`, canStart.ok ? 'success' : 'warning');
+    const active = this.ritualSystem.getActiveRituals();
+
+    if (active.length > 0) {
+      this.dialog.alert('Ritual in Progress', 'Your cult is already performing a ritual. Let it finish before beginning another.', '🔮');
+      return;
     }
 
-    // Auto-start the cheapest available ritual we can afford
-    const startable = available.filter(r => {
-      const check = this.ritualSystem.canStartRitual(r.id, entities, this.cultInfluence, this.cultWealth);
-      return check.ok;
-    });
-    if (startable.length > 0 && this.ritualSystem.getActiveRituals().length === 0) {
-      const ritual = startable[0];
-      const participants = entities.slice(0, ritual.minFollowers);
-      this.ritualSystem.startRitual(ritual.id, participants);
-      // Deduct costs
-      this.cultInfluence -= ritual.faithCost;
-      if (ritual.wealthCost) this.cultWealth -= ritual.wealthCost;
+    if (available.length === 0) {
+      this.dialog.alert('No Rituals Available', 'Research and progress will unlock additional rituals.', '🔒');
+      return;
     }
+
+    this.dialog.show({
+      title: 'Choose a Ritual',
+      icon: '🔮',
+      body: '<p>Rituals trade resources and follower time for powerful effects. Choose deliberately.</p>',
+      modal: true,
+      buttons: available.map((ritual) => {
+        const check = this.ritualSystem.canStartRitual(
+          ritual.id,
+          entities,
+          this.cultInfluence,
+          this.cultWealth,
+        );
+        return {
+          label: `${check.ok ? '' : '🔒 '}${ritual.name}`,
+          style: check.ok ? 'primary' as const : 'default' as const,
+          onClick: () => {
+            if (!check.ok) {
+              this.hud.logEvent(`${ritual.name}: ${check.reason ?? 'requirements not met'}`, 'warning');
+              return;
+            }
+            const participants = entities.slice(0, ritual.minFollowers);
+            const started = this.ritualSystem.startRitual(ritual.id, participants);
+            if (started) {
+              this.cultInfluence -= ritual.faithCost;
+              if (ritual.wealthCost) this.cultWealth -= ritual.wealthCost;
+              this.hud.logEvent(`Ritual begun: ${ritual.name}`, 'success');
+              this.updateHUD();
+            }
+          },
+        };
+      }),
+    });
   }
 
   private spawnFollowers(count: number): void {
@@ -1313,10 +1369,53 @@ class CultTycoonGame {
       maxPopulation: 8 + maxPopBonus,
     };
     this.hud.updateResourceBar(data);
+    this.updateAlphaObjective();
+
+    // Keep open management panels current while the simulation runs.
+    this.hud.updateTechTreePanel({
+      unlockedIds: this.techTree.getUnlocked().map(node => node.id),
+      influence: this.cultInfluence,
+      faith: this.cultFaith,
+    });
 
     // Update inspector if a follower is selected
     if (this.selectedEntity !== null) {
       this.selectFollower(this.selectedEntity);
+    }
+  }
+
+  private updateAlphaObjective(): void {
+    const builtObjects = this.buildingSystem.getAllObjects().length;
+    const structureCount = this.buildingSystem.wallTiles.size + this.buildingSystem.floorTiles.size + this.buildingSystem.doorTiles.size;
+    const researched = this.techTree.getUnlocked().length;
+    const activeMissions = this.missionSystem.getActiveMissions().length;
+    const heat = this.heatSystem.getHeat();
+
+    if (builtObjects + structureCount < 4) {
+      this.hud.setObjective(
+        'Establish the compound',
+        'Open Build (B), place a few structural pieces or useful objects, and click followers to inspect their needs.',
+      );
+    } else if (researched === 0) {
+      this.hud.setObjective(
+        'Choose your first research',
+        'Open the Tech Tree (T). Research should shape what you can build and how the cult develops.',
+      );
+    } else if (activeMissions === 0) {
+      this.hud.setObjective(
+        'Send your first mission',
+        'Open Missions (M), compare skills and risk, then choose who leaves the compound.',
+      );
+    } else if (heat >= 50) {
+      this.hud.setObjective(
+        'Control the heat',
+        `Heat is ${Math.floor(heat)}. Use lower-risk choices and heat-reduction missions before raids escalate.`,
+      );
+    } else {
+      this.hud.setObjective(
+        'Grow without losing control',
+        'Balance follower needs, research, missions, prestige and heat while working toward the Ascension endgame.',
+      );
     }
   }
 
