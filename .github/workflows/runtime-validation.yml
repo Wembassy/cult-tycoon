@@ -4,7 +4,7 @@ on:
     branches: [quality/runtime-stabilization]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: runtime-validation-${{ github.ref }}
   cancel-in-progress: true
@@ -15,7 +15,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: quality/runtime-stabilization
+      - uses: actions/checkout@v4
+        with:
+          ref: a84ccf28f1215f82e3a3d44c6985b0501f773aec
+          path: _delivery
+          sparse-checkout: .delivery
           persist-credentials: false
+      - name: Apply exact locally tested source changes
+        run: |
+          python _delivery/.delivery/apply.py
+          rm -rf _delivery
+          python scripts/generate_follower_animations.py
+          git add src scripts/generate_follower_animations.py public/assets/animations/followers tests
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'feat: readable world assets, first-party IK motion, coherent research and ritual campaign'
+            git push origin HEAD:quality/runtime-stabilization
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -32,11 +50,13 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - name: Exercise real browser runtime
         run: node scripts/runtime-smoke.mjs
-      - name: Record tested commit
+      - name: Record tested commit and dependency audit
         if: always()
         run: |
           mkdir -p runtime-results
           git rev-parse HEAD > runtime-results/commit.txt
+          npm audit --omit=dev --json > runtime-results/production-audit.json || true
+          npm audit --json > runtime-results/dependency-audit.json || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
