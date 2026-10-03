@@ -36,6 +36,22 @@ const TERRAIN_HEIGHT: Record<string, number> = {
 
 const TILE_SIZE = 1;
 
+export type ConstructionVisualKind = 'wall' | 'floor' | 'door' | 'object';
+
+export interface ConstructionBlueprintVisual {
+  id: string;
+  kind: ConstructionVisualKind;
+  x: number;
+  y: number;
+}
+
+export interface BuildPreviewTile {
+  x: number;
+  y: number;
+  valid: boolean;
+}
+
+
 // Display names for room types (used for floating labels)
 const ROOM_TYPE_NAMES: Record<string, string> = {
   lobby: 'Lobby',
@@ -55,6 +71,8 @@ export class SceneManager {
   private tileGroup: THREE.Group;
   private entityGroup: THREE.Group;
   private buildingGroup: THREE.Group;
+  private buildPreviewGroup: THREE.Group;
+  private blueprintGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
   private tileMeshes: Map<string, THREE.Mesh> = new Map();
   private entityMeshes: Map<number, THREE.Object3D> = new Map();
@@ -85,9 +103,15 @@ export class SceneManager {
     this.entityGroup.name = 'entities';
     this.buildingGroup = new THREE.Group();
     this.buildingGroup.name = 'buildings';
+    this.buildPreviewGroup = new THREE.Group();
+    this.buildPreviewGroup.name = 'build-preview';
+    this.blueprintGroup = new THREE.Group();
+    this.blueprintGroup.name = 'construction-blueprints';
     this.scene.add(this.tileGroup);
     this.scene.add(this.entityGroup);
     this.scene.add(this.buildingGroup);
+    this.scene.add(this.blueprintGroup);
+    this.scene.add(this.buildPreviewGroup);
 
     // Fill light to enhance isometric view — softens shadows from the front
     this.buildingFillLight = new THREE.DirectionalLight(0x99bbdd, 0.35);
@@ -1056,6 +1080,93 @@ export class SceneManager {
     return mesh;
   }
 
+  clearBuildPreview(): void {
+    this.clearVisualGroup(this.buildPreviewGroup);
+  }
+
+  showBuildPreview(tiles: BuildPreviewTile[], kind: ConstructionVisualKind | 'room'): void {
+    this.clearBuildPreview();
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+
+    for (const tile of tiles) {
+      const mapTile = this.map.getTile(tile.x, tile.y);
+      if (!mapTile) continue;
+      const terrainHeight = TERRAIN_HEIGHT[mapTile.terrain] ?? 0.3;
+      const color = tile.valid ? 0x4ade80 : 0xef4444;
+
+      let geometry: THREE.BufferGeometry;
+      let y = terrainHeight + 0.04;
+      if (kind === 'wall') {
+        geometry = new THREE.BoxGeometry(0.92, 1.25, 0.92);
+        y = terrainHeight + 0.625;
+      } else if (kind === 'door') {
+        geometry = new THREE.BoxGeometry(0.78, 1.0, 0.18);
+        y = terrainHeight + 0.5;
+      } else if (kind === 'object') {
+        geometry = new THREE.BoxGeometry(0.68, 0.55, 0.68);
+        y = terrainHeight + 0.275;
+      } else {
+        geometry = new THREE.BoxGeometry(0.92, 0.08, 0.92);
+      }
+
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: tile.valid ? 0.42 : 0.5,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(tile.x + offset.x + 0.5, y, tile.y + offset.z + 0.5);
+      this.buildPreviewGroup.add(mesh);
+    }
+  }
+
+  setConstructionBlueprints(blueprints: ConstructionBlueprintVisual[]): void {
+    this.clearVisualGroup(this.blueprintGroup);
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+
+    for (const blueprint of blueprints) {
+      const mapTile = this.map.getTile(blueprint.x, blueprint.y);
+      if (!mapTile) continue;
+      const terrainHeight = TERRAIN_HEIGHT[mapTile.terrain] ?? 0.3;
+
+      let geometry: THREE.BufferGeometry;
+      let y = terrainHeight + 0.04;
+      if (blueprint.kind === 'wall') {
+        geometry = new THREE.BoxGeometry(0.88, 1.2, 0.88);
+        y = terrainHeight + 0.6;
+      } else if (blueprint.kind === 'door') {
+        geometry = new THREE.BoxGeometry(0.76, 0.95, 0.16);
+        y = terrainHeight + 0.475;
+      } else if (blueprint.kind === 'object') {
+        geometry = new THREE.BoxGeometry(0.62, 0.48, 0.62);
+        y = terrainHeight + 0.24;
+      } else {
+        geometry = new THREE.BoxGeometry(0.9, 0.06, 0.9);
+      }
+
+      const material = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.34,
+        wireframe: blueprint.kind !== 'floor',
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(blueprint.x + offset.x + 0.5, y, blueprint.y + offset.z + 0.5);
+      mesh.userData.blueprintId = blueprint.id;
+      this.blueprintGroup.add(mesh);
+    }
+  }
+
+  private clearVisualGroup(group: THREE.Group): void {
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      group.remove(child);
+      this.disposeObject(child);
+    }
+  }
+
   highlightTile(x: number, y: number): void {
     if (this.highlightMesh) {
       this.tileGroup.remove(this.highlightMesh);
@@ -1105,6 +1216,10 @@ export class SceneManager {
     this.scene.remove(this.tileGroup);
     this.scene.remove(this.entityGroup);
     this.scene.remove(this.buildingGroup);
+    this.clearVisualGroup(this.buildPreviewGroup);
+    this.clearVisualGroup(this.blueprintGroup);
+    this.scene.remove(this.buildPreviewGroup);
+    this.scene.remove(this.blueprintGroup);
     if (this.buildingFillLight) this.scene.remove(this.buildingFillLight);
   }
 }
