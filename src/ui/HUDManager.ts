@@ -173,11 +173,11 @@ export class HUDManager {
       btn.addEventListener('click', (e) => {
         const panel = (e.currentTarget as HTMLElement).dataset.panel;
         switch (panel) {
-          case 'techtree': this.onOpenTechTree ? this.onOpenTechTree() : this.toggleTechTreePanel(); break;
-          case 'missions': this.onOpenMissions ? this.onOpenMissions() : this.toggleMissionPanel(); break;
-          case 'work': this.onOpenWork?.(); break;
-          case 'schedule': this.onOpenSchedule ? this.onOpenSchedule() : this.toggleSchedulePanel(); break;
-          case 'rituals': this.onOpenRituals?.(); break;
+          case 'techtree': if (this.onOpenTechTree) this.onOpenTechTree(); else this.toggleTechTreePanel(); break;
+          case 'missions': if (this.onOpenMissions) this.onOpenMissions(); else this.toggleMissionPanel(); break;
+          case 'work': if (this.onOpenWork) this.onOpenWork(); break;
+          case 'schedule': if (this.onOpenSchedule) this.onOpenSchedule(); else this.toggleSchedulePanel(); break;
+          case 'rituals': if (this.onOpenRituals) this.onOpenRituals(); break;
         }
       });
     });
