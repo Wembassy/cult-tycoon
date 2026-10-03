@@ -337,6 +337,31 @@ export class BuildingSystem {
     return room;
   }
 
+  clearRoomArea(startX: number, startY: number, endX: number, endY: number): number {
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+    const touchedRooms = new Set<number>();
+    let cleared = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const tile = this.map.getTile(x, y);
+        if (!tile || tile.roomId === null) continue;
+        const room = this.rooms.get(tile.roomId);
+        if (!room?.roomDefinitionId) continue;
+        touchedRooms.add(tile.roomId);
+        this.map.setRoomId(x, y, null);
+        cleared++;
+      }
+    }
+
+    for (const roomId of touchedRooms) this.refreshRoom(roomId);
+    if (cleared > 0) this._dirty = true;
+    return cleared;
+  }
+
   /**
    * Detect enclosed rooms using flood fill.
    * A room is an area of non-occupied, buildable tiles surrounded by occupied tiles.
