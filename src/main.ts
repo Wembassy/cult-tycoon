@@ -799,7 +799,7 @@ class CultTycoonGame {
         case 'm':
           this.openMissionPanel();
           break;
-        case 'w':
+        case 'j':
           this.openWorkPanel();
           break;
         case '?':
@@ -967,7 +967,7 @@ class CultTycoonGame {
         '<p><b>Pan:</b> Middle-mouse drag</p>',
         '<p><b>Recenter:</b> Home</p>',
         '<p><b>Build:</b> B · <b>Demolish:</b> X · <b>Cancel:</b> Right-click / Esc</p>',
-        '<p><b>Work:</b> W · <b>Tech:</b> T · <b>Missions:</b> M · <b>Rituals:</b> R · <b>Pause:</b> Space</p>',
+        '<p><b>Jobs / Work:</b> J · <b>Tech:</b> T · <b>Missions:</b> M · <b>Rituals:</b> R · <b>Pause:</b> Space</p>',
       ].join(''),
       buttons: [{ label: 'Got it', style: 'primary' }],
     });
