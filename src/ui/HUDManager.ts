@@ -74,6 +74,7 @@ export interface EventLogEntry {
 }
 
 export type TimeControlMode = 'pause' | 'speed1' | 'speed2' | 'speed3';
+export type InspectorTab = 'general' | 'job' | 'skills' | 'inventory' | 'traits';
 
 export class HUDManager {
   private container: HTMLElement;
@@ -86,6 +87,7 @@ export class HUDManager {
   private eventLog: HTMLElement | null = null;
   private timeControls: HTMLElement | null = null;
   private topBar: HTMLElement | null = null;
+  private viewControls: HTMLElement | null = null;
   private objectiveStrip: HTMLElement | null = null;
   private minimap: HTMLCanvasElement | null = null;
   private managementMenuOpen = false;
@@ -101,6 +103,10 @@ export class HUDManager {
   private _currentTime = 0;
   private _currentDay = 1;
   private _activeCategoryId: string | null = null;
+  private _inspectorData: InspectorData | null = null;
+  private _inspectorTab: InspectorTab = 'general';
+  private _wallsVisible = true;
+  private _roofsVisible = true;
 
   /** Callbacks for panel actions. */
   onTechTreeUnlock?: (techId: string) => void;
@@ -116,6 +122,8 @@ export class HUDManager {
   onSetWorkPriority?: (entityId: number, job: WorkJobKey, priority: WorkPriority) => void;
   onAutoAssignWorkRoles?: () => void;
   onTimeModeChange?: (mode: TimeControlMode) => void;
+  onWallsVisibilityChange?: (visible: boolean) => void;
+  onRoofsVisibilityChange?: (visible: boolean) => void;
 
   constructor(config: HUDConfig) {
     this.container = config.container;
@@ -135,9 +143,10 @@ export class HUDManager {
     this.eventLog = this.createElement('div', 'hud-event-log');
     this.timeControls = this.createElement('div', 'hud-time-controls');
     this.topBar = this.createElement('div', 'hud-top-bar');
+    this.viewControls = this.createElement('div', 'hud-view-controls');
     this.objectiveStrip = this.createElement('div', 'hud-objective-strip');
     const buildBadge = this.createElement('div', 'hud-build-version');
-    buildBadge.textContent = 'ALPHA 7';
+    buildBadge.textContent = 'ALPHA 8';
 
     this.minimap = document.createElement('canvas');
     this.minimap.className = 'hud-minimap';
@@ -146,6 +155,7 @@ export class HUDManager {
 
     this.container.appendChild(this.resourceBar);
     this.container.appendChild(this.topBar);
+    this.container.appendChild(this.viewControls);
     this.container.appendChild(this.objectiveStrip);
     this.container.appendChild(this.minimap);
     this.container.appendChild(buildBadge);
@@ -198,6 +208,7 @@ export class HUDManager {
     this.workPanel.mount();
 
     this.setupTopBar();
+    this.setupViewControls();
     this.injectTopBarStyles();
     this.setObjective('Establish the compound', 'Build basic shelter, inspect your followers, then choose your first research or mission.');
     this.renderTimeControls();
@@ -207,6 +218,29 @@ export class HUDManager {
       const mode = button.dataset.mode as TimeControlMode | undefined;
       if (!mode) return;
       this.onTimeModeChange?.(mode);
+    });
+  }
+
+  private setupViewControls(): void {
+    if (!this.viewControls) return;
+    this.viewControls.innerHTML = `
+      <button class="hud-view-btn active" type="button" data-view="walls" title="Show / hide walls">🧱 Walls</button>
+      <button class="hud-view-btn active" type="button" data-view="roofs" title="Show / hide roofs and ceilings">⌂ Roofs</button>
+    `;
+    this.viewControls.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest('.hud-view-btn') as HTMLButtonElement | null;
+      if (!button) return;
+      if (button.dataset.view === 'walls') {
+        this._wallsVisible = !this._wallsVisible;
+        button.classList.toggle('active', this._wallsVisible);
+        button.setAttribute('aria-pressed', String(this._wallsVisible));
+        this.onWallsVisibilityChange?.(this._wallsVisible);
+      } else if (button.dataset.view === 'roofs') {
+        this._roofsVisible = !this._roofsVisible;
+        button.classList.toggle('active', this._roofsVisible);
+        button.setAttribute('aria-pressed', String(this._roofsVisible));
+        this.onRoofsVisibilityChange?.(this._roofsVisible);
+      }
     });
   }
 
@@ -250,6 +284,36 @@ export class HUDManager {
     const style = document.createElement('style');
     style.id = 'hud-top-bar-styles';
     style.textContent = `
+      .hud-view-controls {
+        position: absolute;
+        top: 58px;
+        left: 8px;
+        display: flex;
+        gap: 5px;
+        padding: 5px;
+        background: rgba(12,18,30,0.88);
+        border: 1px solid rgba(80,120,180,0.45);
+        border-radius: 6px;
+        pointer-events: auto;
+        z-index: 10;
+        backdrop-filter: blur(8px);
+      }
+      .hud-view-btn {
+        border: 1px solid rgba(100,140,190,0.28);
+        border-radius: 4px;
+        padding: 5px 8px;
+        background: rgba(0,0,0,0.3);
+        color: #72839b;
+        cursor: pointer;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .hud-view-btn.active {
+        color: #dbeafe;
+        background: rgba(46,92,150,0.5);
+        border-color: rgba(120,180,255,0.55);
+      }
+
       .hud-top-bar {
         position: absolute;
         top: 8px;
@@ -659,8 +723,15 @@ export class HUDManager {
    * Show inspector for a selected entity/follower
    */
   showInspector(data: InspectorData): void {
-    if (!this.inspector) return;
+    this._inspectorData = data;
+    this.renderInspector();
+  }
+
+  private renderInspector(): void {
+    if (!this.inspector || !this._inspectorData) return;
+    const data = this._inspectorData;
     this.inspector.style.display = 'block';
+
     const needIcons: Record<string, { icon: string; fallback: string }> = {
       hunger: { icon: 'scifi_icon_hunger', fallback: '🍖' },
       faith: { icon: 'scifi_icon_faith', fallback: '🔮' },
@@ -682,42 +753,79 @@ export class HUDManager {
         </div>
       `;
     }).join('');
+
     const skillHtml = data.skills
-      ? Object.entries(data.skills)
-          .map(([name, value]) => `<span class="hud-pawn-chip">${name}: <b>${value}</b></span>`)
-          .join('')
-      : '';
+      ? Object.entries(data.skills).map(([name, value]) =>
+          `<div class="hud-inspector-list-row"><span>${name}</span><b>${value}</b></div>`).join('')
+      : '<div class="hud-inspector-empty">No skill data.</div>';
     const priorityHtml = data.priorities
-      ? Object.entries(data.priorities)
-          .map(([name, value]) => `<span class="hud-pawn-chip">${name}: <b>${value === 0 ? '×' : value}</b></span>`)
-          .join('')
+      ? Object.entries(data.priorities).map(([name, value]) =>
+          `<div class="hud-inspector-list-row"><span>${name}</span><b>${value === 0 ? 'Disabled' : `Priority ${value}`}</b></div>`).join('')
       : '';
     const inventoryHtml = data.inventory?.length
-      ? data.inventory.map(item => `${item.id} ×${item.quantity}`).join(', ')
-      : 'Empty';
+      ? data.inventory.map(item =>
+          `<div class="hud-inspector-list-row"><span>${item.id.replaceAll('_', ' ')}</span><b>×${item.quantity}</b></div>`).join('')
+      : '<div class="hud-inspector-empty">Inventory is empty.</div>';
+    const traitsHtml = data.traits.length
+      ? data.traits.map(trait => `<span class="hud-pawn-chip">${trait.replaceAll('_', ' ')}</span>`).join('')
+      : '<div class="hud-inspector-empty">No traits.</div>';
+
+    const tabBody =
+      this._inspectorTab === 'job' ? `
+        <div class="hud-pawn-section"><b>Current job</b><div class="hud-inspector-job-name">${data.job}</div></div>
+        <div class="hud-pawn-section"><b>AI state</b><div>${data.aiState ?? 'idle'}</div></div>
+        <div class="hud-pawn-section"><b>Shift</b><div>${data.schedule ?? 'unassigned'}</div></div>
+        ${priorityHtml ? `<div class="hud-pawn-section"><b>Work priorities</b>${priorityHtml}</div>` : ''}
+      ` : this._inspectorTab === 'skills' ? `
+        <div class="hud-pawn-section hud-pawn-section-first"><b>Skills</b>${skillHtml}</div>
+      ` : this._inspectorTab === 'inventory' ? `
+        <div class="hud-pawn-section hud-pawn-section-first"><b>Inventory</b>${inventoryHtml}</div>
+      ` : this._inspectorTab === 'traits' ? `
+        <div class="hud-pawn-section hud-pawn-section-first"><b>Traits</b><div class="hud-pawn-chip-grid">${traitsHtml}</div></div>
+      ` : `
+        <div class="hud-inspector-health">
+          ${this.iconHtml('scifi_icon_health', '❤️', 'hud-need-icon')}
+          <span>HP: ${data.health}/100</span>
+          <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${data.health}%;background:#ef4444;"></div></div>
+        </div>
+        <div class="hud-inspector-needs">${needsHtml}</div>
+      `;
+
+    const tabs: { id: InspectorTab; label: string }[] = [
+      { id: 'general', label: 'General' },
+      { id: 'job', label: 'Job' },
+      { id: 'skills', label: 'Skills' },
+      { id: 'inventory', label: 'Inventory' },
+      { id: 'traits', label: 'Traits' },
+    ];
 
     this.inspector.innerHTML = `
-      <div class="hud-inspector-name">${data.name}</div>
-      <div class="hud-inspector-role">${data.role}${data.tier ? ` · ${data.tier.replaceAll('_', ' ')}` : ''}</div>
-      <div class="hud-pawn-state">${data.aiState ? `State: ${data.aiState}` : ''}${data.schedule ? ` · Shift: ${data.schedule}` : ''}</div>
-      <div class="hud-inspector-health">
-        ${this.iconHtml('scifi_icon_health', '❤️', 'hud-need-icon')}
-        <span>HP: ${data.health}/100</span>
-        <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${data.health}%;background:#ef4444;"></div></div>
+      <div class="hud-inspector-header">
+        <div>
+          <div class="hud-inspector-name">${data.name}</div>
+          <div class="hud-inspector-role">${data.role}${data.tier ? ` · ${data.tier.replaceAll('_', ' ')}` : ''}</div>
+        </div>
       </div>
-      <div class="hud-inspector-needs">${needsHtml}</div>
-      <div class="hud-pawn-section"><b>Current job</b><div>${data.job}</div></div>
-      ${skillHtml ? `<div class="hud-pawn-section"><b>Skills</b><div class="hud-pawn-chip-grid">${skillHtml}</div></div>` : ''}
-      ${priorityHtml ? `<div class="hud-pawn-section"><b>Work priorities</b><div class="hud-pawn-chip-grid">${priorityHtml}</div></div>` : ''}
-      <div class="hud-pawn-section"><b>Inventory</b><div>${inventoryHtml}</div></div>
-      <div class="hud-pawn-section"><b>Traits</b><div class="hud-inspector-traits">${data.traits.length ? data.traits.join(', ') : 'None'}</div></div>
+      <div class="hud-inspector-tabs">
+        ${tabs.map(tab => `<button type="button" class="hud-inspector-tab ${tab.id === this._inspectorTab ? 'active' : ''}" data-tab="${tab.id}">${tab.label}</button>`).join('')}
+      </div>
+      <div class="hud-inspector-tab-body">${tabBody}</div>
     `;
+
+    this.inspector.querySelectorAll<HTMLButtonElement>('.hud-inspector-tab').forEach(button => {
+      button.addEventListener('click', () => {
+        this._inspectorTab = button.dataset.tab as InspectorTab;
+        this.renderInspector();
+      });
+    });
   }
 
   /**
    * Hide the inspector
    */
   hideInspector(): void {
+    this._inspectorData = null;
+    this._inspectorTab = 'general';
     if (this.inspector) this.inspector.style.display = 'none';
   }
 
@@ -916,6 +1024,7 @@ export class HUDManager {
     this.eventLog = null;
     this.timeControls = null;
     this.topBar = null;
+    this.viewControls = null;
     this.objectiveStrip = null;
     this.minimap = null;
     this.eventLogEntries = [];
