@@ -841,6 +841,13 @@ class CultTycoonGame {
         cost: 0,
         category: 'rooms' as BuildPanelEntry['category'],
       })),
+      {
+        id: 'room:clear',
+        label: 'Clear Room',
+        icon: '🧽',
+        cost: 0,
+        category: 'rooms' as BuildPanelEntry['category'],
+      },
       ...allObjects.map(obj => ({
         id: obj.id,
         label: obj.name,
@@ -946,7 +953,9 @@ class CultTycoonGame {
           this.input.setMode('build');
           this.selectedBuildItem = id;
           const label = item.querySelector('.hud-build-item-label')?.textContent ?? id;
-          if (id.startsWith('room:')) {
+          if (id === 'room:clear') {
+            this.hud.logEvent('Clear Room: drag over designated room tiles to remove the designation.', 'info');
+          } else if (id.startsWith('room:')) {
             const roomDef = DataManager.getRoom(id.slice(5));
             this.hud.logEvent(
               `Room designation: ${label}. Drag an area at least ${roomDef?.minSize ?? 1} tiles, then place required objects.`,
@@ -1317,6 +1326,18 @@ class CultTycoonGame {
     if (this.input.getMode() !== 'build' || !this.selectedBuildItem) return;
 
     const item = this.selectedBuildItem;
+
+    if (item === 'room:clear') {
+      const cleared = this.buildingSystem.clearRoomArea(startX, startY, endX, endY);
+      if (cleared > 0) {
+        this.hud.logEvent(`Cleared room designation from ${cleared} tile${cleared === 1 ? '' : 's'}.`, 'info');
+        this.sceneMgr.buildTiles();
+        this.updateHUD();
+      } else {
+        this.hud.logEvent('No designated room tiles in that area.', 'info');
+      }
+      return;
+    }
 
     if (item.startsWith('room:')) {
       this.designateRoom(startX, startY, endX, endY, item.slice(5));
