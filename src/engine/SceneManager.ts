@@ -150,9 +150,9 @@ export class SceneManager {
           const tile = this.map.getTile(tileCoord.x, tileCoord.y);
           if (tile) {
             const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
-            (mesh.material as THREE.MeshStandardMaterial).color.setHex(color).multiplyScalar(0.08);
+            (mesh.material as THREE.MeshStandardMaterial).color.setHex(color).multiplyScalar(0.24);
             (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-            (mesh.material as THREE.MeshStandardMaterial).opacity = 0.22;
+            (mesh.material as THREE.MeshStandardMaterial).opacity = 0.822;
             mesh.visible = true;
           }
         }
@@ -241,7 +241,7 @@ export class SceneManager {
 
     // Ground plane
     const groundGeom = new THREE.PlaneGeometry(this.map.width + 40, this.map.height + 40);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x0a0a14, roughness: 1 });
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x202634, roughness: 1 });
     const ground = new THREE.Mesh(groundGeom, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.1;
@@ -256,14 +256,14 @@ export class SceneManager {
         if (state === 'hidden') {
           // Keep unexplored terrain barely visible so the world never becomes a black void.
           // The player can read the map silhouette, but details remain concealed.
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.08);
+          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.24);
           (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.22;
+          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.822;
           mesh.visible = true;
         } else if (state === 'explored') {
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.35);
+          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.58);
           (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.6;
+          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.82;
           mesh.visible = true;
         }
       }
