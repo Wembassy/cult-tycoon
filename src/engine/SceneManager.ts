@@ -34,7 +34,7 @@ const TERRAIN_HEIGHT: Record<string, number> = {
   dirt: 0.35,
 };
 
-const TILE_SIZE = 1;
+const TILE_SIZE = 0.9;
 
 export type ConstructionVisualKind = 'wall' | 'floor' | 'door' | 'object';
 
@@ -75,6 +75,9 @@ export class SceneManager {
   private buildPreviewGroup: THREE.Group;
   private blueprintGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
+  private selectionRing: THREE.Mesh;
+  private selectedFollower: number | null = null;
+  private followerDisplayOffsets: Map<number, THREE.Vector2> = new Map();
   private tileMeshes: Map<string, THREE.Mesh> = new Map();
   private entityMeshes: Map<number, THREE.Object3D> = new Map();
   private entityMeshIsPlaceholder: Map<number, boolean> = new Map();
@@ -102,6 +105,20 @@ export class SceneManager {
     this.tileGroup.name = 'tiles';
     this.entityGroup = new THREE.Group();
     this.entityGroup.name = 'entities';
+    this.selectionRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.32, 0.42, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x60a5fa,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    this.selectionRing.rotation.x = -Math.PI / 2;
+    this.selectionRing.visible = false;
+    this.selectionRing.renderOrder = 30;
+    this.entityGroup.add(this.selectionRing);
     this.buildingGroup = new THREE.Group();
     this.buildingGroup.name = 'buildings';
     this.buildPreviewGroup = new THREE.Group();
@@ -134,6 +151,16 @@ export class SceneManager {
 
   /** Get the current BuildingSystem reference (if set). */
   getBuildingSystem(): BuildingSystem | null { return this.buildingSystem; }
+
+  setSelectedFollower(entity: number | null): void {
+    this.selectedFollower = entity;
+    if (entity === null) this.selectionRing.visible = false;
+  }
+
+  getFollowerDisplayOffset(entity: number): { x: number; y: number } {
+    const offset = this.followerDisplayOffsets.get(entity);
+    return offset ? { x: offset.x, y: offset.y } : { x: 0, y: 0 };
+  }
 
   /**
    * Update tile appearance based on fog of war state.
@@ -677,6 +704,36 @@ export class SceneManager {
     const entities = this.world.query([Transform, Renderable]);
     const seen = new Set<number>();
 
+    // Followers may share a logical grid cell. Give colocated pawns small,
+    // render-only offsets so they remain individually visible/selectable without
+    // changing pathfinding or simulation coordinates.
+    const crowdGroups = new Map<string, number[]>();
+    for (const entity of entities) {
+      const transform = this.world.getComponent(entity, Transform);
+      const renderable = this.world.getComponent(entity, Renderable);
+      if (!transform || !renderable?.meshId.startsWith('follower')) continue;
+      const key = `${Math.round(transform.x)},${Math.round(transform.y)}`;
+      const group = crowdGroups.get(key) ?? [];
+      group.push(entity);
+      crowdGroups.set(key, group);
+    }
+    this.followerDisplayOffsets.clear();
+    for (const group of crowdGroups.values()) {
+      group.sort((a, b) => a - b);
+      if (group.length === 1) {
+        this.followerDisplayOffsets.set(group[0], new THREE.Vector2(0, 0));
+        continue;
+      }
+      const radius = Math.min(0.24, 0.12 + group.length * 0.018);
+      group.forEach((entity, index) => {
+        const angle = (index / group.length) * Math.PI * 2 - Math.PI / 2;
+        this.followerDisplayOffsets.set(
+          entity,
+          new THREE.Vector2(Math.cos(angle) * radius, Math.sin(angle) * radius),
+        );
+      });
+    }
+
     for (const entity of entities) {
       const transform = this.world.getComponent(entity, Transform)!;
       const renderable = this.world.getComponent(entity, Renderable)!;
@@ -708,7 +765,7 @@ export class SceneManager {
           if (cloned) {
             // Polygon Minis: root Armature node has translation ~[0, 1.0, -0.47].
             // Scale to ~0.06 so they're ~0.12 units tall — small relative to trees/rocks.
-            const modelScale = 0.06;
+            const modelScale = 0.075; // Alpha: 25% larger followers for readability.
             cloned.scale.setScalar(modelScale);
             cloned.updateMatrixWorld(true);
 
@@ -743,7 +800,7 @@ export class SceneManager {
             // Take/BaseLayer names, so they intentionally remain in a safe rest pose
             // instead of playing an arbitrary clip that may be a ritual/combat pose.
             const asset = this.assets!.get(assetPath);
-            if (asset && asset.animations.length > 0) {
+            if (asset) {
               const controller = this.createFollowerAnimationController(cloned, asset.animations);
               if (controller) {
                 this.mixers.set(entity, controller.mixer);
@@ -758,6 +815,7 @@ export class SceneManager {
 
         if (!obj) {
           const mesh = this.createPlaceholderMesh(renderable.meshId, entity);
+          if (renderable.meshId.startsWith('follower')) mesh.scale.setScalar(1.25);
           obj = mesh;
           this.entityGroup.add(obj);
           this.entityMeshes.set(entity, obj);
@@ -767,8 +825,11 @@ export class SceneManager {
 
       // Smooth position
       const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
-      const targetX = transform.x + offset.x + 0.5;
-      const targetZ = transform.y + offset.z + 0.5;
+      const displayOffset = renderable.meshId.startsWith('follower')
+        ? this.followerDisplayOffsets.get(entity) ?? new THREE.Vector2()
+        : new THREE.Vector2();
+      const targetX = transform.x + offset.x + 0.5 + displayOffset.x;
+      const targetZ = transform.y + offset.z + 0.5 + displayOffset.y;
 
       // Hide entities in unexplored fog areas
       if (this.fog && !this.fog.isVisible(Math.round(transform.x), Math.round(transform.y))) {
@@ -808,27 +869,29 @@ export class SceneManager {
         }
         this.lastFollowerPositions.set(entity, new THREE.Vector2(transform.x, transform.y));
 
-        // Conservative procedural fallback when no semantic skeletal clip exists.
+        // If skeletal animation is unavailable, keep a stable pose rather than
+        // fake vertical bobbing. Bobbing made idle followers look stuck/glitched.
         const hasSemanticAction = this.animationActions.get(entity)?.has(animState) ?? false;
-        if (!hasSemanticAction) {
-          const phase = now * 0.008 + entity;
-          if (animState === 'walk') {
-            baseY += Math.sin(phase) * 0.035;
-            obj.rotation.z = Math.sin(phase * 0.5) * 0.025;
-          } else if (animState === 'work' || animState === 'pray') {
-            baseY += Math.sin(phase * 0.5) * 0.012;
-            obj.rotation.z = Math.sin(phase * 0.35) * 0.015;
-          } else if (animState === 'sleep') {
-            obj.rotation.z += (0.10 - obj.rotation.z) * 0.08;
-          } else {
-            obj.rotation.z += (0 - obj.rotation.z) * 0.08;
-          }
+        if (!hasSemanticAction && animState === 'sleep') {
+          obj.rotation.z += (0.10 - obj.rotation.z) * 0.08;
+        } else if (animState !== 'sleep') {
+          obj.rotation.z += (0 - obj.rotation.z) * 0.08;
         }
       } else {
         obj.rotation.y = transform.rotation;
       }
 
       obj.position.y += (baseY - obj.position.y) * 0.15;
+
+      if (entity === this.selectedFollower) {
+        this.selectionRing.visible = obj.visible;
+        this.selectionRing.position.set(obj.position.x, baseY + 0.035, obj.position.z);
+      }
+    }
+
+    if (this.selectedFollower !== null && !seen.has(this.selectedFollower)) {
+      this.selectedFollower = null;
+      this.selectionRing.visible = false;
     }
 
     // Update animation mixers
@@ -1182,7 +1245,7 @@ export class SceneManager {
 
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
     const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
-    const geom = new THREE.BoxGeometry(1.02, height + 0.05, 1.02);
+    const geom = new THREE.BoxGeometry(0.94, height + 0.05, 0.94);
     const mat = new THREE.MeshBasicMaterial({
       color: 0xffff44, transparent: true, opacity: 0.35, depthWrite: false,
     });
@@ -1211,6 +1274,9 @@ export class SceneManager {
   }
 
   dispose(): void {
+    this.selectionRing.geometry.dispose();
+    (this.selectionRing.material as THREE.Material).dispose();
+    this.followerDisplayOffsets.clear();
     this.tileMeshes.clear();
     this.entityMeshes.clear();
     this.mixers.clear();
