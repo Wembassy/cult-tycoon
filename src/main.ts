@@ -2461,19 +2461,18 @@ class CultTycoonGame {
    * Quit the game (Electron only).
    */
   private quitGame(): void {
-    // Check if running in Electron
-    const isElectron = typeof (window as any).require !== 'undefined' ||
-      (typeof process !== 'undefined' && process.versions?.electron !== undefined);
-    if (isElectron) {
-      const electron = (window as any).require('electron');
-      electron.ipcRenderer.send('app-quit');
-    } else {
-      // In browser, just show start menu
-      console.log('[Menu] Quit not available in browser mode');
-      // Could show a toast/overlay, but simplest is to just stay on menu
+    const electronAPI = (window as unknown as {
+      electronAPI?: { quitApp?: () => void };
+    }).electronAPI;
+
+    if (electronAPI?.quitApp) {
+      electronAPI.quitApp();
+      return;
     }
-  }
-}
+
+    // Browser/dev fallback: return to the menu rather than attempting Node access.
+    this.hud.logEvent('Quit is only available in the desktop build.', 'info');
+  }}
 
 function init(): void {
   console.log('[init] Starting Cult Tycoon...');
