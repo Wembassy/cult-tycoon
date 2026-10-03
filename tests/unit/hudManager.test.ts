@@ -25,7 +25,7 @@ describe('HUDManager — Resource Bar', () => {
     expect(container.querySelector('.hud-menu-toggle')).not.toBeNull();
     expect(container.querySelector('.hud-management-menu')).not.toBeNull();
     expect(container.querySelector('.hud-minimap')).not.toBeNull();
-    expect(container.querySelector('.hud-build-version')?.textContent).toContain('ALPHA 4');
+    expect(container.querySelector('.hud-build-version')?.textContent).toContain('ALPHA 5');
   });
 
   it('should update resource bar with stats', () => {
