@@ -604,6 +604,34 @@ class CultTycoonGame {
         font-size: 10px; font-weight: 700; color: #fbbf24;
       }
 
+      .hud-build-status {
+        position: absolute;
+        left: 50%;
+        bottom: 148px;
+        transform: translateX(-50%);
+        display: none;
+        max-width: min(720px, calc(100vw - 32px));
+        padding: 7px 12px;
+        background: rgba(12,18,30,0.96);
+        border: 1px solid rgba(100,140,190,0.5);
+        border-radius: 6px;
+        color: #dbeafe;
+        font-size: 12px;
+        font-weight: 700;
+        text-align: center;
+        pointer-events: none;
+        z-index: 14;
+        box-shadow: 0 3px 14px rgba(0,0,0,0.55);
+      }
+      .hud-build-status[data-state="valid"] {
+        border-color: rgba(74,222,128,0.8);
+        color: #bbf7d0;
+      }
+      .hud-build-status[data-state="invalid"] {
+        border-color: rgba(248,113,113,0.85);
+        color: #fecaca;
+      }
+
       /* Legacy Build Panel — left side (hidden, kept for compat) */
       .hud-build-panel {
         position: absolute; top: 60px; left: 8px;
@@ -981,14 +1009,25 @@ class CultTycoonGame {
           const label = item.querySelector('.hud-build-item-label')?.textContent ?? id;
           if (id === 'room:clear') {
             this.hud.logEvent('Clear Room: drag over designated room tiles to remove the designation.', 'info');
+            this.hud.setBuildStatus('Drag over designated room tiles to clear the room zone.', 'info');
           } else if (id.startsWith('room:')) {
             const roomDef = DataManager.getRoom(id.slice(5));
             this.hud.logEvent(
               `Room designation: ${label}. Drag an area at least ${roomDef?.minSize ?? 1} tiles, then place required objects.`,
               'info',
             );
+            this.hud.setBuildStatus(
+              `Drag a rectangle to designate ${label} (minimum ${roomDef?.minSize ?? 1} tiles).`,
+              'info',
+            );
           } else {
-            this.hud.logEvent(`Selected: ${label} (${cost}g)`, 'info');
+            const instruction =
+              id === 'wall' ? 'Drag to plan a wall line.' :
+              id === 'floor' ? 'Drag a rectangle to plan floor construction.' :
+              id === 'door' ? 'Click a tile beside a wall to plan a door.' :
+              'Click a tile to place a construction blueprint.';
+            this.hud.logEvent(`Selected: ${label} (${cost}g). ${instruction}`, 'info');
+            this.hud.setBuildStatus(instruction, 'info');
           }
           this.audio.play('ui-select');
         }
