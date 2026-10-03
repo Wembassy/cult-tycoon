@@ -5,6 +5,8 @@ on:
     branches: [alpha/vertical-slice]
     paths:
       - 'public/assets/models/followers/**'
+      - 'public/assets/animations/followers/**'
+      - 'src/data/FollowerAnimations.ts'
       - 'src/engine/AssetLoader.ts'
       - 'src/engine/SceneManager.ts'
       - '.github/workflows/audit-follower-glbs.yml'
@@ -92,4 +94,81 @@ jobs:
               has_skin = len(skins) > 0 and any(len(s.get("joints", [])) > 0 for s in skins)
               has_anim = len(anims) > 0
               print(f"  RESULT rigged={has_skin} animated={has_anim}")
+          # Validate the optional shared animation library against the active follower rig.
+          manifest_path = "public/assets/animations/followers/manifest.json"
+          if os.path.exists(manifest_path):
+              with open(manifest_path, "r", encoding="utf-8") as f:
+                  manifest = json.load(f)
+
+              if manifest.get("enabled"):
+                  source = manifest.get("source", "")
+                  prefix = "./assets/"
+                  if source.startswith(prefix):
+                      source_path = "public/assets/" + source[len(prefix):]
+                  else:
+                      source_path = source
+
+                  if not os.path.exists(source_path):
+                      raise SystemExit(f"Animation manifest enabled but source is missing: {source_path}")
+
+                  # Use the wizard as the canonical active follower rig.
+                  reference = parse_glb("public/assets/models/followers/fantasy_wizard_01.glb")
+                  ref_nodes = reference.get("nodes", [])
+                  ref_skins = reference.get("skins", [])
+                  ref_joint_indices = set()
+                  for skin in ref_skins:
+                      ref_joint_indices.update(skin.get("joints", []))
+                  ref_joint_names = {
+                      ref_nodes[i].get("name")
+                      for i in ref_joint_indices
+                      if i < len(ref_nodes) and ref_nodes[i].get("name")
+                  }
+
+                  lib = parse_glb(source_path)
+                  lib_nodes = lib.get("nodes", [])
+                  lib_anims = lib.get("animations", [])
+
+                  keywords = {
+                      "idle": ["idle", "stand", "standing", "rest", "breath"],
+                      "walk": ["walk", "locomotion", "move"],
+                      "work": ["work", "hammer", "build", "clean", "research", "cook", "craft"],
+                      "pray": ["pray", "prayer", "worship", "ritual", "kneel"],
+                      "eat": ["eat", "eating", "drink", "drinking"],
+                      "sleep": ["sleep", "sleeping", "lie", "lying"],
+                  }
+
+                  names = [(a.get("name") or "").lower() for a in lib_anims]
+                  missing_states = [
+                      state
+                      for state, words in keywords.items()
+                      if not any(any(word in name for word in words) for name in names)
+                  ]
+                  if missing_states:
+                      raise SystemExit(
+                          "Shared follower animation library is missing semantic states: "
+                          + ", ".join(missing_states)
+                      )
+
+                  invalid_track_nodes = []
+                  for anim in lib_anims:
+                      for channel in anim.get("channels", []):
+                          node_idx = channel.get("target", {}).get("node")
+                          if node_idx is None or node_idx >= len(lib_nodes):
+                              continue
+                          node_name = lib_nodes[node_idx].get("name")
+                          if node_name and node_name not in ref_joint_names:
+                              invalid_track_nodes.append(node_name)
+
+                  if invalid_track_nodes:
+                      unique = sorted(set(invalid_track_nodes))
+                      raise SystemExit(
+                          "Shared animation tracks target nodes outside the canonical follower rig: "
+                          + ", ".join(unique[:20])
+                      )
+
+                  print(
+                      f"SHARED_LIBRARY_OK clips={len(lib_anims)} "
+                      f"states={','.join(keywords.keys())} source={source_path}"
+                  )
+
           print("FOLLOWER_GLTF_AUDIT_END")
