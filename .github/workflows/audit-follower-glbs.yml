@@ -1,0 +1,80 @@
+name: Audit Follower GLBs
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inspect follower GLB rigs and animations
+        shell: python
+        run: |
+          import json, struct, glob, os
+
+          def parse_glb(path):
+              with open(path, "rb") as f:
+                  data = f.read()
+              magic, version, length = struct.unpack_from("<III", data, 0)
+              if magic != 0x46546C67:
+                  raise ValueError("not glTF binary")
+              off = 12
+              doc = None
+              while off < len(data):
+                  chunk_len, chunk_type = struct.unpack_from("<II", data, off)
+                  off += 8
+                  chunk = data[off:off+chunk_len]
+                  off += chunk_len
+                  if chunk_type == 0x4E4F534A:
+                      doc = json.loads(chunk.decode("utf-8").rstrip("\x00 \t\r\n"))
+                      break
+              return doc or {}
+
+          print("FOLLOWER_GLTF_AUDIT_BEGIN")
+          for path in sorted(glob.glob("public/assets/models/followers/*.glb")):
+              doc = parse_glb(path)
+              nodes = doc.get("nodes", [])
+              skins = doc.get("skins", [])
+              anims = doc.get("animations", [])
+              meshes = doc.get("meshes", [])
+
+              joint_sets = [set(s.get("joints", [])) for s in skins]
+              all_joints = set().union(*joint_sets) if joint_sets else set()
+              skinned_nodes = [i for i,n in enumerate(nodes) if "skin" in n]
+
+              print(f"MODEL {os.path.basename(path)}")
+              print(f"  nodes={len(nodes)} meshes={len(meshes)} skins={len(skins)} skinned_nodes={len(skinned_nodes)}")
+              if skins:
+                  print("  joints=" + ",".join(str(len(s.get("joints", []))) for s in skins))
+                  print("  skeleton_roots=" + ",".join(str(s.get("skeleton", "none")) for s in skins))
+              else:
+                  print("  joints=0")
+              print(f"  animations={len(anims)}")
+
+              for idx, anim in enumerate(anims):
+                  name = anim.get("name") or f"animation_{idx}"
+                  channels = anim.get("channels", [])
+                  target_nodes = []
+                  paths = []
+                  invalid = 0
+                  joint_targets = 0
+                  for ch in channels:
+                      target = ch.get("target", {})
+                      node = target.get("node")
+                      p = target.get("path", "?")
+                      paths.append(p)
+                      if node is not None:
+                          target_nodes.append(node)
+                          if node >= len(nodes):
+                              invalid += 1
+                          if node in all_joints:
+                              joint_targets += 1
+                  print(f"    clip={name!r} channels={len(channels)} joint_targets={joint_targets} invalid_targets={invalid} paths={sorted(set(paths))}")
+
+              has_skin = len(skins) > 0 and any(len(s.get("joints", [])) > 0 for s in skins)
+              has_anim = len(anims) > 0
+              print(f"  RESULT rigged={has_skin} animated={has_anim}")
+          print("FOLLOWER_GLTF_AUDIT_END")
