@@ -36,6 +36,7 @@ export interface SerializedConstructionBlueprint {
   x: number;
   y: number;
   objectId?: string;
+  rotation?: number;
   cost: number;
 }
 
