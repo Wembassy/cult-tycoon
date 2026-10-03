@@ -22,6 +22,7 @@ import { Renderable } from './components/Renderable';
 import { Health } from './components/Health';
 import { Traits } from './components/Traits';
 import { Job } from './components/Job';
+import { Inventory } from './components/Inventory';
 import { Skills } from './components/Skills';
 import { Schedule, type Shift } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
@@ -67,6 +68,7 @@ type ConstructionBlueprint = SerializedConstructionBlueprint;
 
 
 class CultTycoonGame {
+  private canvas: HTMLCanvasElement;
   private renderer: Renderer;
   private sceneMgr: SceneManager;
   private input: InputManager;
@@ -160,6 +162,7 @@ class CultTycoonGame {
     if (!canvas) throw new Error('Canvas #game-canvas not found');
     canvas.tabIndex = 0;
     canvas.style.outline = 'none';
+    this.canvas = canvas;
 
     // Core engine
     this.renderer = new Renderer(canvas);
@@ -439,7 +442,7 @@ class CultTycoonGame {
     this.setupBuildPanel();
 
     // Input callbacks
-    this.input.onTileClick = (tile) => this.onTileClick(tile.x, tile.y);
+    this.input.onTileClick = (tile, event) => this.onTileClick(tile.x, tile.y, event);
     this.input.onTileHover = (tile) => this.onTileHover(tile.x, tile.y);
     this.input.onDragStart = (tile) => {
       if (this.input.getMode() === 'demolish') {
@@ -1136,6 +1139,7 @@ class CultTycoonGame {
     this.selectedBuildRotation = 0;
     this.activeBuildCategory = null;
     this.selectedEntity = null;
+    this.sceneMgr.setSelectedFollower(null);
     this.hud.hideBuildItems();
     this.hud.hideInspector();
     this.hud.highlightBuildItem(null);
@@ -1917,7 +1921,7 @@ class CultTycoonGame {
     }
   }
 
-  private onTileClick(x: number, y: number): void {
+  private onTileClick(x: number, y: number, event?: MouseEvent): void {
     const tile = this.map.getTile(x, y);
     if (!tile) return;
 
@@ -1937,12 +1941,16 @@ class CultTycoonGame {
         this.roomGraph.invalidate();
       }
     } else {
-      // Select mode — check for follower at this tile
-      const entity = this.findFollowerAt(x, y);
+      // Select mode — pick the visible pawn under the mouse first, then
+      // fall back to logical tile lookup for keyboard/test compatibility.
+      const entity = event
+        ? this.findFollowerAtScreen(event.clientX, event.clientY)
+        : this.findFollowerAt(x, y);
       if (entity !== null) {
         this.selectFollower(entity);
       } else {
         this.selectedEntity = null;
+        this.sceneMgr.setSelectedFollower(null);
         this.hud.hideInspector();
         if (tile.roomId !== null) {
           const room = this.buildingSystem.getRoom(tile.roomId);
@@ -2125,19 +2133,62 @@ class CultTycoonGame {
     return null;
   }
 
+  private findFollowerAtScreen(clientX: number, clientY: number): number | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    let bestEntity: number | null = null;
+    let bestDistanceSq = 44 * 44;
+
+    for (const entity of this.world.query([Transform, Renderable, Needs])) {
+      const renderable = this.world.getComponent(entity, Renderable)!;
+      if (!renderable.visible || !renderable.meshId.startsWith('follower')) continue;
+
+      const transform = this.world.getComponent(entity, Transform)!;
+      if (!this.fogOfWar.isVisible(Math.round(transform.x), Math.round(transform.y))) continue;
+
+      const displayOffset = this.sceneMgr.getFollowerDisplayOffset(entity);
+      const screen = this.renderer.camera.tileToScreen(
+        transform.x + displayOffset.x,
+        transform.y + displayOffset.y,
+      );
+
+      // The projection point is at the pawn's feet. Bias upward toward the visible body.
+      const dx = localX - screen.x;
+      const dy = localY - (screen.y - 18);
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq < bestDistanceSq) {
+        bestDistanceSq = distanceSq;
+        bestEntity = entity;
+      }
+    }
+
+    return bestEntity;
+  }
+
   private selectFollower(entity: number): void {
     this.selectedEntity = entity;
+    this.sceneMgr.setSelectedFollower(entity);
+
     const needs = this.world.getComponent(entity, Needs);
     const health = this.world.getComponent(entity, Health);
     const traits = this.world.getComponent(entity, Traits);
     const job = this.world.getComponent(entity, Job);
+    const ai = this.world.getComponent(entity, FollowerAI);
+    const skills = this.world.getComponent(entity, Skills);
+    const schedule = this.world.getComponent(entity, Schedule);
+    const work = this.world.getComponent(entity, WorkPreferences);
+    const inventory = this.world.getComponent(entity, Inventory);
     const name = this.followerNames.get(entity) ?? 'Unknown';
 
     if (!needs) return;
 
     this.hud.showInspector({
       name,
-      role: this.world.getComponent(entity, WorkPreferences)?.role ?? 'Follower',
+      role: work?.role ?? 'Follower',
+      tier: ai?.tier,
+      aiState: ai?.state,
+      schedule: schedule?.shift,
       health: health?.hp ?? 100,
       needs: {
         hunger: needs.hunger,
@@ -2150,6 +2201,16 @@ class CultTycoonGame {
       },
       job: job?.type ?? 'idle',
       traits: traits?.traits ?? [],
+      skills: skills ? {
+        cooking: skills.cooking,
+        research: skills.research,
+        construction: skills.construction,
+        faith: skills.faith,
+        combat: skills.combat,
+        social: skills.social,
+      } : undefined,
+      priorities: work ? { ...work.priorities } : undefined,
+      inventory: inventory?.items ?? [],
     });
   }
 
