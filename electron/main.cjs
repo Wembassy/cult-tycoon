@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session } = require('electron');
 const path = require('path');
 
 let mainWindow = null;
@@ -9,7 +9,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 720,
-    title: 'Cult Tycoon',
+    title: 'Cult Tycoon - Alpha 4',
     backgroundColor: '#1a1a2e',
     webPreferences: {
       contextIsolation: true,
@@ -23,7 +23,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { query: { build: app.getVersion() } });
   }
 
   if (!isDev) Menu.setApplicationMenu(null);
@@ -35,7 +35,12 @@ function createWindow() {
 
 ipcMain.on('app-quit', () => app.quit());
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  // Development alphas change rapidly. Clear Chromium's HTTP cache so an
+  // installed build can never render stale Vite assets from a previous alpha.
+  await session.defaultSession.clearCache();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
