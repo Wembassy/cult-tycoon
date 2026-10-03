@@ -23,6 +23,8 @@ const browserGlobals = {
   HTMLSelectElement: 'readonly',
   HTMLCanvasElement: 'readonly',
   OscillatorType: 'readonly',
+  CSSStyleDeclaration: 'readonly',
+  process: 'readonly',
   console: 'readonly',
 };
 
