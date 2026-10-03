@@ -36,7 +36,7 @@ jobs:
         run: |
           Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
-          Remove-Item -Force cult-tycoon-alpha5-windows.zip -ErrorAction SilentlyContinue
+          Remove-Item -Force cult-tycoon-alpha6-windows.zip -ErrorAction SilentlyContinue
 
       - uses: actions/setup-node@v4
         with:
@@ -52,30 +52,30 @@ jobs:
           npm run test
           npm run build
 
-      - name: Package Windows Alpha 5 installer
+      - name: Package Windows Alpha 6 installer
         run: npx electron-builder --win nsis --publish never --config.directories.output=release/nsis
 
-      - name: Package Windows Alpha 5 portable
+      - name: Package Windows Alpha 6 portable
         run: npx electron-builder --win portable --publish never --config.directories.output=release/portable
 
-      - name: Verify packaged Alpha 5 UI and identity
+      - name: Verify packaged Alpha 6 UI and identity
         shell: pwsh
         run: |
           $asar = "release/nsis/win-unpacked/resources/app.asar"
           if (-not (Test-Path $asar)) { throw "Missing packaged app.asar" }
-          node -e "const fs=require('fs');const s=fs.readFileSync('release/nsis/win-unpacked/resources/app.asar').toString('utf8');for(const needle of ['ALPHA 5','hud-menu-toggle','hud-minimap','Designate a Dormitory','Cult Tycoon - Alpha 5']){if(!s.includes(needle)){console.error('Missing packaged marker:',needle);process.exit(1)}}console.log('Packaged Alpha 5 UI markers verified.')"
+          node -e "const fs=require('fs');const s=fs.readFileSync('release/nsis/win-unpacked/resources/app.asar').toString('utf8');for(const needle of ['ALPHA 6','hud-menu-toggle','hud-minimap','Designate a Dormitory','Cult Tycoon - Alpha 6','speed3','hud-build-status','construction-blueprints']){if(!s.includes(needle)){console.error('Missing packaged marker:',needle);process.exit(1)}}console.log('Packaged Alpha 6 UI markers verified.')"
 
       - name: Create release ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path "release/nsis/*","release/portable/*" -DestinationPath "cult-tycoon-alpha5-windows.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "release/nsis/*","release/portable/*" -DestinationPath "cult-tycoon-alpha6-windows.zip" -CompressionLevel Optimal
 
-      - name: Upload Alpha 5 artifact
+      - name: Upload Alpha 6 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cult-tycoon-alpha5-windows
+          name: cult-tycoon-alpha6-windows
           path: |
-            cult-tycoon-alpha5-windows.zip
+            cult-tycoon-alpha6-windows.zip
             release/portable/*.exe
             release/nsis/*.exe
           if-no-files-found: error
