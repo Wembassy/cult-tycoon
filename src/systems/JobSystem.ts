@@ -29,9 +29,14 @@ interface AssignedJob {
 
 export class JobSystem {
   private queue: JobPosting[] = [];
+  private onCompleted: ((posting: JobPosting, entity: number) => void) | null = null;
   private assigned: Map<string, AssignedJob> = new Map();
   private completed: Set<string> = new Set();
   private tickCount = 0;
+
+  setCompletionHandler(handler: ((posting: JobPosting, entity: number) => void) | null): void {
+    this.onCompleted = handler;
+  }
 
   /**
    * Add a job to the queue
@@ -168,6 +173,7 @@ export class JobSystem {
             ai.stateTimer = 0;
             toRemove.push(jobId);
             this.completed.add(jobId);
+            this.onCompleted?.(assignment.posting, entity);
           }
         }
       }
