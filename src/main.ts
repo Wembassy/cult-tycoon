@@ -55,7 +55,7 @@ import { DialogSystem } from './ui/DialogSystem';
 import { StartMenu } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { SettingsMenu, SettingsData, GraphicsQuality } from './ui/SettingsMenu';
-import { SaveSystem, type SaveData, type SerializedCult } from './systems/SaveSystem';
+import { SaveSystem, type SaveData, type SerializedCult, type SerializedConstructionBlueprint } from './systems/SaveSystem';
 // WinLoseEvent type used for overlay logic
 
 /** Top-level game state. */
@@ -63,14 +63,7 @@ type GameState = 'menu' | 'loading' | 'playing' | 'paused';
 
 type ConstructionKind = 'wall' | 'floor' | 'door' | 'object';
 
-interface ConstructionBlueprint {
-  id: string;
-  kind: ConstructionKind;
-  x: number;
-  y: number;
-  objectId?: string;
-  cost: number;
-}
+type ConstructionBlueprint = SerializedConstructionBlueprint;
 
 
 class CultTycoonGame {
@@ -1547,6 +1540,27 @@ class CultTycoonGame {
     );
   }
 
+  private postConstructionJob(blueprint: ConstructionBlueprint, priority: number = 9): void {
+    const workTile = blueprint.kind === 'floor'
+      ? { x: blueprint.x, y: blueprint.y }
+      : this.findAdjacentWorkTile(blueprint.x, blueprint.y) ?? { x: blueprint.x, y: blueprint.y };
+
+    const duration =
+      blueprint.kind === 'floor' ? 1.5 :
+      blueprint.kind === 'wall' ? 3 :
+      blueprint.kind === 'door' ? 2.5 : 4;
+
+    this.jobSystem.postJob({
+      id: blueprint.id,
+      type: 'build',
+      targetTile: workTile,
+      priority,
+      duration,
+      requiredSkill: 'construction',
+      minSkillLevel: 1,
+    });
+  }
+
   private queueConstructionBlueprint(
     kind: ConstructionKind,
     x: number,
@@ -1556,28 +1570,10 @@ class CultTycoonGame {
   ): boolean {
     if (this.getConstructionBlueprintAt(x, y)) return false;
 
-    const workTile = kind === 'floor'
-      ? { x, y }
-      : this.findAdjacentWorkTile(x, y) ?? { x, y };
-
     const id = `construct:${this.nextConstructionBlueprintId++}`;
     const blueprint: ConstructionBlueprint = { id, kind, x, y, objectId, cost };
     this.constructionBlueprints.set(id, blueprint);
-
-    const duration =
-      kind === 'floor' ? 1.5 :
-      kind === 'wall' ? 3 :
-      kind === 'door' ? 2.5 : 4;
-
-    this.jobSystem.postJob({
-      id,
-      type: 'build',
-      targetTile: workTile,
-      priority: 9,
-      duration,
-      requiredSkill: 'construction',
-      minSkillLevel: 1,
-    });
+    this.postConstructionJob(blueprint);
     return true;
   }
 
@@ -1660,15 +1656,7 @@ class CultTycoonGame {
         ];
         const waitingOnWall = neighbors.some(tile => this.hasPlannedWall(tile.x, tile.y));
         if (waitingOnWall) {
-          this.jobSystem.postJob({
-            id: blueprint.id,
-            type: 'build',
-            targetTile: { x: blueprint.x, y: blueprint.y },
-            priority: 6,
-            duration: 1.5,
-            requiredSkill: 'construction',
-            minSkillLevel: 1,
-          });
+          this.postConstructionJob(blueprint, 6);
           return;
         }
       }
@@ -2918,6 +2906,17 @@ class CultTycoonGame {
     this.buildingSystem.restoreSnapshot(data.building);
     this.jobSystem.clear();
 
+    this.constructionBlueprints.clear();
+    let highestConstructionId = 0;
+    for (const savedBlueprint of data.construction ?? []) {
+      const blueprint: ConstructionBlueprint = { ...savedBlueprint };
+      this.constructionBlueprints.set(blueprint.id, blueprint);
+      const numericId = Number.parseInt(blueprint.id.split(':')[1] ?? '0', 10);
+      if (Number.isFinite(numericId)) highestConstructionId = Math.max(highestConstructionId, numericId);
+    }
+    this.nextConstructionBlueprintId = highestConstructionId + 1;
+    this.refreshConstructionBlueprintVisuals();
+
     // Resume from a clean assignment state, then recreate jobs from restored stations.
     for (const entityId of this.world.query([Job, FollowerAI])) {
       const job = this.world.getComponent(entityId, Job)!;
@@ -2931,6 +2930,9 @@ class CultTycoonGame {
       ai.path = [];
       ai.pathIndex = 0;
       if (!ai.needTarget) ai.state = 'idle';
+    }
+    for (const blueprint of this.constructionBlueprints.values()) {
+      this.postConstructionJob(blueprint);
     }
     for (const obj of this.buildingSystem.getAllObjects()) {
       this.registerWorkstationJob(obj.x, obj.y, obj.objectId);
@@ -3064,6 +3066,7 @@ class CultTycoonGame {
       cult,
       { hour: this.currentHour, day: this.currentDay },
       this.buildingSystem.getSnapshot(),
+      Array.from(this.constructionBlueprints.values()),
     );
 
     const success = this.saveSystem.save(data);
