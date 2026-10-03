@@ -173,6 +173,42 @@ jobs:
                           + ", ".join(unique[:20])
                       )
 
+                  # Every selectable follower variant must expose every joint name used
+                  # by the shared animation library. Otherwise a subset of models can
+                  # silently stay in their source T-pose even though the library itself passes.
+                  animated_joint_names = set()
+                  for anim in lib_anims:
+                      for channel in anim.get("channels", []):
+                          node_idx = channel.get("target", {}).get("node")
+                          if isinstance(node_idx, int) and node_idx < len(lib_nodes):
+                              node_name = lib_nodes[node_idx].get("name")
+                              if node_name:
+                                  animated_joint_names.add(node_name)
+
+                  incompatible_models = []
+                  for model_path in sorted(glob.glob("public/assets/models/followers/*.glb")):
+                      model = parse_glb(model_path)
+                      model_nodes = model.get("nodes", [])
+                      model_skins = model.get("skins", [])
+                      model_joint_names = set()
+                      for skin in model_skins:
+                          for joint_idx in skin.get("joints", []):
+                              if joint_idx < len(model_nodes):
+                                  name = model_nodes[joint_idx].get("name")
+                                  if name:
+                                      model_joint_names.add(name)
+                      missing = sorted(animated_joint_names - model_joint_names)
+                      if missing:
+                          incompatible_models.append(
+                              f"{os.path.basename(model_path)} missing {','.join(missing[:10])}"
+                          )
+
+                  if incompatible_models:
+                      raise SystemExit(
+                          "Follower variants incompatible with shared animation library: "
+                          + " | ".join(incompatible_models)
+                      )
+
                   print(
                       f"SHARED_LIBRARY_OK clips={len(lib_anims)} "
                       f"states={','.join(keywords.keys())} source={source_path}"
