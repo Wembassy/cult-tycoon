@@ -9,7 +9,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 720,
-    title: 'Cult Tycoon - Alpha 4',
+    title: 'Cult Tycoon - Alpha 5',
     backgroundColor: '#1a1a2e',
     webPreferences: {
       contextIsolation: true,
