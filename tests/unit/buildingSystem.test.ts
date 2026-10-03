@@ -210,3 +210,54 @@ describe('BuildingSystem — Room Detection', () => {
     expect(bs.getAllRooms()).toHaveLength(2);
   });
 });
+
+describe('BuildingSystem — Room Designation', () => {
+  let map: TileMap;
+  let bs: BuildingSystem;
+
+  beforeEach(() => {
+    map = new TileMap(16, 16);
+    bs = new BuildingSystem(map);
+  });
+
+  it('should designate a rectangular room without requiring walls', () => {
+    const room = bs.designateRoomArea(2, 2, 4, 4, 'bedroom', 'dormitory');
+
+    expect(room).not.toBeNull();
+    expect(room!.area).toBe(9);
+    expect(room!.roomDefinitionId).toBe('dormitory');
+    expect(room!.type).toBe('bedroom');
+    expect(map.getTile(3, 3)?.roomId).toBe(room!.id);
+  });
+
+  it('should replace overlapping designation tiles with the new room', () => {
+    const first = bs.designateRoomArea(2, 2, 4, 4, 'bedroom', 'dormitory')!;
+    const second = bs.designateRoomArea(3, 3, 5, 5, 'kitchen', 'kitchen')!;
+
+    expect(map.getTile(3, 3)?.roomId).toBe(second.id);
+    expect(bs.getRoom(first.id)?.area).toBe(5);
+    expect(bs.getRoom(second.id)?.area).toBe(9);
+  });
+
+  it('should preserve a designated room when furniture is demolished', () => {
+    const room = bs.designateRoomArea(2, 2, 4, 4, 'bedroom', 'dormitory')!;
+    bs.placeObject(3, 3, 'bed');
+
+    expect(bs.demolish(3, 3).success).toBe(true);
+    expect(map.getTile(3, 3)?.roomId).toBe(room.id);
+    expect(bs.getRoom(room.id)?.area).toBe(9);
+  });
+
+  it('should persist room definition IDs in building snapshots', () => {
+    const room = bs.designateRoomArea(2, 2, 4, 4, 'bedroom', 'dormitory')!;
+    const snapshot = bs.getSnapshot();
+
+    const restoredMap = new TileMap(16, 16);
+    for (const tile of room.tiles) restoredMap.setRoomId(tile.x, tile.y, room.id);
+    const restored = new BuildingSystem(restoredMap);
+    restored.restoreSnapshot(snapshot);
+
+    expect(restored.getRoom(room.id)?.roomDefinitionId).toBe('dormitory');
+    expect(restored.getRoom(room.id)?.area).toBe(9);
+  });
+});
