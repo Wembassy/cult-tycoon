@@ -195,7 +195,7 @@ export class HUDManager {
         display: flex;
         gap: 4px;
         padding: 6px 8px;
-        background-image: url('/assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
+        background-image: url('./assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(80, 120, 180, 0.5);
@@ -388,7 +388,7 @@ export class HUDManager {
    * Generate HTML for an icon with fallback emoji if the image fails to load.
    */
   private iconHtml(icon: string, fallback: string, className: string = 'hud-stat-icon'): string {
-    return `<img src="/assets/ui/${icon}.png" class="${className}" alt="${fallback}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';" /><span style="display:none;font-size:14px;line-height:20px;">${fallback}</span>`;
+    return `<img src="./assets/ui/${icon}.png" class="${className}" alt="${fallback}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';" /><span style="display:none;font-size:14px;line-height:20px;">${fallback}</span>`;
   }
 
   /**
