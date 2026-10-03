@@ -1212,6 +1212,7 @@ class CultTycoonGame {
           build: skills.construction,
           clean: Math.max(1, Math.round((skills.construction + skills.social) / 2)),
           haul: skills.construction,
+          harvest: skills.construction,
         },
         priorities: { ...prefs.priorities },
       };
