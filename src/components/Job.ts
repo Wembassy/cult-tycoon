@@ -7,6 +7,7 @@ export type JobType =
   | 'pray'
   | 'build'
   | 'haul'
+  | 'harvest'
   | 'wander'
   | 'idle';
 
