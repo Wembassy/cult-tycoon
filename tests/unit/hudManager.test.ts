@@ -143,8 +143,8 @@ describe('HUDManager — Time Controls', () => {
     hud = new HUDManager({ container });
   });
 
-  it('should default to play mode', () => {
-    expect(hud.timeMode).toBe('play');
+  it('should default to 1x speed', () => {
+    expect(hud.timeMode).toBe('speed1');
   });
 
   it('should set time mode', () => {
