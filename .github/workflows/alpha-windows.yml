@@ -46,3 +46,64 @@ jobs:
           path: cult-tycoon-alpha-windows.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish Alpha 3 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = "Wembassy/cult-tycoon"
+          $tag = "v0.1.0-alpha.3"
+          $title = "Cult Tycoon v0.1.0 Alpha 3"
+          $notes = @"
+          Alpha 3 focuses on first-session playability and management UX.
+
+          Highlights:
+          - visible starter clearing and readable fog of war
+          - responsive semi-transparent HUD, hamburger management menu, minimap
+          - collapsible activity log
+          - horizontal build submenus
+          - Prison Architect-style draggable room designation and Clear Room tool
+          - room requirements/completion feedback
+          - guided first-session objectives: Dormitory → Kitchen → roles → research → mission → heat
+          - RimWorld-style work roles/priorities
+          - real facility-seeking needs behavior
+          - first-party generated Idle/Walk/Work/Pray/Eat/Sleep follower animations
+          - compound/work-role/schedule persistence improvements
+
+          Validation:
+          - ESLint passes
+          - unit test suite passes
+          - TypeScript/Vite production build passes
+          - follower GLB rig/animation audit passes
+          - Windows Electron/NSIS packaging passes
+          "@
+
+          $release = $null
+          try {
+            $release = gh api "repos/$repo/releases/tags/$tag" | ConvertFrom-Json
+          } catch {
+            $release = $null
+          }
+
+          if ($null -eq $release) {
+            $payload = @{
+              tag_name = $tag
+              target_commitish = $env:GITHUB_SHA
+              name = $title
+              body = $notes
+              draft = $false
+              prerelease = $true
+            } | ConvertTo-Json
+            $release = $payload | gh api --method POST "repos/$repo/releases" --input - | ConvertFrom-Json
+          } else {
+            $payload = @{
+              name = $title
+              body = $notes
+              draft = $false
+              prerelease = $true
+            } | ConvertTo-Json
+            $release = $payload | gh api --method PATCH "repos/$repo/releases/$($release.id)" --input - | ConvertFrom-Json
+          }
+
+          gh release upload $tag "cult-tycoon-alpha-windows.zip" --repo $repo --clobber
