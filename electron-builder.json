@@ -17,8 +17,7 @@
   },
   "win": {
     "target": [
-      "nsis",
-      "portable"
+      "nsis"
     ]
   },
   "linux": {
@@ -32,6 +31,5 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
-  },
-  "artifactName": "${productName}-${version}-${arch}.${ext}"
+  }
 }
