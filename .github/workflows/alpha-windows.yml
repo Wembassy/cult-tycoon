@@ -31,6 +31,11 @@ jobs:
       - name: Package Windows Alpha
         run: npx electron-builder --win --publish never
 
+      - name: Verify packaged Alpha 4 UI
+        shell: pwsh
+        run: |
+          node -e "const fs=require('fs');const s=fs.readFileSync('release/win-unpacked/resources/app.asar').toString('utf8');for(const needle of ['ALPHA 4','hud-menu-toggle','hud-minimap','Designate a Dormitory']){if(!s.includes(needle)){console.error('Missing packaged marker:',needle);process.exit(1)}}console.log('Packaged Alpha 4 UI markers verified.')"
+
       - name: Create release ZIP
         shell: pwsh
         run: |
