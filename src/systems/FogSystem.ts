@@ -14,7 +14,7 @@ export class FogSystem implements System {
   private updateInterval: number;
   private tickAccumulator = 0;
 
-  constructor(fog: FogOfWar, updateInterval: number = 10) {
+  constructor(fog: FogOfWar, updateInterval: number = 0.33) {
     this.fog = fog;
     this.updateInterval = updateInterval;
   }
@@ -22,7 +22,7 @@ export class FogSystem implements System {
   update(world: World, dt: number): void {
     this.tickAccumulator += dt;
 
-    // Only update fog every N ticks for performance
+    // Update fog a few times per second for responsive exploration
     if (this.tickAccumulator < this.updateInterval) return;
     this.tickAccumulator = 0;
 
