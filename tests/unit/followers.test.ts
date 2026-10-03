@@ -241,7 +241,6 @@ describe('AISystem', () => {
 
     needs.hunger = 10;
     // First update triggers needs state
-    needs; // suppress unused
     const needsSys = new NeedsSystem();
     needsSys.update(world, 1);
     expect(followerAI.state).toBe('needs');
