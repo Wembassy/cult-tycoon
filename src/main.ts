@@ -768,7 +768,7 @@ class CultTycoonGame {
 
       /* Time Controls — bottom center, sprite banner background */
       .hud-time-controls {
-        position: absolute; top: 72px; right: 205px;
+        position: absolute; top: 220px; right: 8px;
         display: flex; gap: 6px; align-items: center; padding: 7px 10px;
         background: rgba(12,18,30,0.94);
         border: 1px solid rgba(110, 150, 210, 0.55);
@@ -848,7 +848,7 @@ class CultTycoonGame {
           right: 6px;
         }
         .hud-event-log { display: none; }
-        .hud-time-controls { top: 148px; right: 8px; padding: 6px 8px; }
+        .hud-time-controls { top: 172px; right: 8px; padding: 6px 8px; }
         .hud-time { font-size: 11px; }
       }
 
