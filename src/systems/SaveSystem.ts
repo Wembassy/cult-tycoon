@@ -186,7 +186,7 @@ export class SaveSystem {
       const key = slot === -1 ? AUTOSAVE_KEY : `${SAVE_KEY_PREFIX}${slot}`;
       localStorage.removeItem(key);
       return true;
-    } catch (e) {
+    } catch (_e) {
       return false;
     }
   }
