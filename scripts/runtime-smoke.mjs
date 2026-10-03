@@ -1,4 +1,4 @@
-/* global window, document */
+/* global window */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -22,7 +22,7 @@ try {
   await page.goto('http://127.0.0.1:4173/?qa=1', { waitUntil: 'networkidle' });
   await page.screenshot({ path: `${out}/01-menu.png` });
   await page.locator('[data-action="new-game"]').click();
-  await page.waitForFunction(() => window.__game?.gameState === 'playing', { timeout: 30000 });
+  await page.waitForFunction(() => window.__game?.gameState === 'playing');
   await page.waitForTimeout(500);
   await page.keyboard.press('Space');
   assert.equal(await page.locator('.hud-menu-toggle').count(),1);
@@ -46,7 +46,6 @@ try {
   results.designated = await page.evaluate(() => window.__game.buildingSystem.getAllRooms());
   assert.equal(results.designated.length,1,'Room drag must create one designation');
   await page.screenshot({path:`${out}/05-room-designated.png`});
-  // Complete the room through the same building API used by the drag tools.
   results.room = await page.evaluate(() => {
     const g=window.__game,b=g.buildingSystem;
     b.placeFloorArea(26,26,30,30);
@@ -62,7 +61,7 @@ try {
   await page.locator('#pause-menu [data-action="save"]').click();
   results.saved = await page.evaluate(() => window.__game.saveSystem.load());
   assert.ok(results.saved?.building?.objects?.length,'Manual save contains compound');
-  await page.evaluate(() => { window.__game.dialog.hide(); window.__game.returnToMainMenu(); });
+  await page.evaluate(() => { window.__game.dialog.close(); window.__game.returnToMainMenu(); });
   await page.locator('[data-action="continue"]').click();
   await page.waitForFunction(() => window.__game.gameState === 'playing');
   await page.evaluate(() => window.__game.setTimeMode('pause'));
@@ -74,7 +73,7 @@ try {
     await page.setViewportSize({width,height});await page.waitForTimeout(300);
     await page.screenshot({path:`${out}/08-layout-${width}.png`});
   }
-  await page.evaluate(() => {window.__game.dialog.hide();window.__game.returnToMainMenu();});
+  await page.evaluate(() => {window.__game.dialog.close();window.__game.returnToMainMenu();});
   await page.locator('[data-action="new-game"]').click();
   await page.waitForFunction(() => window.__game.gameState === 'playing');
   results.newGame = await page.evaluate(() => ({rooms:window.__game.buildingSystem.getAllRooms().length,day:window.__game.currentDay,tech:window.__game.techTree.getUnlocked().length}));
