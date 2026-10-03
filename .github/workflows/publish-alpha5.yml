@@ -1,0 +1,48 @@
+name: Publish Alpha 5 Release
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified Alpha 5 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 37143553905             --repo Wembassy/cult-tycoon             --name cult-tycoon-alpha5-windows
+          find . -maxdepth 4 -type f -print
+
+      - name: Verify release files
+        run: |
+          test -s cult-tycoon-alpha5-windows.zip
+          test -n "$(find release/nsis -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          test -n "$(find release/portable -maxdepth 1 -type f -name '*.exe' -print -quit)"
+
+      - name: Publish Alpha 5 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PORTABLE="$(find release/portable -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          INSTALLER="$(find release/nsis -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          gh release create v0.1.0-alpha.5             cult-tycoon-alpha5-windows.zip             "$PORTABLE"             "$INSTALLER"             --repo Wembassy/cult-tycoon             --target bc91caa8d01c76bfec6c727bf96d69d5e0e2039a             --title "Cult Tycoon v0.1.0 Alpha 5"             --prerelease             --notes "Alpha 5 is an isolated branch-verification build created specifically to eliminate stale-install ambiguity.
+
+          Source verification:
+          - Windows workflow explicitly checked out alpha/vertical-slice
+          - branch guard passed
+          - clean dist/release workspace before build
+          - source commit: bc91caa8d01c76bfec6c727bf96d69d5e0e2039a
+          - lint/tests/production build passed
+          - NSIS installer passed
+          - portable executable passed
+          - packaged app.asar contains ALPHA 5, hamburger menu, minimap, Designate a Dormitory, and Cult Tycoon - Alpha 5
+
+          Alpha 5 uses a unique Windows identity (Cult Tycoon Alpha 5 / com.wembassy.culttycoon.alpha5), so it does not reuse the prior Cult Tycoon installation identity.
+
+          For this test, use the standalone portable EXE first. It bypasses old installers, install folders, and shortcuts completely."
