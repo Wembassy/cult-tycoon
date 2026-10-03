@@ -1650,13 +1650,37 @@ class CultTycoonGame {
       result = { success: false, message: 'Missing object definition' };
     }
 
-    this.constructionBlueprints.delete(blueprint.id);
-    this.refreshConstructionBlueprintVisuals();
-
     if (!result.success) {
+      if (blueprint.kind === 'door') {
+        const neighbors = [
+          { x: blueprint.x + 1, y: blueprint.y },
+          { x: blueprint.x - 1, y: blueprint.y },
+          { x: blueprint.x, y: blueprint.y + 1 },
+          { x: blueprint.x, y: blueprint.y - 1 },
+        ];
+        const waitingOnWall = neighbors.some(tile => this.hasPlannedWall(tile.x, tile.y));
+        if (waitingOnWall) {
+          this.jobSystem.postJob({
+            id: blueprint.id,
+            type: 'build',
+            targetTile: { x: blueprint.x, y: blueprint.y },
+            priority: 6,
+            duration: 1.5,
+            requiredSkill: 'construction',
+            minSkillLevel: 1,
+          });
+          return;
+        }
+      }
+
+      this.constructionBlueprints.delete(blueprint.id);
+      this.refreshConstructionBlueprintVisuals();
       this.hud.logEvent(`Construction failed at (${blueprint.x}, ${blueprint.y}): ${result.message}`, 'warning');
       return;
     }
+
+    this.constructionBlueprints.delete(blueprint.id);
+    this.refreshConstructionBlueprintVisuals();
 
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
     this.particles.spawnBuildDust(blueprint.x + offset.x + 0.5, blueprint.y + offset.z + 0.5);
