@@ -30,7 +30,7 @@ import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem } from './systems/JobSystem';
 import { AISystem, type NeedKind } from './systems/AISystem';
 import { PathfindSystem } from './systems/PathfindSystem';
-import { BuildingSystem } from './systems/BuildingSystem';
+import { BuildingSystem, type RoomType } from './systems/BuildingSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { FollowerFactory } from './systems/FollowerFactory';
 import { EventSystem } from './systems/EventSystem';
@@ -430,6 +430,7 @@ class CultTycoonGame {
     // Input callbacks
     this.input.onTileClick = (tile) => this.onTileClick(tile.x, tile.y);
     this.input.onTileHover = (tile) => this.onTileHover(tile.x, tile.y);
+    this.input.onDragEnd = (start, end) => this.onBuildDragEnd(start.x, start.y, end.x, end.y);
 
     // Setup keyboard shortcuts
     this.setupKeyboardShortcuts();
@@ -833,6 +834,13 @@ class CultTycoonGame {
       { id: 'wall', label: 'Wall', icon: '🧱', cost: 5, category: 'structure' },
       { id: 'floor', label: 'Floor', icon: '⬜', cost: 2, category: 'structure' },
       { id: 'door', label: 'Door', icon: '🚪', cost: 8, category: 'structure' },
+      ...DataManager.getRooms().map(room => ({
+        id: `room:${room.id}`,
+        label: room.name,
+        icon: '🏠',
+        cost: 0,
+        category: 'rooms' as BuildPanelEntry['category'],
+      })),
       ...allObjects.map(obj => ({
         id: obj.id,
         label: obj.name,
@@ -937,7 +945,16 @@ class CultTycoonGame {
         } else {
           this.input.setMode('build');
           this.selectedBuildItem = id;
-          this.hud.logEvent(`Selected: ${item.querySelector('.hud-build-item-label')?.textContent} (${cost}g)`, 'info');
+          const label = item.querySelector('.hud-build-item-label')?.textContent ?? id;
+          if (id.startsWith('room:')) {
+            const roomDef = DataManager.getRoom(id.slice(5));
+            this.hud.logEvent(
+              `Room designation: ${label}. Drag an area at least ${roomDef?.minSize ?? 1} tiles, then place required objects.`,
+              'info',
+            );
+          } else {
+            this.hud.logEvent(`Selected: ${label} (${cost}g)`, 'info');
+          }
           this.audio.play('ui-select');
         }
         this.hud.highlightBuildItem(id);
@@ -1598,6 +1615,24 @@ class CultTycoonGame {
       maxPopulation: 8 + maxPopBonus,
     };
     this.hud.updateResourceBar(data);
+    this.hud.updateMinimap({
+      width: this.map.width,
+      height: this.map.height,
+      tiles: this.map.getAllTiles().map(tile => ({
+        x: tile.x,
+        y: tile.y,
+        terrain: tile.terrain,
+        explored: this.fogOfWar.isExplored(tile.x, tile.y),
+      })),
+      followers: this.world.query([Transform, FollowerAI]).map(entityId => {
+        const transform = this.world.getComponent(entityId, Transform)!;
+        return { x: transform.x, y: transform.y };
+      }),
+      objects: this.buildingSystem.getAllObjects().map(obj => ({ x: obj.x, y: obj.y })),
+      rooms: this.buildingSystem.getAllRooms().map(room => ({
+        tiles: room.tiles.map(tile => ({ ...tile })),
+      })),
+    });
     this.updateAlphaObjective();
 
     // Keep open management panels current while the simulation runs.
