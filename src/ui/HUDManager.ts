@@ -126,7 +126,7 @@ export class HUDManager {
     this.topBar = this.createElement('div', 'hud-top-bar');
     this.objectiveStrip = this.createElement('div', 'hud-objective-strip');
     const buildBadge = this.createElement('div', 'hud-build-version');
-    buildBadge.textContent = 'ALPHA 4';
+    buildBadge.textContent = 'ALPHA 5';
 
     this.minimap = document.createElement('canvas');
     this.minimap.className = 'hud-minimap';
