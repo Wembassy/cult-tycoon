@@ -31,7 +31,7 @@ describe('HUDManager — Resource Bar', () => {
   it('should update resource bar with stats', () => {
     const data: ResourceBarData = {
       influence: 100, wealth: 250, notoriety: 15,
-      faith: 80, morale: 75, population: 8, maxPopulation: 15,
+      faith: 80, morale: 75, materials: 30, food: 50, population: 8, maxPopulation: 15,
     };
     hud.updateResourceBar(data);
     const bar = container.querySelector('.hud-resource-bar');
