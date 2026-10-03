@@ -112,7 +112,7 @@ export class SchedulePanel {
         width: 700px;
         max-width: 90vw;
         max-height: 85vh;
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(100, 100, 160, 0.5);
