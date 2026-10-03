@@ -73,6 +73,7 @@ export class HUDManager {
   private buildPanel: HTMLElement | null = null;
   private buildBar: HTMLElement | null = null;
   private buildItems: HTMLElement | null = null;
+  private buildStatus: HTMLElement | null = null;
   private inspector: HTMLElement | null = null;
   private eventLog: HTMLElement | null = null;
   private timeControls: HTMLElement | null = null;
@@ -119,6 +120,7 @@ export class HUDManager {
     this.resourceBar = this.createElement('div', 'hud-resource-bar');
     this.buildBar = this.createElement('div', 'hud-build-bar');
     this.buildItems = this.createElement('div', 'hud-build-items');
+    this.buildStatus = this.createElement('div', 'hud-build-status');
     this.buildPanel = this.createElement('div', 'hud-build-panel');
     this.inspector = this.createElement('div', 'hud-inspector');
     this.eventLog = this.createElement('div', 'hud-event-log');
@@ -138,6 +140,7 @@ export class HUDManager {
     this.container.appendChild(this.objectiveStrip);
     this.container.appendChild(this.minimap);
     this.container.appendChild(buildBadge);
+    this.container.appendChild(this.buildStatus);
     this.container.appendChild(this.buildItems);
     this.container.appendChild(this.buildBar);
     this.container.appendChild(this.buildPanel);
@@ -596,6 +599,20 @@ export class HUDManager {
     }
   }
 
+  setBuildStatus(text: string, state: 'info' | 'valid' | 'invalid' = 'info'): void {
+    if (!this.buildStatus) return;
+    this.buildStatus.textContent = text;
+    this.buildStatus.dataset.state = state;
+    this.buildStatus.style.display = 'block';
+  }
+
+  clearBuildStatus(): void {
+    if (!this.buildStatus) return;
+    this.buildStatus.style.display = 'none';
+    this.buildStatus.textContent = '';
+    delete this.buildStatus.dataset.state;
+  }
+
   /**
    * Highlight a selected build item.
    */
@@ -841,6 +858,7 @@ export class HUDManager {
     this.resourceBar = null;
     this.buildBar = null;
     this.buildItems = null;
+    this.buildStatus = null;
     this.buildPanel = null;
     this.inspector = null;
     this.eventLog = null;
