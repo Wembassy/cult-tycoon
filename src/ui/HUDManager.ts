@@ -195,16 +195,13 @@ export class HUDManager {
         display: flex;
         gap: 4px;
         padding: 6px 8px;
-        background-image: url('./assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
+        background: rgba(12, 18, 30, 0.88);
         border: 1px solid rgba(80, 120, 180, 0.5);
         border-radius: 6px;
         pointer-events: auto;
         backdrop-filter: blur(10px);
         box-shadow: 0 2px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(120,160,220,0.15);
         z-index: 10;
-        image-rendering: pixelated;
       }
       .hud-top-btn {
         display: flex;
@@ -262,6 +259,42 @@ export class HUDManager {
         font-size: 11px;
         color: #94a3b8;
         line-height: 1.35;
+      }
+
+      @media (max-width: 1100px) {
+        .hud-top-bar {
+          max-width: calc(100vw - 16px);
+          overflow-x: auto;
+          scrollbar-width: thin;
+        }
+        .hud-top-btn {
+          flex: 0 0 auto;
+          padding: 6px 9px;
+          font-size: 10px;
+        }
+        .hud-objective-strip {
+          top: 56px;
+          min-width: 0;
+          width: min(620px, calc(100vw - 32px));
+          max-width: none;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .hud-top-btn {
+          padding: 5px 7px;
+          font-size: 0;
+        }
+        .hud-top-btn::first-letter {
+          font-size: 14px;
+        }
+        .hud-objective-strip {
+          top: 52px;
+          padding: 6px 10px;
+        }
+        .hud-objective-detail {
+          font-size: 10px;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -435,7 +468,7 @@ export class HUDManager {
   setBuildItems(entries: BuildPanelEntry[], categoryId: string): void {
     if (!this.buildItems) return;
     this._activeCategoryId = categoryId;
-    this.buildItems.style.display = 'block';
+    this.buildItems.style.display = 'flex';
     this.buildItems.innerHTML = entries.map(e =>
       `<div class="hud-build-item" data-id="${e.id}" data-cost="${e.cost}" title="${e.label} (${e.cost}g)">
         <span class="hud-build-item-icon">${e.icon}</span>
