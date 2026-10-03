@@ -2,8 +2,8 @@
  * ResourceSystem — Handles resource generation and consumption during gameplay.
  *
  * Followers working at job stations generate resources over time:
- *   pray → faith, cook → food, research → influence, build → materials,
- *   clean → faith (small), haul → materials (small)
+ *   pray → faith, cook → food, research → influence, clean → faith (small)
+ *   Raw materials come from explicit map harvesting jobs handled by the game layer.
  *
  * Resources are consumed:
  *   food — per follower per tick (eating)
@@ -51,9 +51,9 @@ const DEFAULT_CONFIG: ResourceConfig = {
   prayFaithRate: 0.5,
   cookFoodRate: 0.6,
   researchInfluenceRate: 0.3,
-  buildMaterialsRate: 0.2,
+  buildMaterialsRate: 0,
   cleanFaithRate: 0.1,
-  haulMaterialsRate: 0.15,
+  haulMaterialsRate: 0,
   foodConsumptionPerFollower: 0.08,
   fundsUpkeepPerFollower: 0.02,
   notorietyGrowthRate: 0.0014,
@@ -155,9 +155,7 @@ export class ResourceSystem extends System {
           break;
         }
         case 'build': {
-          const skillLevel = skills?.construction ?? 1;
-          const amount = this.config.buildMaterialsRate * skillLevel * mult.buildMaterialsRate * dt;
-          totalMaterialsGen += amount;
+          // Building consumes harvested materials; it must not generate materials.
           break;
         }
         case 'clean': {
@@ -166,11 +164,13 @@ export class ResourceSystem extends System {
           break;
         }
         case 'haul': {
-          const amount = this.config.haulMaterialsRate * mult.haulMaterialsRate * dt;
-          totalMaterialsGen += amount;
+          // Hauling moves stock around; it must not create raw materials.
           break;
         }
-        // 'idle' generates nothing
+        case 'harvest':
+          // Harvest yield is awarded when the finite map resource job completes.
+          break;
+        // 'idle' / 'wander' generate nothing
       }
     }
 
