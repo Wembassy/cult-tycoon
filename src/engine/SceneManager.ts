@@ -961,7 +961,12 @@ export class SceneManager {
       if (job?.type === 'pray') return 'pray';
       if (job?.type === 'cook') return 'work';
       if (job?.type === 'research') return 'work';
-      if (job?.type === 'build' || job?.type === 'clean' || job?.type === 'haul') return 'work';
+      if (
+        job?.type === 'build' ||
+        job?.type === 'clean' ||
+        job?.type === 'haul' ||
+        job?.type === 'harvest'
+      ) return 'work';
     }
 
     if (ai.state === 'sleeping') return 'sleep';
