@@ -1908,6 +1908,7 @@ class CultTycoonGame {
       './assets/models/buildings/ritual_circle.glb',
     ];
     await this.assets.loadAll(assetUrls);
+    await this.preloadFollowerAnimationLibrary();
     debugEl.textContent = `Assets cached: ${this.assets.cachedCount}/${assetUrls.length}`;
     console.log('[preloadAssets] All assets loaded. Cached:', this.assets.cachedCount);
     // Re-sync entities now that assets are loaded
@@ -1916,6 +1917,32 @@ class CultTycoonGame {
     console.log('[preloadAssets] syncEntities done. Starting game...');
     // Remove debug overlay after 10 seconds
     setTimeout(() => debugEl.remove(), 10000);
+  }
+
+  private async preloadFollowerAnimationLibrary(): Promise<void> {
+    try {
+      const response = await fetch('./assets/animations/followers/manifest.json', { cache: 'no-store' });
+      if (!response.ok) return;
+
+      const manifest = await response.json() as { enabled?: boolean; source?: string };
+      if (!manifest.enabled || !manifest.source) {
+        console.log('[animations] Shared follower animation library disabled.');
+        return;
+      }
+
+      const asset = await this.assets.load(manifest.source);
+      if (!asset || asset.animations.length === 0) {
+        console.warn('[animations] Shared follower animation library enabled but no clips were loaded.');
+        return;
+      }
+
+      this.sceneMgr.setFollowerAnimationLibrary(asset.animations);
+      console.log(
+        `[animations] Loaded shared follower animation library: ${asset.animations.length} clips from ${manifest.source}`,
+      );
+    } catch (err) {
+      console.warn('[animations] Failed to load follower animation manifest/library:', err);
+    }
   }
 
   private gameLoop = (): void => {
