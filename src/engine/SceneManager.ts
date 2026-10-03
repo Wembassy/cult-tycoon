@@ -141,20 +141,21 @@ export class SceneManager {
       const mesh = this.tileMeshes.get(`${tileCoord.x},${tileCoord.y}`);
       if (mesh) {
         // Dim explored tiles, hide hidden tiles
-        if (this.fog.isExplored(tileCoord.x, tileCoord.y)) {
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.3);
-          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.5;
-        } else {
-          // Unexplored tiles remain as a very dark silhouette instead of disappearing.
-          const tile = this.map.getTile(tileCoord.x, tileCoord.y);
-          if (tile) {
-            const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
-            (mesh.material as THREE.MeshStandardMaterial).color.setHex(color).multiplyScalar(0.24);
-            (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-            (mesh.material as THREE.MeshStandardMaterial).opacity = 0.822;
-            mesh.visible = true;
+        const tile = this.map.getTile(tileCoord.x, tileCoord.y);
+        if (tile) {
+          const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
+          const material = mesh.material as THREE.MeshStandardMaterial;
+          // Always recompute from the source terrain color. Never multiply the
+          // current color repeatedly; that was progressively blackening tiles.
+          material.color.setHex(color);
+          if (this.fog.isExplored(tileCoord.x, tileCoord.y)) {
+            material.color.multiplyScalar(0.72);
+          } else {
+            material.color.multiplyScalar(0.52);
           }
+          material.transparent = false;
+          material.opacity = 1;
+          mesh.visible = true;
         }
       }
     }
@@ -254,16 +255,16 @@ export class SceneManager {
         const [tx, ty] = key.split(',').map(Number);
         const state = this.fog.getState(tx, ty);
         if (state === 'hidden') {
-          // Keep unexplored terrain barely visible so the world never becomes a black void.
-          // The player can read the map silhouette, but details remain concealed.
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.24);
-          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.822;
+          // Unexplored terrain stays readable as a desaturated/dim board state,
+          // not a transparent black veil.
+          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.52);
+          (mesh.material as THREE.MeshStandardMaterial).transparent = false;
+          (mesh.material as THREE.MeshStandardMaterial).opacity = 1;
           mesh.visible = true;
         } else if (state === 'explored') {
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.58);
-          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.82;
+          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.72);
+          (mesh.material as THREE.MeshStandardMaterial).transparent = false;
+          (mesh.material as THREE.MeshStandardMaterial).opacity = 1;
           mesh.visible = true;
         }
       }
