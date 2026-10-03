@@ -17,6 +17,7 @@ import { System } from '../ecs/System';
 import { GameState } from '../game/GameState';
 import { Job } from '../components/Job';
 import { FollowerAI } from '../components/FollowerAI';
+import { OnMission } from '../components/OnMission';
 import { Skills } from '../components/Skills';
 import { Traits, TraitType } from '../components/Traits';
 
@@ -95,14 +96,25 @@ export class ResourceSystem extends System {
   // Net flow tracking (for debugging/UI)
   private lastNetFlow: Partial<Record<keyof GameState['resources'], number>> = {};
 
-  constructor(gameState: GameState, config?: Partial<ResourceConfig>, onEvent?: ResourceEventCallback) {
+  constructor(
+    gameState: GameState,
+    config?: Partial<ResourceConfig>,
+    onEvent?: ResourceEventCallback,
+  ) {
     super();
     this.gameState = gameState;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.onEvent = onEvent;
 
     // Initialize milestone tracking
-    const resources: (keyof GameState['resources'])[] = ['faith', 'funds', 'materials', 'food', 'influence', 'notoriety'];
+    const resources: (keyof GameState['resources'])[] = [
+      'faith',
+      'funds',
+      'materials',
+      'food',
+      'influence',
+      'notoriety',
+    ];
     for (const r of resources) {
       this.lastMilestone.set(r, 0);
     }
@@ -125,6 +137,7 @@ export class ResourceSystem extends System {
     let totalMaterialsGen = 0;
 
     for (const entity of followers) {
+      if (world.hasComponent(entity, OnMission)) continue;
       const job = world.getComponent(entity, Job)!;
       const ai = world.getComponent(entity, FollowerAI)!;
       const skills = world.getComponent(entity, Skills);
@@ -150,7 +163,8 @@ export class ResourceSystem extends System {
         }
         case 'research': {
           const skillLevel = skills?.research ?? 1;
-          const amount = this.config.researchInfluenceRate * skillLevel * mult.researchInfluenceRate * dt;
+          const amount =
+            this.config.researchInfluenceRate * skillLevel * mult.researchInfluenceRate * dt;
           totalInfluenceGen += amount;
           break;
         }
@@ -248,7 +262,13 @@ export class ResourceSystem extends System {
    */
   private checkMilestones(): void {
     const res = this.gameState.resources;
-    const resources: (keyof GameState['resources'])[] = ['faith', 'funds', 'materials', 'food', 'influence'];
+    const resources: (keyof GameState['resources'])[] = [
+      'faith',
+      'funds',
+      'materials',
+      'food',
+      'influence',
+    ];
 
     for (const r of resources) {
       const interval = this.config.milestoneIntervals[r];
@@ -333,7 +353,14 @@ export class ResourceSystem extends System {
    * Reset milestone and shortage tracking (e.g. on new game).
    */
   reset(): void {
-    const resources: (keyof GameState['resources'])[] = ['faith', 'funds', 'materials', 'food', 'influence', 'notoriety'];
+    const resources: (keyof GameState['resources'])[] = [
+      'faith',
+      'funds',
+      'materials',
+      'food',
+      'influence',
+      'notoriety',
+    ];
     for (const r of resources) {
       this.lastMilestone.set(r, 0);
     }

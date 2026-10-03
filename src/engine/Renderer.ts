@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { IsoCamera } from './IsoCamera';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { BloomPass } from 'three/examples/jsm/postprocessing/BloomPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 
@@ -49,18 +49,19 @@ export class Renderer {
   private ambientLight: THREE.AmbientLight;
   private dirLight: THREE.DirectionalLight;
   private composer: EffectComposer;
-  private bloomPass: BloomPass;
+  private bloomPass: UnrealBloomPass;
   private vignettePass: ShaderPass;
-  private postProcessingEnabled = true;
+  private postProcessingEnabled = false;
+  private qualityRatio = 1;
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1a1a2e);
-    this.scene.fog = new THREE.Fog(0x1a1a2e, 50, 150);
+    this.scene.fog = new THREE.Fog(0x647882, 110, 230);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -93,16 +94,17 @@ export class Renderer {
     // Post-processing pipeline
     this.composer = new EffectComposer(this.renderer);
     // Match the renderer's pixel ratio for crisp output
-    this.composer.setPixelRatio(window.devicePixelRatio);
+    this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * this.qualityRatio);
     this.composer.setSize(window.innerWidth, window.innerHeight);
     const renderPass = new RenderPass(this.scene, this.isoCamera.camera);
     this.composer.addPass(renderPass);
 
     // Bloom — subtle glow only for very bright emissive materials
-    this.bloomPass = new BloomPass(
-      0.4,    // strength (low to avoid blurriness)
-      20,     // kernelSize
-      3.0,    // sigma (tighter blur = less bleed)
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.18,
+      0.25,
+      0.9,
     );
     this.composer.addPass(this.bloomPass);
 
@@ -121,7 +123,7 @@ export class Renderer {
 
   private onResize = (): void => {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.composer.setPixelRatio(window.devicePixelRatio);
+    this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * this.qualityRatio);
     this.composer.setSize(window.innerWidth, window.innerHeight);
   };
 
@@ -147,7 +149,7 @@ export class Renderer {
 
   /** Bloom intensity (0 = off, 1 = default, 2 = strong glow). */
   setBloomStrength(strength: number): void {
-    (this.bloomPass as any).combineUniforms.strength.value = strength;
+    this.bloomPass.strength = Math.max(0, Math.min(strength, 0.4));
   }
 
   /** Vignette darkness (0 = none, 1 = default, 2 = heavy). */
@@ -172,7 +174,10 @@ export class Renderer {
    * Set the renderer pixel ratio (for graphics quality scaling).
    */
   setPixelRatio(ratio: number): void {
-    this.renderer.setPixelRatio(window.devicePixelRatio * ratio);
+    this.qualityRatio = ratio;
+    const pixelRatio = Math.min(window.devicePixelRatio, 2) * ratio;
+    this.renderer.setPixelRatio(pixelRatio);
+    this.composer.setPixelRatio(pixelRatio);
   }
 
   /**

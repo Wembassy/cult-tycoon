@@ -30,7 +30,7 @@ export class RenderSystem extends System {
     this.sceneManager.setFollowerNames(names);
   }
 
-  update(_world: World, _dt: number): void {
+  update(_world: World, dt: number): void {
     // Sync building visuals when dirty
     if (this.buildingSystem && this.buildingSystem.isDirty) {
       this.sceneManager.syncBuildings(this.buildingSystem);
@@ -38,6 +38,6 @@ export class RenderSystem extends System {
     }
 
     // Sync entity positions and meshes every frame
-    this.sceneManager.syncEntities();
+    this.sceneManager.syncEntities(dt);
   }
 }

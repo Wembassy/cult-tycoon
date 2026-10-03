@@ -439,6 +439,8 @@ export class MissionPanel {
    * Update the panel with current data.
    */
   update(data: MissionPanelData): void {
+    if (this.panel.contains(document.activeElement)) return;
+    if (JSON.stringify(this.currentData) === JSON.stringify(data)) return;
     this.currentData = data;
     if (!this._isVisible) return;
     this.render();
@@ -467,7 +469,8 @@ export class MissionPanel {
 
     const activeList = this.panel.querySelector('.active-mission-list') as HTMLElement;
     if (this.currentData.activeMissions.length === 0) {
-      activeList.innerHTML = '<div style="font-size:11px;color:#666;padding:8px;">No active missions.</div>';
+      activeList.innerHTML =
+        '<div style="font-size:11px;color:#666;padding:8px;">No active missions.</div>';
     } else {
       for (const active of this.currentData.activeMissions) {
         activeList.appendChild(this.createActiveMissionCard(active));
@@ -569,7 +572,10 @@ export class MissionPanel {
     for (const c of this.currentData.cultists) {
       const isDisabled = c.onMission;
       const skillDisplay = relevantSkills
-        .map(s => `<span class="relevant-skill">${s}: ${(c.skills as Record<string, number>)[s] ?? 1}</span>`)
+        .map(
+          (s) =>
+            `<span class="relevant-skill">${s}: ${(c.skills as Record<string, number>)[s] ?? 1}</span>`,
+        )
         .join(' ');
 
       cultistsHtml += `
@@ -604,11 +610,13 @@ export class MissionPanel {
       const count = this.selectedCultistIds.size;
       const countEl = selector.querySelector('#cultist-count') as HTMLElement;
       countEl.textContent = `${count} selected`;
-      const confirmBtn = selector.querySelector('.cultist-selector-btn.confirm') as HTMLButtonElement;
+      const confirmBtn = selector.querySelector(
+        '.cultist-selector-btn.confirm',
+      ) as HTMLButtonElement;
       confirmBtn.disabled = count < mission.minCultists || count > mission.maxCultists;
     };
 
-    selector.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    selector.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       const checkbox = cb as HTMLInputElement;
       checkbox.addEventListener('change', () => {
         const id = parseInt(checkbox.getAttribute('data-id') || '0');

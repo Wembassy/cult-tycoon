@@ -4,6 +4,7 @@
  */
 
 import { TileMap } from '../world/TileMap';
+import { DataManager } from '../data/DataManager';
 
 export type BuildType = 'wall' | 'floor' | 'door' | 'object';
 export type WallVariant = 'straight' | 'corner' | 'tjunction' | 'end';
@@ -32,6 +33,8 @@ export interface PlacedObject {
   x: number;
   y: number;
   rotation: number;
+  width?: number;
+  height?: number;
 }
 
 export interface Room {
@@ -79,7 +82,7 @@ export class BuildingSystem {
    * Place a wall on a tile
    */
   placeWall(x: number, y: number, _variant: WallVariant = 'straight'): BuildResult {
-    if (!this.map.isBuildable(x, y)) {
+    if (!this.map.isBuildable(x, y) || this._doorTiles.has(`${x},${y}`)) {
       return { success: false, message: 'Tile not buildable', tilesAffected: [], cost: 0 };
     }
     this.map.setOccupied(x, y, true);
@@ -98,9 +101,16 @@ export class BuildingSystem {
     if (!tile) {
       return { success: false, message: 'Out of bounds', tilesAffected: [], cost: 0 };
     }
-    if (tile.occupied) {
-      return { success: false, message: 'Tile occupied', tilesAffected: [], cost: 0 };
+    if (!tile.buildable || this._wallTiles.has(`${x},${y}`)) {
+      return {
+        success: false,
+        message: 'Floor requires dry ground without a wall',
+        tilesAffected: [],
+        cost: 0,
+      };
     }
+    if (this._floorTiles.has(`${x},${y}`))
+      return { success: false, message: 'Floor already placed', tilesAffected: [], cost: 0 };
     this._floorTiles.add(`${x},${y}`);
     this._dirty = true;
     return { success: true, message: 'Floor placed', tilesAffected: [{ x, y }], cost: COSTS.floor };
@@ -110,18 +120,29 @@ export class BuildingSystem {
    * Place a door on a tile (requires adjacent walls)
    */
   placeDoor(x: number, y: number): BuildResult {
-    if (!this.map.isBuildable(x, y)) {
-      return { success: false, message: 'Tile not buildable', tilesAffected: [], cost: 0 };
-    }
-    // Check for at least one adjacent wall
-    const hasAdjacentWall = this.map.isOccupied(x + 1, y) || this.map.isOccupied(x - 1, y) ||
-                            this.map.isOccupied(x, y + 1) || this.map.isOccupied(x, y - 1);
-    if (!hasAdjacentWall) {
+    const key = `${x},${y}`,
+      tile = this.map.getTile(x, y);
+    if (!tile?.buildable || this._doorTiles.has(key) || this.getObjectAt(x, y))
+      return {
+        success: false,
+        message: 'Door location is unavailable',
+        tilesAffected: [],
+        cost: 0,
+      };
+    const hasWall =
+      this._wallTiles.has(key) ||
+      [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].some(([dx, dy]) => this._wallTiles.has(`${x + dx},${y + dy}`));
+    if (!hasWall)
       return { success: false, message: 'Door requires adjacent wall', tilesAffected: [], cost: 0 };
-    }
-    this.map.setOccupied(x, y, true);
-    this._doorTiles.add(`${x},${y}`);
-    this._wallTiles.delete(`${x},${y}`);
+    this._wallTiles.delete(key);
+    this._doorTiles.add(key);
+    // A door reserves a construction tile, but is passable for NPC navigation.
+    this.map.setOccupied(x, y, false);
     this._dirty = true;
     return { success: true, message: 'Door placed', tilesAffected: [{ x, y }], cost: COSTS.door };
   }
@@ -129,55 +150,70 @@ export class BuildingSystem {
   /**
    * Place an object on a tile
    */
-  placeObject(x: number, y: number, objectId: string, rotation: number = 0): BuildResult {
-    if (!this.map.isBuildable(x, y)) {
-      return { success: false, message: 'Tile not buildable', tilesAffected: [], cost: 0 };
-    }
-    const id = `obj_${this.nextObjectId++}`;
-    const obj: PlacedObject = { id, objectId, x, y, rotation };
-    this.objects.set(id, obj);
-    this.map.setOccupied(x, y, true);
+  getFootprint(x: number, y: number, objectId: string, rotation = 0): { x: number; y: number }[] {
+    const def = DataManager.getObject(objectId),
+      size = def?.size ?? { w: 1, h: 1 };
+    const swap = Math.abs(Math.round(rotation / (Math.PI / 2))) % 2 === 1;
+    const width = swap ? size.h : size.w,
+      height = swap ? size.w : size.h;
+    const cells: { x: number; y: number }[] = [];
+    for (let yy = 0; yy < height; yy++)
+      for (let xx = 0; xx < width; xx++) cells.push({ x: x + xx, y: y + yy });
+    return cells;
+  }
+  getObjectAt(x: number, y: number): PlacedObject | undefined {
+    return this.getAllObjects().find((obj) =>
+      this.getFootprint(obj.x, obj.y, obj.objectId, obj.rotation).some(
+        (t) => t.x === x && t.y === y,
+      ),
+    );
+  }
+  canPlaceObject(x: number, y: number, objectId: string, rotation = 0): boolean {
+    return this.getFootprint(x, y, objectId, rotation).every(
+      (t) => this.map.isBuildable(t.x, t.y) && !this._doorTiles.has(`${t.x},${t.y}`),
+    );
+  }
+  placeObject(x: number, y: number, objectId: string, rotation = 0): BuildResult {
+    if (!this.canPlaceObject(x, y, objectId, rotation))
+      return {
+        success: false,
+        message: 'Full object footprint must be clear and on dry land',
+        tilesAffected: [],
+        cost: 0,
+      };
+    const id = `obj_${this.nextObjectId++}`,
+      tiles = this.getFootprint(x, y, objectId, rotation);
+    this.objects.set(id, { id, objectId, x, y, rotation });
+    for (const t of tiles) this.map.setOccupied(t.x, t.y, true);
     this._dirty = true;
-    return { success: true, message: 'Object placed', tilesAffected: [{ x, y }], cost: COSTS.object };
+    return {
+      success: true,
+      message: 'Object placed',
+      tilesAffected: tiles,
+      cost: DataManager.getObject(objectId)?.cost ?? COSTS.object,
+    };
   }
 
   /**
    * Demolish whatever is on a tile
    */
   demolish(x: number, y: number): BuildResult {
-    const tile = this.map.getTile(x, y);
-    if (!tile) {
-      return { success: false, message: 'Out of bounds', tilesAffected: [], cost: 0 };
-    }
-    if (!tile.occupied) {
+    const key = `${x},${y}`,
+      tile = this.map.getTile(x, y);
+    if (!tile) return { success: false, message: 'Out of bounds', tilesAffected: [], cost: 0 };
+    const obj = this.getObjectAt(x, y);
+    let tiles = [{ x, y }];
+    if (obj) {
+      tiles = this.getFootprint(obj.x, obj.y, obj.objectId, obj.rotation);
+      this.objects.delete(obj.id);
+      for (const t of tiles) this.map.setOccupied(t.x, t.y, false);
+    } else if (this._wallTiles.delete(key) || this._doorTiles.delete(key))
+      this.map.setOccupied(x, y, false);
+    else if (!this._floorTiles.delete(key))
       return { success: false, message: 'Nothing to demolish', tilesAffected: [], cost: 0 };
-    }
-
-    // Remove any objects on this tile
-    for (const [id, obj] of this.objects) {
-      if (obj.x === x && obj.y === y) {
-        this.objects.delete(id);
-        break;
-      }
-    }
-
-    this._wallTiles.delete(`${x},${y}`);
-    this._doorTiles.delete(`${x},${y}`);
-    this._floorTiles.delete(`${x},${y}`);
-    this.map.setOccupied(x, y, false);
+    // Room paint and the floor underneath furniture survive demolition.
     this._dirty = true;
-
-    // Player-designated rooms persist when furniture/structures are demolished.
-    // They become incomplete until their required objects are replaced.
-    if (tile.roomId !== null) {
-      const room = this.rooms.get(tile.roomId);
-      if (!room?.roomDefinitionId) {
-        this.map.setRoomId(x, y, null);
-        this.refreshRoom(tile.roomId);
-      }
-    }
-
-    return { success: true, message: 'Demolished', tilesAffected: [{ x, y }], cost: 1 };
+    return { success: true, message: 'Demolished', tilesAffected: tiles, cost: 0 };
   }
 
   /**
@@ -222,7 +258,9 @@ export class BuildingSystem {
         if (result.success) {
           tiles.push({ x, y: startY });
           totalCost += result.cost;
-        } else { failed++; }
+        } else {
+          failed++;
+        }
       }
     } else if (dy !== 0) {
       for (let y = startY; y !== endY + dy; y += dy) {
@@ -230,7 +268,9 @@ export class BuildingSystem {
         if (result.success) {
           tiles.push({ x: startX, y });
           totalCost += result.cost;
-        } else { failed++; }
+        } else {
+          failed++;
+        }
       }
     } else {
       // Single tile
@@ -295,16 +335,23 @@ export class BuildingSystem {
     const minY = Math.min(startY, endY);
     const maxY = Math.max(startY, endY);
 
+    if (
+      ![startX, startY, endX, endY].every(Number.isInteger) ||
+      !this.map.getTile(minX, minY) ||
+      !this.map.getTile(maxX, maxY)
+    )
+      return null;
     const tiles: { x: number; y: number }[] = [];
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
         const tile = this.map.getTile(x, y);
-        if (!tile || !tile.buildable) continue;
+        if (!tile || !tile.buildable) return null;
+        if (this._wallTiles.has(`${x},${y}`)) continue;
         tiles.push({ x, y });
       }
     }
 
-    if (tiles.length === 0) return null;
+    if (tiles.length < (DataManager.getRoom(roomDefinitionId)?.minSize ?? 1)) return null;
 
     // Remove overwritten tiles from any prior designation.
     const touchedRooms = new Set<number>();
@@ -375,12 +422,14 @@ export class BuildingSystem {
     if (filled.length < 4) return null; // too small to be a room
 
     // Check if the area is enclosed (has occupied tiles on the boundary)
-    const filledSet = new Set(filled.map(f => `${f.x},${f.y}`));
+    const filledSet = new Set(filled.map((f) => `${f.x},${f.y}`));
     let enclosed = false;
     for (const { x, y } of filled) {
       const neighbors = [
-        { x: x + 1, y }, { x: x - 1, y },
-        { x, y: y + 1 }, { x, y: y - 1 },
+        { x: x + 1, y },
+        { x: x - 1, y },
+        { x, y: y + 1 },
+        { x, y: y - 1 },
       ];
       for (const n of neighbors) {
         if (!filledSet.has(`${n.x},${n.y}`)) {
@@ -440,27 +489,112 @@ export class BuildingSystem {
     return Array.from(this.objects.values());
   }
 
+  getRoomStatus(roomId: number): {
+    complete: boolean;
+    checks: { label: string; met: boolean; objectId?: string }[];
+    missing: string[];
+  } {
+    const room = this.rooms.get(roomId),
+      def = room?.roomDefinitionId ? DataManager.getRoom(room.roomDefinitionId) : undefined;
+    if (!room || !def) return { complete: false, checks: [], missing: ['Designate a room type'] };
+    const keys = new Set(room.tiles.map((t) => `${t.x},${t.y}`));
+    const checks: { label: string; met: boolean; objectId?: string }[] = [
+      { label: `At least ${def.minSize} tiles (${room.area})`, met: room.area >= def.minSize },
+    ];
+    for (const id of def.requiredObjects) {
+      const met = this.getAllObjects().some(
+        (obj) =>
+          obj.objectId === id &&
+          this.getFootprint(obj.x, obj.y, obj.objectId, obj.rotation).every((t) =>
+            keys.has(`${t.x},${t.y}`),
+          ),
+      );
+      checks.push({ label: DataManager.getObject(id)?.name ?? id, met, objectId: id });
+    }
+    if (def.requiresFloor)
+      checks.push({
+        label: 'Flooring throughout the room',
+        met: room.tiles.every((t) => this._floorTiles.has(`${t.x},${t.y}`)),
+      });
+    if (def.requiresEnclosure)
+      checks.push({ label: 'Enclosed by walls and doors', met: this.roomEnclosed(room) });
+    return {
+      complete: checks.every((c) => c.met),
+      checks,
+      missing: checks.filter((c) => !c.met).map((c) => c.label),
+    };
+  }
+  private roomEnclosed(room: Room): boolean {
+    const start = room.tiles[0];
+    if (!start) return false;
+    const seen = new Set<string>(),
+      queue = [start];
+    for (let i = 0; i < queue.length; i++) {
+      const t = queue[i],
+        key = `${t.x},${t.y}`;
+      if (seen.has(key) || this._wallTiles.has(key) || this._doorTiles.has(key)) continue;
+      seen.add(key);
+      if (t.x <= 0 || t.y <= 0 || t.x >= this.map.width - 1 || t.y >= this.map.height - 1)
+        return false;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ])
+        queue.push({ x: t.x + dx, y: t.y + dy });
+    }
+    return true;
+  }
+  getAdjacentTiles(obj: PlacedObject): { x: number; y: number }[] {
+    const footprint = this.getFootprint(obj.x, obj.y, obj.objectId, obj.rotation),
+      own = new Set(footprint.map((t) => `${t.x},${t.y}`));
+    const result = new Map<string, { x: number; y: number }>();
+    for (const t of footprint)
+      for (const [dx, dy] of [
+        [0, 1],
+        [1, 0],
+        [0, -1],
+        [-1, 0],
+      ]) {
+        const p = { x: t.x + dx, y: t.y + dy },
+          key = `${p.x},${p.y}`;
+        if (!own.has(key) && this.map.isBuildable(p.x, p.y)) result.set(key, p);
+      }
+    return [...result.values()];
+  }
+
   /** Set of "x,y" strings for wall tiles. */
-  get wallTiles(): Set<string> { return this._wallTiles; }
+  get wallTiles(): Set<string> {
+    return this._wallTiles;
+  }
 
   /** Set of "x,y" strings for door tiles. */
-  get doorTiles(): Set<string> { return this._doorTiles; }
+  get doorTiles(): Set<string> {
+    return this._doorTiles;
+  }
 
   /** Set of "x,y" strings for floor tiles. */
-  get floorTiles(): Set<string> { return this._floorTiles; }
+  get floorTiles(): Set<string> {
+    return this._floorTiles;
+  }
 
   /** True when building state has changed since last sync. */
-  get isDirty(): boolean { return this._dirty; }
+  get isDirty(): boolean {
+    return this._dirty;
+  }
 
   /** Clear the dirty flag after rendering sync. */
-  clearDirty(): void { this._dirty = false; }
+  clearDirty(): void {
+    this._dirty = false;
+  }
 
   getSnapshot(): BuildingSnapshot {
     return {
-      objects: this.getAllObjects().map(obj => ({ ...obj })),
-      rooms: this.getAllRooms().map(room => ({
+      objects: this.getAllObjects().map((obj) => ({ ...obj })),
+      rooms: this.getAllRooms().map((room) => ({
         ...room,
-        tiles: room.tiles.map(tile => ({ ...tile })),
+        tiles: room.tiles.map((tile) => ({ ...tile })),
       })),
       wallTiles: [...this._wallTiles],
       doorTiles: [...this._doorTiles],
@@ -490,7 +624,7 @@ export class BuildingSystem {
     for (const room of snapshot.rooms ?? []) {
       this.rooms.set(room.id, {
         ...room,
-        tiles: room.tiles.map(tile => ({ ...tile })),
+        tiles: room.tiles.map((tile) => ({ ...tile })),
       });
     }
     for (const tile of snapshot.wallTiles ?? []) this._wallTiles.add(tile);
@@ -499,6 +633,24 @@ export class BuildingSystem {
 
     this.nextRoomId = snapshot.nextRoomId ?? 1;
     this.nextObjectId = snapshot.nextObjectId ?? 1;
+    for (const t of this.map.getAllTiles()) {
+      this.map.setOccupied(t.x, t.y, false);
+      this.map.setRoomId(t.x, t.y, null);
+    }
+    for (const key of this._wallTiles) {
+      const [x, y] = key.split(',').map(Number);
+      this.map.setOccupied(x, y, true);
+    }
+    for (const obj of this.objects.values())
+      for (const t of this.getFootprint(obj.x, obj.y, obj.objectId, obj.rotation))
+        this.map.setOccupied(t.x, t.y, true);
+    for (const room of this.rooms.values())
+      for (const t of room.tiles) this.map.setRoomId(t.x, t.y, room.id);
+    this.nextObjectId = Math.max(
+      this.nextObjectId,
+      ...this.getAllObjects().map((obj) => Number(obj.id.replace('obj_', '')) + 1),
+    );
+    this.nextRoomId = Math.max(this.nextRoomId, ...this.getAllRooms().map((room) => room.id + 1));
     this._dirty = true;
   }
 
@@ -510,7 +662,7 @@ export class BuildingSystem {
     if (!room) return;
 
     // Check if any tiles still belong to this room
-    const remaining = room.tiles.filter(t => {
+    const remaining = room.tiles.filter((t) => {
       const tile = this.map.getTile(t.x, t.y);
       return tile && tile.roomId === roomId;
     });

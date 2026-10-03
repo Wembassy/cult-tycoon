@@ -1,3 +1,8 @@
+import './ui/quality.css';
+import animationManifest from '../public/assets/animations/followers/manifest.json';
+import { OnMission } from './components/OnMission';
+import type { NeedFacilityTarget } from './systems/AISystem';
+import { getScheduledActivity } from './systems/SchedulingSystem';
 /**
  * Cult Tycoon — Main entry point.
  * Wires together all engine systems into a playable game.
@@ -101,13 +106,22 @@ class CultTycoonGame {
   private accumulator = 0;
   private readonly tickDuration = 1 / 30;
   private timeScale = 1;
-  private running = true;
+  private running = false;
+  private frameId = 0;
+  private hudElapsed = 0;
+  private readonly secondsPerDay = 600;
+  private readonly startingHour = 8;
+  private buildRotation = 0;
+  private selectedRoom: number | null = null;
+  private readonly stationIds = new Set<string>();
+  private autosaveElapsed = 0;
+  private raidWarning = 0;
 
   // Game state
-  private cultWealth = 200;
+  private cultWealth = 500;
   private cultInfluence = 50;
   private cultNotoriety = 5;
-  private currentHour = 6;
+  private currentHour = 8;
   private currentDay = 1;
   private tickCount = 0;
   private selectedBuildItem: string | null = null;
@@ -161,7 +175,14 @@ class CultTycoonGame {
 
     // World generation — 64x64 large world with fog of war
     const worldGen = new WorldGen(12345);
-    this.map = worldGen.generate({ width: 64, height: 64, waterPools: 8, stonePatches: 10, dirtPatches: 12 });
+    this.map = worldGen.generate({
+      width: 64,
+      height: 64,
+      waterPools: 8,
+      stonePatches: 10,
+      dirtPatches: 12,
+    });
+    this.prepareClearing();
     this.pathfinder = new Pathfinder(this.map);
 
     // Set map offset for raycaster-based tile picking
@@ -190,20 +211,32 @@ class CultTycoonGame {
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
     this.buildingSystem = new BuildingSystem(this.map);
-    this.aiSystem.setNeedFacilityProvider((need, from) => this.findNeedFacility(need, from));
+    this.aiSystem.setNeedFacilityProvider(
+      (need, from, entity) => this.findNeedFacility(need, from, entity),
+      (_entity, need, target) => this.facilityValid(need, target),
+      (_entity, need, amount) => {
+        if (need !== 'hunger') return amount;
+        const usable = Math.min(amount, this.gameInstanceState.resources.food * 40);
+        this.gameInstanceState.resources.food -= usable / 40;
+        return usable;
+      },
+    );
+    this.jobSystem.setReachabilityCheck(
+      (from, to) =>
+        this.pathfinder.findPath(Math.round(from.x), Math.round(from.y), to.x, to.y).success,
+    );
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.renderSystem.setBuildingSystem(this.buildingSystem);
     this.renderSystem.setFollowerNames(this.followerNames);
     this.factory = new FollowerFactory(42);
 
     // Event system
-    this.eventSystem = new EventSystem(
-      DataManager.getEvents() as any,
-      12345,
-      (event) => {
-        this.hud.logEvent(event.description, event.type === 'positive' ? 'success' : event.type === 'danger' ? 'danger' : 'warning');
-      },
-    );
+    this.eventSystem = new EventSystem(DataManager.getEvents() as any, 12345, (event) => {
+      this.hud.logEvent(
+        event.description,
+        event.type === 'positive' ? 'success' : event.type === 'danger' ? 'danger' : 'warning',
+      );
+    });
 
     // Tech tree
     this.techTree = new TechTreeSystem((node) => {
@@ -219,12 +252,18 @@ class CultTycoonGame {
         this.audio.play('ritual-cast');
         // Spawn ritual particles at map center
         const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
-        this.particles.spawnRitualCast(offset.x + this.map.width / 2, offset.z + this.map.height / 2);
+        this.particles.spawnRitualCast(
+          offset.x + this.map.width / 2,
+          offset.z + this.map.height / 2,
+        );
       },
       (result) => {
         this.cultInfluence += result.influenceGain;
         this.cultNotoriety += result.notorietyGain;
-        this.hud.logEvent(`Ritual complete: ${result.name} (+${result.influenceGain} influence, +${result.faithGain} faith)`, 'success');
+        this.hud.logEvent(
+          `Ritual complete: ${result.name} (+${result.influenceGain} influence, +${result.faithGain} faith)`,
+          'success',
+        );
         this.audio.play('level-up');
         this.dialog.ritualResult(result.name, result);
 
@@ -275,9 +314,10 @@ class CultTycoonGame {
     // Resource system — generates and consumes resources each tick
     this.resourceSystem = new ResourceSystem(
       this.gameInstanceState,
-      {},
+      { foodConsumptionPerFollower: 0, fundsUpkeepPerFollower: 0.01 },
       (event) => {
-        const logType = event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
+        const logType =
+          event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
         this.hud.logEvent(event.message, logType as any);
       },
     );
@@ -308,7 +348,11 @@ class CultTycoonGame {
               ? `${choice.label} [${choice.skillCheck.skill} ${choice.skillCheck.difficulty}]`
               : choice.label,
             onClick: () => {
-              const result = this.missionSystem.resolveEventChoice(missionId, choiceIndex, this.world);
+              const result = this.missionSystem.resolveEventChoice(
+                missionId,
+                choiceIndex,
+                this.world,
+              );
               if (result) {
                 this.hud.logEvent(
                   `Mission outcome: ${result.text}`,
@@ -329,7 +373,8 @@ class CultTycoonGame {
         const parts: string[] = [];
         if (rewards.money) parts.push(`+${rewards.money}g`);
         if (rewards.influence) parts.push(`+${rewards.influence} influence`);
-        if (rewards.decorItemIds.length > 0) parts.push(`+${rewards.decorItemIds.length} decor item(s)`);
+        if (rewards.decorItemIds.length > 0)
+          parts.push(`+${rewards.decorItemIds.length} decor item(s)`);
         this.hud.logEvent(
           `Mission ${success ? 'succeeded' : 'failed'}: ${templateId}${parts.length > 0 ? ` (${parts.join(', ')})` : ''}`,
           success ? 'success' : 'danger',
@@ -343,11 +388,12 @@ class CultTycoonGame {
     // Heat system — tracks heat accumulation and triggers consequences
     this.heatSystem = new HeatSystem(
       (event) => {
-        const logType = event.severity === 'critical' || event.severity === 'danger'
-          ? 'danger'
-          : event.severity === 'warning'
-            ? 'warning'
-            : 'info';
+        const logType =
+          event.severity === 'critical' || event.severity === 'danger'
+            ? 'danger'
+            : event.severity === 'warning'
+              ? 'warning'
+              : 'info';
         this.hud.logEvent(`🔥 ${event.title}: ${event.message}`, logType as any);
       },
       (reason) => {
@@ -358,7 +404,19 @@ class CultTycoonGame {
     // Room graph for room detection (used by prestige system)
     this.roomGraph = new RoomGraph(this.map);
 
-    this.systems = [this.needsSystem, this.schedulingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
+    this.systems = [
+      this.needsSystem,
+      this.schedulingSystem,
+      this.jobSystem,
+      this.aiSystem,
+      this.pathfindSystem,
+      this.resourceSystem,
+      this.eventSystem,
+      this.ritualSystem,
+      this.investigatorSystem,
+      this.combatSystem,
+      this.fogSystem,
+    ];
     // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
     // in simulate() because they don't extend the System base class.
     // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
@@ -399,10 +457,12 @@ class CultTycoonGame {
     this.hud.onOpenRituals = () => this.showRitualMenu();
     this.hud.onOpenWork = () => this.openWorkPanel();
     this.hud.onSetWorkRole = (entityId, role) => this.setWorkRole(entityId, role);
-    this.hud.onSetWorkPriority = (entityId, job, priority) => this.setWorkPriority(entityId, job, priority);
+    this.hud.onSetWorkPriority = (entityId, job, priority) =>
+      this.setWorkPriority(entityId, job, priority);
     this.hud.onAutoAssignWorkRoles = () => this.autoAssignWorkRoles();
     this.hud.onTechTreeUnlock = (techId) => this.unlockTechFromPanel(techId);
-    this.hud.onSendMission = (templateId, cultistIds) => this.startMissionFromPanel(templateId, cultistIds);
+    this.hud.onSendMission = (templateId, cultistIds) =>
+      this.startMissionFromPanel(templateId, cultistIds);
     this.hud.onAssignShift = (entityId, shift) => {
       this.schedulingSystem.assignShift(this.world, entityId, shift);
       this.openSchedulePanel();
@@ -420,7 +480,10 @@ class CultTycoonGame {
     this.hud.setTimeMode('play');
     this.hud.updateTime(6, 1);
     this.hud.logEvent('Welcome to Cult Tycoon!', 'success');
-    this.hud.logEvent('Your cult begins with 6 followers and a revealed starter clearing for the first compound.', 'info');
+    this.hud.logEvent(
+      'Your cult begins with 6 followers and a revealed starter clearing for the first compound.',
+      'info',
+    );
     this.hud.logEvent('Press B for build mode, click objects in the panel.', 'info');
     this.hud.logEvent('Press T for tech tree, R for rituals, M for missions.', 'info');
 
@@ -430,6 +493,8 @@ class CultTycoonGame {
     // Input callbacks
     this.input.onTileClick = (tile) => this.onTileClick(tile.x, tile.y);
     this.input.onTileHover = (tile) => this.onTileHover(tile.x, tile.y);
+    this.input.onDragStart = (tile) => this.previewBuild(tile, tile);
+    this.input.onDragUpdate = (start, end) => this.previewBuild(start, end);
     this.input.onDragEnd = (start, end) => this.onBuildDragEnd(start.x, start.y, end.x, end.y);
 
     // Setup keyboard shortcuts
@@ -437,6 +502,14 @@ class CultTycoonGame {
 
     // Setup HUD button click handlers
     this.setupHUDInteractions();
+    this.hud.onMinimapNavigate = (x, y) =>
+      this.renderer.camera.setTarget(x - this.map.width / 2, y - this.map.height / 2);
+    this.hud.onSelectBuildObject = (id) => {
+      this.openBuildCategory('objects');
+      this.selectedBuildItem = id;
+      this.hud.highlightBuildItem(id);
+    };
+    this.hud.onOpenSettings = () => this.openPauseMenu();
 
     // Save system
     this.saveSystem = new SaveSystem({
@@ -833,8 +906,8 @@ class CultTycoonGame {
     this.buildEntries = [
       { id: 'wall', label: 'Wall', icon: '🧱', cost: 5, category: 'structure' },
       { id: 'floor', label: 'Floor', icon: '⬜', cost: 2, category: 'structure' },
-      { id: 'door', label: 'Door', icon: '🚪', cost: 8, category: 'structure' },
-      ...DataManager.getRooms().map(room => ({
+      { id: 'door', label: 'Door', icon: '🚪', cost: 10, category: 'structure' },
+      ...DataManager.getRooms().map((room) => ({
         id: `room:${room.id}`,
         label: room.name,
         icon: '🏠',
@@ -848,21 +921,38 @@ class CultTycoonGame {
         cost: 0,
         category: 'rooms' as BuildPanelEntry['category'],
       },
-      ...allObjects.map(obj => ({
+      ...allObjects.map((obj) => ({
         id: obj.id,
         label: obj.name,
-        icon: obj.category === 'ritual' ? '🔮' : obj.category === 'kitchen' ? '🍲' : obj.category === 'furniture' ? '🛏️' : obj.category === 'research' ? '📚' : obj.category === 'storage' ? '📦' : obj.category === 'decor' ? '🔥' : obj.category === 'wellness' ? '🧘' : '📦',
+        icon:
+          obj.category === 'ritual'
+            ? '🔮'
+            : obj.category === 'kitchen'
+              ? '🍲'
+              : obj.category === 'furniture'
+                ? '🛏️'
+                : obj.category === 'research'
+                  ? '📚'
+                  : obj.category === 'storage'
+                    ? '📦'
+                    : obj.category === 'decor'
+                      ? '🔥'
+                      : obj.category === 'wellness'
+                        ? '🧘'
+                        : '📦',
         cost: obj.cost,
-        category: obj.category === 'ritual' ? 'ritual' : 'objects' as BuildPanelEntry['category'],
+        category: obj.category === 'ritual' ? 'ritual' : ('objects' as BuildPanelEntry['category']),
       })),
       // Decor items for room prestige
-      ...Object.values(DECOR_ITEMS).filter(d => !d.missionOnly).map(d => ({
-        id: `decor_${d.id}`,
-        label: d.name,
-        icon: '🎨',
-        cost: d.cost,
-        category: 'decor' as BuildPanelEntry['category'],
-      })),
+      ...Object.values(DECOR_ITEMS)
+        .filter((d) => !d.missionOnly)
+        .map((d) => ({
+          id: `decor_${d.id}`,
+          label: d.name,
+          icon: '🎨',
+          cost: d.cost,
+          category: 'decor' as BuildPanelEntry['category'],
+        })),
     ];
 
     // Also keep legacy panel populated (hidden, but available if needed)
@@ -871,8 +961,24 @@ class CultTycoonGame {
 
   private setupKeyboardShortcuts(): void {
     window.addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if ((e.target as HTMLElement)?.closest('input,select,textarea,[contenteditable=true]'))
+        return;
+      if (this.gameState !== 'playing' && this.gameState !== 'paused') return;
+      if (e.repeat) return;
+      if (e.key === 'Escape' && this.hud.closeManagementPanels()) {
+        e.preventDefault();
+        return;
+      }
+      if (this.dialog.isVisible) return;
       switch (e.key.toLowerCase()) {
+        case 'f':
+          if (this.selectedBuildItem) {
+            this.buildRotation = (this.buildRotation + 90) % 360;
+            this.hud.setBuildHint(
+              `Rotation ${this.buildRotation} degrees. F to rotate; right-click to cancel.`,
+            );
+          }
+          break;
         case 'b':
           this.openBuildCategory('structure');
           this.hud.logEvent('Build mode: select an item, then click the map.', 'info');
@@ -912,10 +1018,10 @@ class CultTycoonGame {
           this.togglePause();
           break;
         case '1':
-          if (this.timeMode !== 'pause') this.setTimeMode('play');
+          this.setTimeMode('play');
           break;
         case '2':
-          if (this.timeMode !== 'pause') this.setTimeMode('fast');
+          this.setTimeMode('fast');
           break;
       }
     });
@@ -954,7 +1060,10 @@ class CultTycoonGame {
           this.selectedBuildItem = id;
           const label = item.querySelector('.hud-build-item-label')?.textContent ?? id;
           if (id === 'room:clear') {
-            this.hud.logEvent('Clear Room: drag over designated room tiles to remove the designation.', 'info');
+            this.hud.logEvent(
+              'Clear Room: drag over designated room tiles to remove the designation.',
+              'info',
+            );
           } else if (id.startsWith('room:')) {
             const roomDef = DataManager.getRoom(id.slice(5));
             this.hud.logEvent(
@@ -984,7 +1093,10 @@ class CultTycoonGame {
         this.input.setMode('build');
         this.selectedBuildItem = id;
         this.highlightBuildPanel(id);
-        this.hud.logEvent(`Selected: ${entry.querySelector('.hud-build-label')?.textContent} (${cost}g)`, 'info');
+        this.hud.logEvent(
+          `Selected: ${entry.querySelector('.hud-build-label')?.textContent} (${cost}g)`,
+          'info',
+        );
       });
     }
 
@@ -1005,7 +1117,7 @@ class CultTycoonGame {
     // Update both legacy panel and new item grid
     const panel = this.hud['buildPanel'];
     if (panel) {
-      panel.querySelectorAll('.hud-build-entry').forEach(el => {
+      panel.querySelectorAll('.hud-build-entry').forEach((el) => {
         const elId = (el as HTMLElement).getAttribute('data-id');
         el.classList.toggle('selected', elId === id);
       });
@@ -1017,21 +1129,24 @@ class CultTycoonGame {
    * Open a build category — shows items in the grid panel above the bottom bar.
    */
   private openBuildCategory(categoryId: string): void {
+    this.buildRotation = 0;
+    this.sceneMgr.clearBuildPreview();
     this.activeBuildCategory = categoryId;
 
     if (categoryId === 'demolish') {
       this.input.setMode('demolish');
       this.selectedBuildItem = null;
-      this.hud.setBuildItems([
-        { id: 'demolish_tool', label: 'Demolish', icon: '❌', cost: 0, category: 'demolish' },
-      ], categoryId);
+      this.hud.setBuildItems(
+        [{ id: 'demolish_tool', label: 'Demolish', icon: '❌', cost: 0, category: 'demolish' }],
+        categoryId,
+      );
       this.hud.highlightBuildItem('demolish_tool');
       this.hud.logEvent('Demolish mode: click a built tile or object to remove it.', 'info');
       return;
     }
 
     // Filter items by category
-    const items = this.buildEntries.filter(e => e.category === categoryId);
+    const items = this.buildEntries.filter((e) => e.category === categoryId);
     this.hud.setBuildItems(items, categoryId);
     this.input.setMode('build');
 
@@ -1046,6 +1161,8 @@ class CultTycoonGame {
    * Close the build menu entirely — return to select mode.
    */
   private closeBuildMenu(): void {
+    this.sceneMgr.clearBuildPreview();
+    this.hud.setBuildHint('');
     this.input.setMode('select');
     this.selectedBuildItem = null;
     this.activeBuildCategory = null;
@@ -1056,6 +1173,7 @@ class CultTycoonGame {
   }
 
   private setTimeMode(mode: 'pause' | 'play' | 'fast'): void {
+    this.accumulator = 0;
     this.timeMode = mode;
     this.timeScale = mode === 'pause' ? 0 : mode === 'fast' ? 3 : 1;
     this.hud.setTimeMode(mode);
@@ -1115,7 +1233,10 @@ class CultTycoonGame {
     const prefs = this.world.getComponent(entityId, WorkPreferences);
     if (!prefs) return;
     prefs.applyRole(role);
-    this.hud.logEvent(`${this.followerNames.get(entityId) ?? 'Cultist'} assigned role: ${role}.`, 'info');
+    this.hud.logEvent(
+      `${this.followerNames.get(entityId) ?? 'Cultist'} assigned role: ${role}.`,
+      'info',
+    );
     this.openWorkPanel();
   }
 
@@ -1127,22 +1248,28 @@ class CultTycoonGame {
   }
 
   private autoAssignWorkRoles(): void {
-    const entities = this.world.query([Skills, WorkPreferences]);
-    for (const entityId of entities) {
-      const skills = this.world.getComponent(entityId, Skills)!;
-      const prefs = this.world.getComponent(entityId, WorkPreferences)!;
-      const ranked: { role: WorkRole; score: number }[] = [
-        { role: 'researcher', score: skills.research },
-        { role: 'cook', score: skills.cooking },
-        { role: 'devotee', score: Math.max(skills.faith, skills.social) },
-        { role: 'builder', score: skills.construction },
-        { role: 'caretaker', score: Math.round((skills.social + skills.construction) / 2) },
-      ];
-      ranked.sort((a, b) => b.score - a.score);
-      prefs.applyRole(ranked[0]?.role ?? 'generalist');
+    const ids = this.world.query([Skills, WorkPreferences]);
+    for (const id of ids) this.world.getComponent(id, WorkPreferences)!.applyRole('generalist');
+    const available = new Set(ids);
+    for (const [role, skill] of [
+      ['cook', 'cooking'],
+      ['researcher', 'research'],
+      ['devotee', 'faith'],
+    ] as const) {
+      const id = [...available].sort(
+        (a, b) =>
+          this.world.getComponent(b, Skills)![skill] - this.world.getComponent(a, Skills)![skill],
+      )[0];
+      if (id !== undefined) {
+        this.world.getComponent(id, WorkPreferences)!.applyRole(role);
+        available.delete(id);
+      }
     }
-    this.hud.logEvent('Roles auto-assigned from follower skills.', 'success');
     this.openWorkPanel();
+    this.hud.logEvent(
+      'Best available cook, researcher and devotee assigned; others remain generalists.',
+      'success',
+    );
   }
 
   private openMissionPanel(): void {
@@ -1175,7 +1302,10 @@ class CultTycoonGame {
   private startMissionFromPanel(templateId: string, cultistIds: number[]): void {
     const result = this.missionSystem.startMission(templateId, cultistIds, this.world);
     if (result.success) {
-      this.hud.logEvent(`Mission launched: ${templateId} with ${cultistIds.length} cultist(s).`, 'success');
+      this.hud.logEvent(
+        `Mission launched: ${templateId} with ${cultistIds.length} cultist(s).`,
+        'success',
+      );
       this.audio.play('ui-select');
     } else {
       this.hud.logEvent(`Mission could not start: ${result.reason ?? 'unknown reason'}`, 'warning');
@@ -1185,14 +1315,14 @@ class CultTycoonGame {
 
   private openTechTreePanel(): void {
     this.hud.showTechTreePanel({
-      unlockedIds: this.techTree.getUnlocked().map(node => node.id),
+      unlockedIds: this.techTree.getUnlocked().map((node) => node.id),
       influence: this.cultInfluence,
       faith: this.cultFaith,
     });
   }
 
   private unlockTechFromPanel(techId: string): void {
-    const node = this.techTree.getTree().find(candidate => candidate.id === techId);
+    const node = this.techTree.getTree().find((candidate) => candidate.id === techId);
     if (!node) {
       this.hud.logEvent('Unknown research node.', 'warning');
       return;
@@ -1216,10 +1346,7 @@ class CultTycoonGame {
       const ai = this.world.getComponent(entityId, FollowerAI)!;
       const schedule = this.world.getComponent(entityId, Schedule);
       const health = this.world.getComponent(entityId, Health);
-      const activity: 'working' | 'eating' | 'free' | 'sleeping' =
-        ai.state === 'working' ? 'working' :
-        ai.state === 'sleeping' ? 'sleeping' :
-        ai.state === 'needs' ? 'eating' : 'free';
+      const activity = getScheduledActivity(schedule?.shift ?? 'morning', this.currentHour);
 
       return {
         id: entityId,
@@ -1239,16 +1366,26 @@ class CultTycoonGame {
 
   private showRitualMenu(): void {
     const available = this.ritualSystem.getAvailableRituals();
-    const entities = this.world.query([Needs, FollowerAI]);
+    const entities = this.world
+      .query([Needs, FollowerAI])
+      .filter((id) => !this.world.hasComponent(id, OnMission));
     const active = this.ritualSystem.getActiveRituals();
 
     if (active.length > 0) {
-      this.dialog.alert('Ritual in Progress', 'Your cult is already performing a ritual. Let it finish before beginning another.', '🔮');
+      this.dialog.alert(
+        'Ritual in Progress',
+        'Your cult is already performing a ritual. Let it finish before beginning another.',
+        '🔮',
+      );
       return;
     }
 
     if (available.length === 0) {
-      this.dialog.alert('No Rituals Available', 'Research and progress will unlock additional rituals.', '🔒');
+      this.dialog.alert(
+        'No Rituals Available',
+        'Research and progress will unlock additional rituals.',
+        '🔒',
+      );
       return;
     }
 
@@ -1261,15 +1398,33 @@ class CultTycoonGame {
         const check = this.ritualSystem.canStartRitual(
           ritual.id,
           entities,
-          this.cultInfluence,
+          this.cultFaith,
           this.cultWealth,
         );
         return {
           label: `${check.ok ? '' : '🔒 '}${ritual.name}`,
-          style: check.ok ? 'primary' as const : 'default' as const,
+          style: check.ok ? ('primary' as const) : ('default' as const),
           onClick: () => {
+            const roomsReady = ritual.requirements
+              .filter((id) => !!DataManager.getRoom(id))
+              .every((id) =>
+                this.buildingSystem
+                  .getAllRooms()
+                  .some(
+                    (room) =>
+                      room.roomDefinitionId === id &&
+                      this.buildingSystem.getRoomStatus(room.id).complete,
+                  ),
+              );
+            if (!roomsReady) {
+              this.hud.logEvent('Complete the required Ritual / Prayer room first.', 'warning');
+              return;
+            }
             if (!check.ok) {
-              this.hud.logEvent(`${ritual.name}: ${check.reason ?? 'requirements not met'}`, 'warning');
+              this.hud.logEvent(
+                `${ritual.name}: ${check.reason ?? 'requirements not met'}`,
+                'warning',
+              );
               return;
             }
             const participants = entities.slice(0, ritual.minFollowers);
@@ -1296,7 +1451,8 @@ class CultTycoonGame {
     // Spawn near map center
     const centerX = Math.floor(this.map.width / 2);
     const centerY = Math.floor(this.map.height / 2);
-    let spawnX = centerX, spawnY = centerY;
+    let spawnX = centerX,
+      spawnY = centerY;
     for (let y = centerY - 2; y <= centerY + 2; y++) {
       for (let x = centerX - 2; x <= centerX + 2; x++) {
         const tile = this.map.getTile(x, y);
@@ -1318,19 +1474,26 @@ class CultTycoonGame {
     this.sceneMgr.buildTiles();
 
     // Auto-assign shifts to new followers
-    this.schedulingSystem.autoAssignShifts(this.world);
+    for (const follower of followers)
+      this.schedulingSystem.assignShift(this.world, follower.entityId, 'morning');
     this.sceneMgr.syncEntities();
   }
 
   private onBuildDragEnd(startX: number, startY: number, endX: number, endY: number): void {
-    if (this.input.getMode() !== 'build' || !this.selectedBuildItem) return;
+    this.sceneMgr.clearBuildPreview();
+    if (this.gameState !== 'playing' || this.input.getMode() !== 'build' || !this.selectedBuildItem)
+      return;
 
     const item = this.selectedBuildItem;
 
     if (item === 'room:clear') {
       const cleared = this.buildingSystem.clearRoomArea(startX, startY, endX, endY);
       if (cleared > 0) {
-        this.hud.logEvent(`Cleared room designation from ${cleared} tile${cleared === 1 ? '' : 's'}.`, 'info');
+        this.hud.logEvent(
+          `Cleared room designation from ${cleared} tile${cleared === 1 ? '' : 's'}.`,
+          'info',
+        );
+        this.refreshWorkstations();
         this.sceneMgr.buildTiles();
         this.updateHUD();
       } else {
@@ -1348,7 +1511,10 @@ class CultTycoonGame {
       const estimatedTiles = Math.max(Math.abs(endX - startX), Math.abs(endY - startY)) + 1;
       const estimatedCost = estimatedTiles * 5;
       if (this.cultWealth < estimatedCost) {
-        this.hud.logEvent(`Not enough wealth for wall line. Need up to ${estimatedCost}g.`, 'warning');
+        this.hud.logEvent(
+          `Not enough wealth for wall line. Need up to ${estimatedCost}g.`,
+          'warning',
+        );
         return;
       }
       const result = this.buildingSystem.placeWallLine(startX, startY, endX, endY);
@@ -1366,7 +1532,10 @@ class CultTycoonGame {
       const area = (Math.abs(endX - startX) + 1) * (Math.abs(endY - startY) + 1);
       const estimatedCost = area * 2;
       if (this.cultWealth < estimatedCost) {
-        this.hud.logEvent(`Not enough wealth for floor area. Need up to ${estimatedCost}g.`, 'warning');
+        this.hud.logEvent(
+          `Not enough wealth for floor area. Need up to ${estimatedCost}g.`,
+          'warning',
+        );
         return;
       }
       const result = this.buildingSystem.placeFloorArea(startX, startY, endX, endY);
@@ -1385,6 +1554,7 @@ class CultTycoonGame {
   }
 
   private afterStructureChange(): void {
+    this.refreshWorkstations();
     this.audio.play('ui-build');
     this.sceneMgr.buildTiles();
     this.sceneMgr.syncEntities();
@@ -1394,7 +1564,13 @@ class CultTycoonGame {
     this.updateHUD();
   }
 
-  private designateRoom(startX: number, startY: number, endX: number, endY: number, roomDefinitionId: string): void {
+  private designateRoom(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    roomDefinitionId: string,
+  ): void {
     const def = DataManager.getRoom(roomDefinitionId);
     if (!def) {
       this.hud.logEvent('Unknown room type.', 'warning');
@@ -1405,7 +1581,10 @@ class CultTycoonGame {
     const height = Math.abs(endY - startY) + 1;
     const area = width * height;
     if (area < def.minSize) {
-      this.hud.logEvent(`${def.name} needs at least ${def.minSize} tiles; selected area is ${area}.`, 'warning');
+      this.hud.logEvent(
+        `${def.name} needs at least ${def.minSize} tiles; selected area is ${area}.`,
+        'warning',
+      );
       return;
     }
 
@@ -1434,7 +1613,9 @@ class CultTycoonGame {
       return;
     }
 
+    this.refreshWorkstations();
     this.sceneMgr.buildTiles();
+    this.selectedRoom = room.id;
     const status = this.getRoomRequirementStatus(room.id);
     if (status.missing.length > 0) {
       this.hud.logEvent(
@@ -1448,21 +1629,7 @@ class CultTycoonGame {
   }
 
   private getRoomRequirementStatus(roomId: number): { complete: boolean; missing: string[] } {
-    const room = this.buildingSystem.getRoom(roomId);
-    if (!room?.roomDefinitionId) return { complete: true, missing: [] };
-
-    const def = DataManager.getRoom(room.roomDefinitionId);
-    if (!def) return { complete: true, missing: [] };
-
-    const tileKeys = new Set(room.tiles.map(tile => `${tile.x},${tile.y}`));
-    const placedIds = new Set(
-      this.buildingSystem.getAllObjects()
-        .filter(obj => tileKeys.has(`${obj.x},${obj.y}`))
-        .map(obj => obj.objectId),
-    );
-
-    const missing = def.requiredObjects.filter(required => !placedIds.has(required));
-    return { complete: room.area >= def.minSize && missing.length === 0, missing };
+    return this.buildingSystem.getRoomStatus(roomId);
   }
 
   private refreshRoomRequirementAt(x: number, y: number): void {
@@ -1488,7 +1655,7 @@ class CultTycoonGame {
     } else if (this.input.getMode() === 'demolish') {
       const result = this.buildingSystem.demolish(x, y);
       if (result.success) {
-        this.jobSystem.cancelJob(`station:${x}:${y}`);
+        this.refreshWorkstations();
         this.hud.logEvent(`Demolished at (${x}, ${y})`, 'info');
         this.audio.play('destroy');
         this.sceneMgr.buildTiles();
@@ -1504,6 +1671,7 @@ class CultTycoonGame {
         this.selectFollower(entity);
       } else {
         this.selectedEntity = null;
+        this.selectedRoom = tile.roomId;
         this.hud.hideInspector();
         if (tile.roomId !== null) {
           const room = this.buildingSystem.getRoom(tile.roomId);
@@ -1516,7 +1684,10 @@ class CultTycoonGame {
             );
           }
         } else {
-          this.hud.logEvent(`Tile (${x}, ${y}): ${tile.terrain}${tile.occupied ? ' [built]' : ''}`, 'info');
+          this.hud.logEvent(
+            `Tile (${x}, ${y}): ${tile.terrain}${tile.occupied ? ' [built]' : ''}`,
+            'info',
+          );
         }
       }
     }
@@ -1524,18 +1695,31 @@ class CultTycoonGame {
 
   private handleBuild(x: number, y: number): void {
     const item = this.selectedBuildItem!;
+    if (item.startsWith('room:')) {
+      this.onBuildDragEnd(x, y, x, y);
+      return;
+    }
+    if (item !== 'floor' && this.findFollowerAt(x, y) !== null) {
+      this.hud.logEvent('A follower is standing here. Leave a clear route.', 'warning');
+      return;
+    }
+
     const objDef = DataManager.getObject(item);
 
     // Determine cost
     let cost = 5;
     if (item === 'wall') cost = 5;
     else if (item === 'floor') cost = 2;
-    else if (item === 'door') cost = 8;
+    else if (item === 'door') cost = 10;
     else if (objDef) cost = objDef.cost;
+    else if (item.startsWith('decor_')) cost = DECOR_ITEMS[item.slice(6)]?.cost ?? 0;
 
     // Check wealth
     if (this.cultWealth < cost) {
-      this.hud.logEvent(`Not enough wealth! Need ${cost}g, have ${Math.floor(this.cultWealth)}g`, 'warning');
+      this.hud.logEvent(
+        `Not enough wealth! Need ${cost}g, have ${Math.floor(this.cultWealth)}g`,
+        'warning',
+      );
       return;
     }
 
@@ -1548,14 +1732,23 @@ class CultTycoonGame {
     } else if (item === 'door') {
       result = this.buildingSystem.placeDoor(x, y);
     } else if (objDef) {
-      result = this.buildingSystem.placeObject(x, y, item);
+      result = this.buildingSystem.placeObject(x, y, item, this.buildRotation);
+    } else if (item.startsWith('decor_') && DECOR_ITEMS[item.slice(6)]) {
+      result = this.buildingSystem.placeObject(x, y, item, this.buildRotation);
     } else {
       result = { success: false, message: 'Unknown build item' };
     }
 
     if (result.success) {
       this.cultWealth -= cost;
-      const label = item === 'wall' ? 'Wall' : item === 'floor' ? 'Floor' : item === 'door' ? 'Door' : objDef?.name ?? item;
+      const label =
+        item === 'wall'
+          ? 'Wall'
+          : item === 'floor'
+            ? 'Floor'
+            : item === 'door'
+              ? 'Door'
+              : (objDef?.name ?? item);
       this.hud.logEvent(`${label} placed at (${x}, ${y}) for ${cost}g`, 'success');
       this.showFloatingText(`-${cost}g`, x, y, '#fbbf24');
       this.audio.play('ui-build');
@@ -1574,10 +1767,11 @@ class CultTycoonGame {
 
       // Functional objects create persistent workstation jobs.
       if (objDef) {
-        this.registerWorkstationJob(x, y, item);
+        this.refreshWorkstations();
         this.refreshRoomRequirementAt(x, y);
       }
 
+      this.refreshWorkstations();
       // Handle decor placement — attach to room's Prestige component
       if (item.startsWith('decor_')) {
         const decorId = item.replace('decor_', '');
@@ -1590,91 +1784,204 @@ class CultTycoonGame {
     }
   }
 
-  private findNeedFacility(need: NeedKind, from: { x: number; y: number }): { x: number; y: number } | null {
-    const facilitiesByNeed: Record<NeedKind, string[]> = {
-      hunger: ['cookpot', 'cauldron', 'garden_plot', 'farm_plot'],
-      faith: ['altar', 'sacrificial_altar', 'offering_bowl', 'incense_burner', 'prayer_beads', 'statue'],
+  private facilityValid(need: NeedKind, target: NeedFacilityTarget): boolean {
+    const object = this.buildingSystem.getAllObjects().find((obj) => obj.id === target.id);
+    if (!object || !this.map.isBuildable(target.x, target.y)) return false;
+    const roomId = this.map.getTile(object.x, object.y)?.roomId;
+    if (
+      roomId !== null &&
+      roomId !== undefined &&
+      !this.buildingSystem.getRoomStatus(roomId).complete
+    )
+      return false;
+    if (need === 'hunger' && this.gameInstanceState.resources.food <= 0) return false;
+    return this.buildingSystem
+      .getAdjacentTiles(object)
+      .some((t) => t.x === target.x && t.y === target.y);
+  }
+
+  private findNeedFacility(
+    need: NeedKind,
+    from: { x: number; y: number },
+    entity?: number,
+  ): NeedFacilityTarget | null {
+    const types: Record<NeedKind, string[]> = {
+      hunger: ['cookpot', 'cauldron'],
+      energy: ['bed', 'bunk_bed'],
+      faith: ['altar', 'sacrificial_altar', 'offering_bowl', 'statue'],
       fun: ['bonfire', 'zen_garden', 'meditation_mat'],
       sanity: ['meditation_mat', 'zen_garden', 'bonfire'],
-      energy: ['bed', 'bunk_bed'],
-      bladder: ['bathroom_fixture', 'toilet'],
-      hygiene: ['bathroom_fixture', 'shower'],
+      bladder: ['toilet'],
+      hygiene: ['shower'],
     };
+    const reserved = new Set(
+      this.world
+        .query([FollowerAI])
+        .filter((id) => id !== entity)
+        .map((id) => this.world.getComponent(id, FollowerAI)!.needFacilityId),
+    );
+    const candidates = this.buildingSystem
+      .getAllObjects()
+      .filter((obj) => types[need].includes(obj.objectId) && !reserved.has(obj.id))
+      .flatMap((obj) =>
+        this.buildingSystem.getAdjacentTiles(obj).map((tile) => ({ ...tile, id: obj.id })),
+      )
+      .filter((tile) => this.facilityValid(need, tile))
+      .sort(
+        (a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y),
+      );
+    for (const target of candidates) {
+      const path = this.pathfinder.findPath(
+        Math.round(from.x),
+        Math.round(from.y),
+        target.x,
+        target.y,
+      );
+      if (path.success) return target;
+    }
+    return null;
+  }
 
-    const validIds = new Set(facilitiesByNeed[need]);
-    const candidates = this.buildingSystem.getAllObjects()
-      .filter(obj => validIds.has(obj.objectId))
-      .map(obj => {
-        const workTile = this.findAdjacentWorkTile(obj.x, obj.y);
-        if (!workTile) return null;
-        const distance = Math.abs(workTile.x - from.x) + Math.abs(workTile.y - from.y);
-        return { tile: workTile, distance };
-      })
-      .filter((entry): entry is { tile: { x: number; y: number }; distance: number } => entry !== null)
-      .sort((a, b) => a.distance - b.distance);
-
-    return candidates[0]?.tile ?? null;
+  private refreshWorkstations(): void {
+    const available = new Set<string>();
+    for (const object of this.buildingSystem.getAllObjects()) {
+      const roomId = this.map.getTile(object.x, object.y)?.roomId;
+      if (
+        roomId !== null &&
+        roomId !== undefined &&
+        !this.buildingSystem.getRoomStatus(roomId).complete
+      )
+        continue;
+      // A research station and kitchen require a completed designated room.
+      if (
+        ['research_desk', 'library_shelf', 'cookpot', 'cauldron'].includes(object.objectId) &&
+        roomId == null
+      )
+        continue;
+      const key = `station:${object.x}:${object.y}`;
+      available.add(key);
+      if (!this.stationIds.has(key))
+        this.registerWorkstationJob(object.x, object.y, object.objectId);
+    }
+    for (const key of this.stationIds)
+      if (!available.has(key)) {
+        this.jobSystem.cancelJob(key);
+        this.stationIds.delete(key);
+      }
   }
 
   private registerWorkstationJob(x: number, y: number, objectId: string): void {
-    const stationTypes: Record<string, { type: 'cook' | 'research' | 'pray' | 'haul'; skill: keyof Skills; priority: number }> = {
+    const types: Record<
+      string,
+      {
+        type: 'cook' | 'research' | 'pray' | 'haul';
+        skill: 'cooking' | 'research' | 'faith' | 'construction';
+        priority: number;
+      }
+    > = {
       cookpot: { type: 'cook', skill: 'cooking', priority: 7 },
       cauldron: { type: 'cook', skill: 'cooking', priority: 8 },
       garden_plot: { type: 'cook', skill: 'cooking', priority: 5 },
       farm_plot: { type: 'cook', skill: 'cooking', priority: 6 },
       research_desk: { type: 'research', skill: 'research', priority: 7 },
       library_shelf: { type: 'research', skill: 'research', priority: 8 },
-      altar: { type: 'pray', skill: 'faith', priority: 7 },
-      sacrificial_altar: { type: 'pray', skill: 'faith', priority: 9 },
-      offering_bowl: { type: 'pray', skill: 'faith', priority: 5 },
-      incense_burner: { type: 'pray', skill: 'faith', priority: 5 },
-      prayer_beads: { type: 'pray', skill: 'faith', priority: 5 },
-      storage_box: { type: 'haul', skill: 'construction', priority: 3 },
-      warehouse: { type: 'haul', skill: 'construction', priority: 4 },
+      altar: { type: 'pray', skill: 'faith', priority: 6 },
+      sacrificial_altar: { type: 'pray', skill: 'faith', priority: 8 },
+      offering_bowl: { type: 'pray', skill: 'faith', priority: 4 },
+      storage_box: { type: 'haul', skill: 'construction', priority: 1 },
+      warehouse: { type: 'haul', skill: 'construction', priority: 2 },
     };
-    const station = stationTypes[objectId];
-    if (!station) return;
-
-    const targetTile = this.findAdjacentWorkTile(x, y);
-    if (!targetTile) {
-      this.hud.logEvent(`No accessible work tile beside ${objectId}; station will remain idle.`, 'warning');
-      return;
-    }
-
-    this.jobSystem.cancelJob(`station:${x}:${y}`);
+    const station = types[objectId],
+      object = this.buildingSystem.getObjectAt(x, y);
+    if (!station || !object) return;
+    const target = this.buildingSystem.getAdjacentTiles(object)[0];
+    if (!target) return;
+    const id = `station:${x}:${y}`;
+    if (this.stationIds.has(id)) return;
     this.jobSystem.postJob({
-      id: `station:${x}:${y}`,
+      id,
       type: station.type,
-      targetTile,
+      targetTile: target,
       priority: station.priority,
-      duration: 100000,
+      duration: 8,
+      repeat: true,
       requiredSkill: station.skill,
       minSkillLevel: 1,
     });
-    this.hud.logEvent(`Workstation ready: ${objectId.replaceAll('_', ' ')}`, 'success');
+    this.stationIds.add(id);
   }
 
-  private findAdjacentWorkTile(x: number, y: number): { x: number; y: number } | null {
-    const candidates = [
-      { x: x + 1, y },
-      { x: x - 1, y },
-      { x, y: y + 1 },
-      { x, y: y - 1 },
-    ];
-    return candidates.find(tile => {
-      const mapTile = this.map.getTile(tile.x, tile.y);
-      return !!mapTile && mapTile.buildable && !mapTile.occupied;
-    }) ?? null;
+  private buildTilesFor(
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+  ): { x: number; y: number }[] {
+    const item = this.selectedBuildItem;
+    if (!item) return [];
+    if (item === 'wall') {
+      if (Math.abs(end.x - start.x) >= Math.abs(end.y - start.y))
+        return Array.from({ length: Math.abs(end.x - start.x) + 1 }, (_, i) => ({
+          x: Math.min(start.x, end.x) + i,
+          y: start.y,
+        }));
+      return Array.from({ length: Math.abs(end.y - start.y) + 1 }, (_, i) => ({
+        x: start.x,
+        y: Math.min(start.y, end.y) + i,
+      }));
+    }
+    if (item === 'floor' || item.startsWith('room:')) {
+      const tiles = [];
+      for (let y = Math.min(start.y, end.y); y <= Math.max(start.y, end.y); y++)
+        for (let x = Math.min(start.x, end.x); x <= Math.max(start.x, end.x); x++)
+          tiles.push({ x, y });
+      return tiles;
+    }
+    if (item === 'door') return [end];
+    return this.buildingSystem.getFootprint(end.x, end.y, item, this.buildRotation);
   }
-
+  private previewBuild(start: { x: number; y: number }, end: { x: number; y: number }): void {
+    const item = this.selectedBuildItem;
+    if (!item) return;
+    const tiles = this.buildTilesFor(start, end);
+    if (tiles.length > 4096) return;
+    const room = item.startsWith('room:'),
+      def = room ? DataManager.getRoom(item.slice(5)) : null;
+    const validGround = tiles.every((t) => {
+      const tile = this.map.getTile(t.x, t.y);
+      return (
+        !!tile && tile.buildable && (room || item === 'floor' || item === 'door' || !tile.occupied)
+      );
+    });
+    const cost = room
+      ? 0
+      : item === 'wall'
+        ? tiles.filter((t) => this.map.isBuildable(t.x, t.y)).length * 5
+        : item === 'floor'
+          ? tiles.filter(
+              (t) =>
+                !this.buildingSystem.floorTiles.has(`${t.x},${t.y}`) &&
+                !this.map.isOccupied(t.x, t.y),
+            ).length * 2
+          : item === 'door'
+            ? 10
+            : (DataManager.getObject(item)?.cost ??
+              DECOR_ITEMS[item.replace('decor_', '')]?.cost ??
+              0);
+    const valid = validGround && cost <= this.cultWealth && (!def || tiles.length >= def.minSize);
+    this.sceneMgr.showBuildPreview(tiles, valid);
+    this.hud.setBuildHint(
+      `${def?.name ?? DataManager.getObject(item)?.name ?? item.replace('room:', '')}: ${tiles.length} tile${tiles.length === 1 ? '' : 's'} / ${cost} coins${!valid ? ' / Cannot place here' : ''}. Drag to build. F rotates objects; right-click cancels.`,
+    );
+  }
   private onTileHover(x: number, y: number): void {
-    this.sceneMgr.highlightTile(x, y);
+    if (
+      this.input.getMode() === 'build' &&
+      this.selectedBuildItem &&
+      !this.input.getState().isDragging
+    )
+      this.previewBuild({ x, y }, { x, y });
+    else if (this.input.getMode() === 'demolish') this.sceneMgr.highlightTile(x, y);
   }
 
-  /**
-   * Handle decor item placement — find or create a room entity with Prestige
-   * component and add the decor to it.
-   */
   private handleDecorPlacement(x: number, y: number, decorId: string): void {
     const room = this.roomGraph.getRoomAt(x, y);
     if (!room) {
@@ -1688,7 +1995,10 @@ class CultTycoonGame {
       roomEntity = this.world.createEntity();
       const prestige = new Prestige(roomEntity);
       // Base prestige from room area (bigger rooms start with slightly more)
-      (prestige as Prestige & { baseLevel?: number }).baseLevel = Math.min(3, Math.floor(room.area / 20));
+      (prestige as Prestige & { baseLevel?: number }).baseLevel = Math.min(
+        3,
+        Math.floor(room.area / 20),
+      );
       this.world.addComponent(roomEntity, prestige);
       this.roomEntities.set(room.id, roomEntity);
     }
@@ -1703,7 +2013,12 @@ class CultTycoonGame {
     }
   }
 
-  private showFloatingText(text: string, tileX: number, tileY: number, color: string = '#fff'): void {
+  private showFloatingText(
+    text: string,
+    tileX: number,
+    tileY: number,
+    color: string = '#fff',
+  ): void {
     const screen = this.renderer.camera.tileToScreen(tileX, tileY);
     const el = document.createElement('div');
     el.textContent = text;
@@ -1719,7 +2034,7 @@ class CultTycoonGame {
   }
 
   private updateFloatingTexts(dt: number): void {
-    this.floatingTexts = this.floatingTexts.filter(ft => {
+    this.floatingTexts = this.floatingTexts.filter((ft) => {
       ft.life -= dt;
       if (ft.life <= 0) {
         ft.el.remove();
@@ -1741,6 +2056,7 @@ class CultTycoonGame {
   }
 
   private selectFollower(entity: number): void {
+    this.selectedRoom = null;
     this.selectedEntity = entity;
     const needs = this.world.getComponent(entity, Needs);
     const health = this.world.getComponent(entity, Health);
@@ -1763,7 +2079,9 @@ class CultTycoonGame {
         bladder: needs.bladder,
         hygiene: needs.hygiene,
       },
-      job: job?.type ?? 'idle',
+      job: this.world.hasComponent(entity, OnMission)
+        ? 'Away on mission'
+        : (this.world.getComponent(entity, FollowerAI)?.activityReason ?? job?.type ?? 'idle'),
       traits: traits?.traits ?? [],
     });
   }
@@ -1787,36 +2105,38 @@ class CultTycoonGame {
     const data: ResourceBarData = {
       influence: Math.floor(this.cultInfluence),
       wealth: Math.floor(this.cultWealth),
-      notoriety: Math.floor(this.cultNotoriety),
+      notoriety: Math.floor(this.heatSystem.getHeat()),
+      food: Math.floor(this.gameInstanceState.resources.food),
       faith: pop > 0 ? totalFaith / pop : 100,
       morale: pop > 0 ? (totalFun + totalSanity) / (2 * pop) : 100,
       population: pop,
       maxPopulation: 8 + maxPopBonus,
     };
+    this.hud.updateTime(this.currentHour, this.currentDay);
     this.hud.updateResourceBar(data);
     this.hud.updateMinimap({
       width: this.map.width,
       height: this.map.height,
-      tiles: this.map.getAllTiles().map(tile => ({
+      tiles: this.map.getAllTiles().map((tile) => ({
         x: tile.x,
         y: tile.y,
         terrain: tile.terrain,
         explored: this.fogOfWar.isExplored(tile.x, tile.y),
       })),
-      followers: this.world.query([Transform, FollowerAI]).map(entityId => {
+      followers: this.world.query([Transform, FollowerAI]).map((entityId) => {
         const transform = this.world.getComponent(entityId, Transform)!;
         return { x: transform.x, y: transform.y };
       }),
-      objects: this.buildingSystem.getAllObjects().map(obj => ({ x: obj.x, y: obj.y })),
-      rooms: this.buildingSystem.getAllRooms().map(room => ({
-        tiles: room.tiles.map(tile => ({ ...tile })),
+      objects: this.buildingSystem.getAllObjects().map((obj) => ({ x: obj.x, y: obj.y })),
+      rooms: this.buildingSystem.getAllRooms().map((room) => ({
+        tiles: room.tiles.map((tile) => ({ ...tile })),
       })),
     });
     this.updateAlphaObjective();
 
     // Keep open management panels current while the simulation runs.
     this.hud.updateTechTreePanel({
-      unlockedIds: this.techTree.getUnlocked().map(node => node.id),
+      unlockedIds: this.techTree.getUnlocked().map((node) => node.id),
       influence: this.cultInfluence,
       faith: this.cultFaith,
     });
@@ -1845,6 +2165,20 @@ class CultTycoonGame {
       }),
     });
 
+    if (this.selectedRoom !== null) {
+      const room = this.buildingSystem.getRoom(this.selectedRoom);
+      if (room) {
+        const def = DataManager.getRoom(room.roomDefinitionId ?? '');
+        this.hud.showRoomInspector(
+          def?.name ?? 'Room',
+          room.area,
+          this.buildingSystem.getRoomStatus(room.id),
+        );
+      } else {
+        this.selectedRoom = null;
+        this.hud.hideInspector();
+      }
+    }
     // Update inspector if a follower is selected
     if (this.selectedEntity !== null) {
       this.selectFollower(this.selectedEntity);
@@ -1855,19 +2189,20 @@ class CultTycoonGame {
     const rooms = this.buildingSystem.getAllRooms();
     const completeRoomIds = new Set(
       rooms
-        .filter(room => this.getRoomRequirementStatus(room.id).complete)
-        .map(room => room.roomDefinitionId)
+        .filter((room) => this.getRoomRequirementStatus(room.id).complete)
+        .map((room) => room.roomDefinitionId)
         .filter((id): id is string => !!id),
     );
-    const workPrefs = this.world.query([WorkPreferences])
-      .map(entityId => this.world.getComponent(entityId, WorkPreferences)!)
+    const workPrefs = this.world
+      .query([WorkPreferences])
+      .map((entityId) => this.world.getComponent(entityId, WorkPreferences)!)
       .filter(Boolean);
-    const hasSpecializedRole = workPrefs.some(pref => pref.role !== 'generalist');
+    const hasSpecializedRole = workPrefs.some((pref) => pref.role !== 'generalist');
     const researched = this.techTree.getUnlocked().length;
     const activeMissions = this.missionSystem.getActiveMissions().length;
     const heat = this.heatSystem.getHeat();
 
-    if (!rooms.some(room => room.roomDefinitionId === 'dormitory')) {
+    if (!rooms.some((room) => room.roomDefinitionId === 'dormitory')) {
       this.hud.setObjective(
         'Designate a Dormitory',
         'Open Build → Rooms → Dormitory, then drag a room area of at least 4 tiles near your starting clearing.',
@@ -1875,15 +2210,15 @@ class CultTycoonGame {
     } else if (!completeRoomIds.has('dormitory')) {
       this.hud.setObjective(
         'Complete the Dormitory',
-        'Place a Bed inside the designated Dormitory. A room becomes functional when its required objects are inside it.',
+        'Add floor tiles, surrounding walls, a door and a bed. Click the room to see its live requirements.',
       );
-    } else if (!rooms.some(room => room.roomDefinitionId === 'kitchen')) {
+    } else if (!rooms.some((room) => room.roomDefinitionId === 'kitchen')) {
       this.hud.setObjective(
         'Designate a Kitchen',
-        'Create a Kitchen of at least 4 tiles so your cult has a dependable food-work area.',
+        'Designate a Kitchen of at least 4 tiles; enclose it, add flooring, a cooking pot and a storage box.',
       );
     } else if (!completeRoomIds.has('kitchen')) {
-      const kitchen = rooms.find(room => room.roomDefinitionId === 'kitchen');
+      const kitchen = rooms.find((room) => room.roomDefinitionId === 'kitchen');
       const missing = kitchen ? this.getRoomRequirementStatus(kitchen.id).missing : [];
       this.hud.setObjective(
         'Complete the Kitchen',
@@ -1899,7 +2234,7 @@ class CultTycoonGame {
         'Choose your first research',
         'Open ☰ → Tech Tree (T) and unlock a first upgrade that supports your compound.',
       );
-    } else if (activeMissions === 0) {
+    } else if (activeMissions === 0 && this.missionSystem.completedCount === 0) {
       this.hud.setObjective(
         'Send your first mission',
         'Open ☰ → Missions (M), compare follower skills and risk, then choose a team.',
@@ -1926,18 +2261,13 @@ class CultTycoonGame {
    * so the 3D scene is visible behind the menu overlay.
    */
   startRenderLoop(): void {
-    this.lastTime = performance.now();
-    this.running = true;
-    this.gameLoop();
+    this.start();
   }
-
-  /**
-   * Start the full game (render + simulation). Called when "New Game" is clicked.
-   */
   start(): void {
+    if (this.running) return;
     this.lastTime = performance.now();
     this.running = true;
-    this.gameLoop();
+    this.frameId = requestAnimationFrame(this.gameLoop);
   }
 
   async preloadAssets(): Promise<void> {
@@ -1965,7 +2295,9 @@ class CultTycoonGame {
       './assets/models/buildings/cooking_pot.glb',
       './assets/models/buildings/ritual_circle.glb',
     ];
-    await this.assets.loadAll(assetUrls);
+    const loaded = await this.assets.loadAll(assetUrls);
+    if (assetUrls.slice(0, 12).some((url) => !loaded.has(url)))
+      throw new Error('Follower assets are incomplete');
     await this.preloadFollowerAnimationLibrary();
     console.log('[preloadAssets] All assets loaded. Cached:', this.assets.cachedCount);
     // Re-sync entities now that assets are loaded.
@@ -1975,10 +2307,7 @@ class CultTycoonGame {
 
   private async preloadFollowerAnimationLibrary(): Promise<void> {
     try {
-      const response = await window.fetch('./assets/animations/followers/manifest.json', { cache: 'no-store' });
-      if (!response.ok) return;
-
-      const manifest = await response.json() as { enabled?: boolean; source?: string };
+      const manifest = animationManifest;
       if (!manifest.enabled || !manifest.source) {
         console.log('[animations] Shared follower animation library disabled.');
         return;
@@ -1986,7 +2315,9 @@ class CultTycoonGame {
 
       const asset = await this.assets.load(manifest.source);
       if (!asset || asset.animations.length === 0) {
-        console.warn('[animations] Shared follower animation library enabled but no clips were loaded.');
+        console.warn(
+          '[animations] Shared follower animation library enabled but no clips were loaded.',
+        );
         return;
       }
 
@@ -2001,7 +2332,7 @@ class CultTycoonGame {
 
   private gameLoop = (): void => {
     if (!this.running) return;
-    requestAnimationFrame(this.gameLoop);
+    this.frameId = requestAnimationFrame(this.gameLoop);
 
     const now = performance.now();
     const frameTime = Math.min((now - this.lastTime) / 1000, 0.25);
@@ -2011,14 +2342,26 @@ class CultTycoonGame {
     if (this.gameState === 'playing') {
       // Fixed timestep simulation
       this.accumulator += frameTime * this.timeScale;
-      while (this.accumulator >= this.tickDuration) {
+      while (this.accumulator >= this.tickDuration && this.timeScale > 0 && !this.gameEnded) {
         this.simulate(this.tickDuration);
         this.accumulator -= this.tickDuration;
       }
     }
 
     // Always render (even when paused, so the scene is visible behind pause overlay)
-    this.renderSystem.update(this.world, 0);
+    const blocked =
+      this.gameState !== 'playing' || this.hud.hasManagementPanel() || this.dialog.isVisible;
+    this.input.setEnabled(!blocked);
+    this.renderer.camera.setEnabled(!blocked);
+    this.renderSystem.update(
+      this.world,
+      this.gameState === 'playing' ? frameTime * this.timeScale : 0,
+    );
+    this.hudElapsed += frameTime;
+    if (this.hudElapsed >= 0.25) {
+      this.hudElapsed = 0;
+      this.updateHUD();
+    }
     this.renderer.camera.update(frameTime);
 
     // Day/night lighting
@@ -2117,11 +2460,22 @@ class CultTycoonGame {
 
     // Update MissionSystem (doesn't extend System, called manually)
     // Runs after HeatSystem (position 10)
-    this.missionSystem.update(this.world, dt);
+    this.missionSystem.update(this.world, (dt * 24) / this.secondsPerDay);
 
     // Check for police raids
     if (this.heatSystem.isRaidReady()) {
-      const roster = this.world.query([Needs, FollowerAI]);
+      this.raidWarning += dt;
+      if (this.raidWarning <= dt)
+        this.hud.logEvent(
+          'Raid warning: police arrive in 30 seconds unless heat falls below 100. Use a PR mission or reduce exposure.',
+          'danger',
+        );
+    } else this.raidWarning = 0;
+    if (this.heatSystem.isRaidReady() && this.raidWarning >= 30) {
+      this.raidWarning = 0;
+      const roster = this.world
+        .query([Needs, FollowerAI])
+        .filter((id) => !this.world.hasComponent(id, OnMission));
       if (roster.length > 0) {
         const raidResult = this.heatSystem.executeRaid(roster, this.cultWealth);
         this.cultWealth -= raidResult.fundsConfiscated;
@@ -2137,40 +2491,28 @@ class CultTycoonGame {
       }
     }
 
-    // Time progression: 1 game day = 30 real seconds at 1x speed
-    // 30 ticks/sec * 30 sec = 900 ticks per day
     this.tickCount += dt;
-    const ticksPerHour = 900 / 24; // 37.5 ticks per hour
-    this.currentHour = (6 + this.tickCount / ticksPerHour) % 24;
+    const elapsedHours = this.startingHour + (this.tickCount * 24) / this.secondsPerDay;
+    this.currentHour = elapsedHours % 24;
     this.schedulingSystem.setHour(this.currentHour);
-    const newDay = Math.floor(this.tickCount / 900) + 1;
-    if (newDay !== this.currentDay) {
-      this.currentDay = newDay;
-      this.hud.logEvent(`Day ${newDay} begins.`, 'info');
-      this.heatSystem.advanceDay();
-      // Daily influence from faith
-      const entities = this.world.query([Needs]);
-      let avgFaith = 0;
-      for (const e of entities) {
-        avgFaith += this.world.getComponent(e, Needs)!.faith;
-      }
-      if (entities.length > 0) {
-        avgFaith /= entities.length;
-        const dailyInfluence = Math.floor(avgFaith * 0.1);
-        this.cultInfluence += dailyInfluence;
-      }
+    this.currentDay = 1 + Math.floor(elapsedHours / 24);
+    this.eventSystem.setDay(this.currentDay);
+    this.autosaveElapsed += dt;
+    if (this.autosaveElapsed >= 300) {
+      this.autosaveElapsed = 0; /* Manual save remains authoritative during Alpha. */
     }
-
-    // Update HUD every 30 ticks (~1 second)
-    const tickFloor = Math.floor(this.tickCount);
-    if (tickFloor % 30 === 0) {
-      this.updateHUD();
-      this.hud.updateTime(this.currentHour, this.currentDay);
+    // Supporter donations scale with follower faith; critical needs lower income.
+    const local = this.world
+      .query([Needs, FollowerAI])
+      .filter((id) => !this.world.hasComponent(id, OnMission));
+    let donations = 0;
+    for (const id of local) {
+      const needs = this.world.getComponent(id, Needs)!;
+      donations += (0.03 * needs.faith) / 100;
     }
-
-    // Sync entity positions for animation
-    this.sceneMgr.syncEntities();
-
+    this.cultWealth += donations * dt;
+    const reduction = this.techTree.getEffectBonus('heatReductionRate');
+    if (reduction > 0) this.heatSystem.reduceHeat(reduction * dt);
     // Update particle effects
     this.particles.update(dt);
 
@@ -2191,10 +2533,13 @@ class CultTycoonGame {
   private checkWinCondition(): void {
     if (this.gameEnded) return;
     const entities = this.world.query([Needs, FollowerAI]);
-    if (entities.length >= 20) {
+    if (entities.length >= 6) {
       this.showWinOverlay();
     } else {
-      this.hud.logEvent(`Ascension ritual complete! Need 20 followers to win (have ${entities.length}).`, 'success');
+      this.hud.logEvent(
+        `Ascension ritual complete! Need 6 followers to win (have ${entities.length}).`,
+        'success',
+      );
     }
   }
 
@@ -2279,9 +2624,21 @@ class CultTycoonGame {
     this.setTimeMode('pause');
 
     const reasons: Record<string, { icon: string; title: string; desc: string }> = {
-      abandoned: { icon: '👻', title: 'Your cult has been abandoned', desc: 'All your followers have left. The cult is no more.' },
-      bankruptcy: { icon: '💸', title: 'Your cult is bankrupt', desc: 'Wealth has dropped below -50g. The cult cannot sustain itself.' },
-      busted: { icon: '🚨', title: 'Your cult has been busted', desc: 'Heat reached a critical level. Authorities overwhelmed the compound and shut the cult down.' },
+      abandoned: {
+        icon: '👻',
+        title: 'Your cult has been abandoned',
+        desc: 'All your followers have left. The cult is no more.',
+      },
+      bankruptcy: {
+        icon: '💸',
+        title: 'Your cult is bankrupt',
+        desc: 'Wealth has dropped below -50g. The cult cannot sustain itself.',
+      },
+      busted: {
+        icon: '🚨',
+        title: 'Your cult has been busted',
+        desc: 'Heat reached a critical level. Authorities overwhelmed the compound and shut the cult down.',
+      },
     };
     const r = reasons[reason];
     const stats = this.gatherStats();
@@ -2364,7 +2721,8 @@ class CultTycoonGame {
       pop: entities.length,
       influence: Math.floor(this.cultInfluence),
       wealth: Math.floor(this.cultWealth),
-      notoriety: Math.floor(this.cultNotoriety),
+      notoriety: Math.floor(this.heatSystem.getHeat()),
+      food: Math.floor(this.gameInstanceState.resources.food),
     };
   }
 
@@ -2372,126 +2730,96 @@ class CultTycoonGame {
    * Reset game state for a new game (from win/lose overlay).
    */
   private resetForNewGame(): void {
-    // Clear all entities
+    this.closeBuildMenu();
+    this.hud.closeManagementPanels();
+    this.dialog.close();
+    this.jobSystem.clear();
+    this.sceneMgr.resetEntities();
     this.world.clear();
-
-    // Reset game state
     this.gameEnded = false;
     this._popZeroTimer = 0;
-    this.cultWealth = 200;
+    this.raidWarning = 0;
+    this.autosaveElapsed = 0;
+    this.tickCount = 0;
+    this.currentDay = 1;
+    this.currentHour = this.startingHour;
+    this.accumulator = 0;
+    this.cultWealth = 500;
     this.cultInfluence = 50;
     this.cultNotoriety = 5;
-    this.currentHour = 6;
-    this.currentDay = 1;
-    this.tickCount = 0;
-    this.selectedBuildItem = null;
     this.selectedEntity = null;
+    this.selectedRoom = null;
     this.followerNames.clear();
-
-    // Reset systems
+    this.stationIds.clear();
+    this.hud.hideInspector();
+    this.hud.clearEventLog();
+    const generated = new WorldGen(12345).generate({
+      width: this.map.width,
+      height: this.map.height,
+      waterPools: 8,
+      stonePatches: 10,
+      dirtPatches: 12,
+    });
+    this.map.clear();
+    for (const tile of generated.getAllTiles())
+      Object.assign(this.map.getTile(tile.x, tile.y)!, tile);
+    this.prepareClearing();
+    this.buildingSystem.restoreSnapshot(undefined);
+    this.pathfinder.invalidateCache();
+    this.pathfindSystem.invalidateCache();
+    this.roomGraph.invalidate();
+    this.aiSystem.reset();
     this.investigatorSystem.reset();
     this.combatSystem.reset();
+    this.eventSystem.reset();
     this.resourceSystem.reset();
     this.heatSystem.reset();
-    this.missionSystem = new MissionSystem(
-      (missionId, event, choices) => {
-        this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
-
-        // Mission events are player decisions. Pause simulation while the modal is open
-        // so the mission cannot advance or resolve behind the player's choice.
-        const previousTimeMode = this.timeMode;
-        this.setTimeMode('pause');
-
-        this.dialog.show({
-          title: 'Mission Decision',
-          icon: '🎯',
-          body: `<p>${event.text}</p><p style="color:#888;font-size:12px;">Choose how your cultists should respond.</p>`,
-          modal: true,
-          buttons: choices.map((choice, choiceIndex) => ({
-            label: choice.skillCheck
-              ? `${choice.label} [${choice.skillCheck.skill} ${choice.skillCheck.difficulty}]`
-              : choice.label,
-            onClick: () => {
-              const result = this.missionSystem.resolveEventChoice(missionId, choiceIndex, this.world);
-              if (result) {
-                this.hud.logEvent(
-                  `Mission outcome: ${result.text}`,
-                  result.success ? 'success' : 'danger',
-                );
-              }
-              this.setTimeMode(previousTimeMode);
-            },
-          })),
-        });
-      },
-      (_missionId, templateId, success, rewards) => {
-        if (rewards.money) this.cultWealth += rewards.money;
-        if (rewards.influence) this.cultInfluence += rewards.influence;
-        if (rewards.heatReduction) this.heatSystem.reduceHeat(rewards.heatReduction);
-        if (rewards.heatGain) this.heatSystem.addHeat(rewards.heatGain, 'mission');
-        this.hud.logEvent(
-          `Mission ${success ? 'succeeded' : 'failed'}: ${templateId}`,
-          success ? 'success' : 'danger',
-        );
-      },
+    this.techTree.restore();
+    this.ritualSystem.reset();
+    this.missionSystem.restore({ missions: [], completedCount: 0 }, this.world);
+    Object.assign(
+      this.gameInstanceState.resources,
+      new GameInstanceState({ funds: 500, influence: 50, food: 40, notoriety: 5 }).resources,
     );
+    this.fogOfWar.restore({ explored: [], permanent: [] });
+    this.fogOfWar.revealArea(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2), 15);
     this.prestigeSystem = new PrestigeSystem();
     this.roomEntities.clear();
-    this.gameInstanceState = new GameInstanceState({
-      faith: 100,
-      funds: this.cultWealth,
-      materials: 50,
-      food: 100,
-      influence: this.cultInfluence,
-      notoriety: this.cultNotoriety,
-    });
-    this.resourceSystem = new ResourceSystem(
-      this.gameInstanceState,
-      {},
-      (event) => {
-        const logType = event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
-        this.hud.logEvent(event.message, logType as any);
-      },
-    );
-    this.systems = [this.needsSystem, this.schedulingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
-    // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
-    // in simulate() because they don't extend the System base class.
-    // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
-    //        Ritual → Investigator → Combat → Fog, then Prestige → Heat → Mission
-
-    // Rebuild map — 64x64 with fog of war
-    const worldGen = new WorldGen(12345);
-    this.map = worldGen.generate({ width: 64, height: 64, waterPools: 8, stonePatches: 10, dirtPatches: 12 });
-    this.pathfinder = new Pathfinder(this.map);
-    this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
-    this.renderer.camera.setMapBounds(this.map.width, this.map.height);
-    this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
-    this.pathfindSystem.bindWorld(this.world);
-
-    // Rebuild room graph for new map
-    this.roomGraph = new RoomGraph(this.map);
-
-    // Reset fog of war
-    this.fogOfWar = new FogOfWar(10);
-    this.fogOfWar.revealArea(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2), 15);
-    this.fogSystem = new FogSystem(this.fogOfWar, 0.33);
-    this.sceneMgr.setFog(this.fogOfWar);
-    this.sceneMgr.buildTiles();
-
-    // Spawn initial followers at map center
+    this.factory = new FollowerFactory(42);
     this.spawnFollowers(6);
-
-    // Update HUD
-    this.updateHUD();
-    this.hud.updateTime(6, 1);
-    this.hud.logEvent('New game started!', 'success');
-    this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
-
+    this.renderer.camera.setTarget(0, 0);
+    this.renderer.camera.setZoom(40);
+    this.sceneMgr.buildTiles();
     this.setTimeMode('play');
+    this.schedulingSystem.setHour(this.currentHour);
+    this.updateHUD();
+    this.hud.logEvent(
+      'Welcome, Founder. A clear plot, six followers and 500 coins. Start with a Dormitory.',
+      'success',
+    );
+    this.hud.logEvent(
+      'Rooms are free to designate. Floors, walls, a door and furniture make them operational.',
+      'info',
+    );
+  }
+
+  private prepareClearing(): void {
+    const cx = Math.floor(this.map.width / 2),
+      cy = Math.floor(this.map.height / 2);
+    for (let y = cy - 10; y <= cy + 10; y++)
+      for (let x = cx - 10; x <= cx + 10; x++) {
+        this.map.setTerrain(x, y, 'grass');
+        const t = this.map.getTile(x, y);
+        if (t) {
+          t.decor = 'none';
+          t.occupied = false;
+        }
+      }
   }
 
   dispose(): void {
     this.running = false;
+    cancelAnimationFrame(this.frameId);
     window.removeEventListener('resize', this.onResize);
     this.input.dispose();
     this.hud.destroy();
@@ -2524,10 +2852,13 @@ class CultTycoonGame {
     this.startMenu.setCanContinue(this.saveSystem.hasSave());
 
     // Settings menu (shared, created on demand)
-    this.settingsMenu = new SettingsMenu({
-      onApply: (data) => this.applySettings(data),
-      onClose: () => this.closeSettings(),
-    }, this.settingsData);
+    this.settingsMenu = new SettingsMenu(
+      {
+        onApply: (data) => this.applySettings(data),
+        onClose: () => this.closeSettings(),
+      },
+      this.settingsData,
+    );
     this.settingsMenu.mount();
     this.settingsMenu.hide();
   }
@@ -2536,136 +2867,148 @@ class CultTycoonGame {
    * Start a new game from the start menu.
    */
   private startNewGame(): void {
-    console.log('[Menu] Starting new game...');
+    if (this.gameState === 'loading') return;
     this.startMenu?.hide();
-
-    // Start preloading and then the game
     this.gameState = 'loading';
-    this.preloadAssets().then(() => {
-      console.log('[Menu] Preload complete, starting game loop');
-      this.gameState = 'playing';
-      this.start();
-    }).catch((err) => {
-      console.error('[Menu] Preload failed:', err);
-      this.gameState = 'playing';
-      this.start();
-    });
+    this.hud.setLoading(true);
+    this.preloadAssets()
+      .then(() => {
+        this.resetForNewGame();
+        this.gameState = 'playing';
+        this.hud.setLoading(false);
+        this.start();
+      })
+      .catch((error) => {
+        console.error(error);
+        this.gameState = 'menu';
+        this.hud.setLoading(false);
+        this.startMenu?.show();
+        this.dialog.alert(
+          'Could not start the game',
+          'Required assets could not be loaded. Restart the game or try a fresh installation.',
+        );
+      });
   }
 
   /**
    * Continue from a saved game.
    */
   private continueGame(): void {
-    console.log('[Menu] Continue: loading save...');
-
+    if (this.gameState === 'loading') return;
     const data = this.saveSystem.load();
     if (!data) {
-      console.warn('[Menu] No save found — falling back to new game');
-      this.hud.logEvent('No saved game found. Starting new game.', 'warning');
-      this.startNewGame();
+      this.dialog.alert('No valid save', 'No valid manual save is available. Start a new game.');
       return;
     }
-
+    if (data.tileMap.width !== this.map.width || data.tileMap.height !== this.map.height) {
+      this.dialog.alert(
+        'Incompatible map',
+        'This save uses unsupported map dimensions. Your save has not been changed.',
+      );
+      return;
+    }
     this.startMenu?.hide();
     this.gameState = 'loading';
-
-    this.preloadAssets().then(() => {
-      console.log('[Menu] Preload complete, restoring save');
-      this.restoreFromSave(data);
-      this.gameState = 'playing';
-      this.start();
-    }).catch((err) => {
-      console.error('[Menu] Preload failed:', err);
-      this.restoreFromSave(data);
-      this.gameState = 'playing';
-      this.start();
-    });
+    this.hud.setLoading(true);
+    this.preloadAssets()
+      .then(() => {
+        this.restoreFromSave(data);
+        this.gameState = 'playing';
+        this.hud.setLoading(false);
+        this.start();
+        this.missionSystem.presentPendingEvents();
+      })
+      .catch((error) => {
+        console.error(error);
+        this.gameState = 'menu';
+        this.hud.setLoading(false);
+        this.startMenu?.show();
+      });
   }
 
   /**
    * Restore all game state from a SaveData object.
    */
   private restoreFromSave(data: SaveData): void {
-    // Reset game-ended state
-    this.gameEnded = false;
-    this._popZeroTimer = 0;
-
-    // Restore cult stats
+    this.resetForNewGame();
+    this.jobSystem.clear();
+    this.sceneMgr.resetEntities();
+    this.stationIds.clear();
+    this.saveSystem.deserializeWorld(data, this.world);
+    for (let y = 0; y < this.map.height; y++)
+      for (let x = 0; x < this.map.width; x++) {
+        const saved = data.tileMap.tiles[y * this.map.width + x];
+        const tile = this.map.getTile(x, y)!;
+        this.map.setTerrain(x, y, saved.terrain as 'grass' | 'water' | 'stone' | 'dirt');
+        Object.assign(tile, {
+          occupied: saved.occupied,
+          roomId: saved.roomId,
+          buildable: saved.buildable,
+          decor: saved.decor ?? 'none',
+        });
+      }
+    this.buildingSystem.restoreSnapshot(data.building);
     this.cultWealth = data.cult.wealth;
     this.cultInfluence = data.cult.influence;
     this.cultNotoriety = data.cult.notoriety;
-    this.currentHour = data.time.hour;
     this.currentDay = data.time.day;
-
-    // Recalculate tickCount from hour/day so simulation continues smoothly
-    // 900 ticks per day, 37.5 ticks per hour; day 1 starts at hour 6
-    const hoursElapsed = (data.time.day - 1) * 24 + (data.time.hour - 6);
-    this.tickCount = hoursElapsed * (900 / 24);
-    this.selectedBuildItem = null;
-    this.selectedEntity = null;
-
-    // Deserialize world entities
-    this.saveSystem.deserializeWorld(data, this.world);
-
-    // Restore tile map in-place (same dimensions expected)
-    // Update terrain and tile properties from save data
-    let tileIndex = 0;
-    for (let y = 0; y < this.map.height; y++) {
-      for (let x = 0; x < this.map.width; x++) {
-        const saved = data.tileMap.tiles[tileIndex++];
-        if (saved) {
-          this.map.setTerrain(x, y, saved.terrain as any);
-          this.map.setOccupied(x, y, saved.occupied);
-          if (saved.roomId !== null) {
-            this.map.setRoomId(x, y, saved.roomId);
-          }
-          // Restore buildable flag explicitly (setTerrain sets a default, but saved value may differ)
-          const tile = this.map.getTile(x, y);
-          if (tile) tile.buildable = saved.buildable;
-        }
-      }
+    this.currentHour = data.time.hour;
+    this.tickCount =
+      data.session?.elapsed ??
+      Math.max(
+        0,
+        (((data.time.day - 1) * 24 + data.time.hour - this.startingHour) * this.secondsPerDay) / 24,
+      );
+    if (data.session) {
+      Object.assign(this.gameInstanceState.resources, data.session.resources);
+      this.techTree.restore(data.session.tech);
+      this.heatSystem.restore(data.session.heat);
+      this.fogOfWar.restore(data.session.fog);
+      if (data.session.rituals) this.ritualSystem.restore(data.session.rituals);
     }
-
-    // Restore BuildingSystem's internal object/room collections after tile occupancy.
-    this.buildingSystem.restoreSnapshot(data.building);
-    this.jobSystem.clear();
-
-    // Resume from a clean assignment state, then recreate jobs from restored stations.
-    for (const entityId of this.world.query([Job, FollowerAI])) {
-      const job = this.world.getComponent(entityId, Job)!;
-      job.jobId = null;
-      job.type = 'idle';
-      job.priority = 0;
-      job.targetTile = null;
-      job.workProgress = 0;
-
-      const ai = this.world.getComponent(entityId, FollowerAI)!;
+    this.followerNames.clear();
+    for (const id of this.world.query([FollowerAI])) {
+      const ai = this.world.getComponent(id, FollowerAI)!;
       ai.path = [];
       ai.pathIndex = 0;
-      if (!ai.needTarget) ai.state = 'idle';
+      ai.needTargetTile = null;
+      ai.needFacilityId = null;
+      ai.state = ai.needTarget ? 'needs' : 'idle';
+      const job = this.world.getComponent(id, Job);
+      if (job) {
+        job.type = 'idle';
+        job.jobId = null;
+        job.targetTile = null;
+        job.workProgress = 0;
+      }
+      if (!this.world.hasComponent(id, WorkPreferences))
+        this.world.addComponent(id, new WorkPreferences(id));
+      if (!this.world.hasComponent(id, Schedule)) this.world.addComponent(id, new Schedule(id));
+      this.followerNames.set(
+        id,
+        data.session?.names.find(([key]) => key === id)?.[1] ?? `Cultist ${id + 1}`,
+      );
     }
-    for (const obj of this.buildingSystem.getAllObjects()) {
-      this.registerWorkstationJob(obj.x, obj.y, obj.objectId);
+    this.missionSystem.restore(
+      data.session?.missions ?? { missions: [], completedCount: 0 },
+      this.world,
+    );
+    if (data.session?.camera) {
+      this.renderer.camera.setTarget(data.session.camera.x, data.session.camera.y);
+      this.renderer.camera.setZoom(data.session.camera.zoom);
     }
-
-    // Existing pathfinder references use the same TileMap instance; invalidate caches
-    // rather than replacing the Pathfinder behind live systems.
+    this.schedulingSystem.setHour(this.currentHour);
+    this.eventSystem.setDay(this.currentDay);
     this.pathfinder.invalidateCache();
     this.pathfindSystem.invalidateCache();
-    this.roomGraph.invalidate();
-
-    // Rebuild scene tiles and placed objects.
+    this.refreshWorkstations();
     this.sceneMgr.buildTiles();
-    this.sceneMgr.syncEntities();
-
-    // Reset investigator system for the loaded map
-    this.investigatorSystem.reset();
-
-    // Update HUD
     this.updateHUD();
-    this.hud.updateTime(Math.floor(this.currentHour), this.currentDay);
-    this.hud.logEvent(`Save loaded — Day ${this.currentDay}, Hour ${Math.floor(this.currentHour)}.`, 'success');
     this.setTimeMode('play');
+    this.hud.logEvent(
+      `Restored Day ${this.currentDay}. Rooms, resources, work priorities, research and missions loaded.`,
+      'success',
+    );
   }
 
   /**
@@ -2778,6 +3121,23 @@ class CultTycoonGame {
       this.buildingSystem.getSnapshot(),
     );
 
+    const target = this.renderer.camera.getTarget();
+    data.session = {
+      elapsed: this.tickCount,
+      resources: {
+        ...this.gameInstanceState.resources,
+        funds: this.cultWealth,
+        influence: this.cultInfluence,
+        notoriety: this.cultNotoriety,
+      },
+      tech: this.techTree.getUnlocked().map((n) => n.id),
+      names: [...this.followerNames],
+      missions: this.missionSystem.snapshot(),
+      rituals: this.ritualSystem.snapshot(),
+      heat: this.heatSystem.snapshot(),
+      fog: this.fogOfWar.snapshot(),
+      camera: { x: target.x, y: target.z, zoom: this.renderer.camera.getZoom() },
+    };
     const success = this.saveSystem.save(data);
     if (success) {
       this.hud.logEvent('Game saved successfully!', 'success');
@@ -2796,8 +3156,10 @@ class CultTycoonGame {
     this.gameState = 'menu';
     this.pauseMenu?.hide();
 
-    // Stop the game loop
-    this.running = false;
+    // Keep the single render loop alive; menu state disables simulation.
+    this.hud.closeManagementPanels();
+    this.closeBuildMenu();
+    this.startMenu?.setCanContinue(this.saveSystem.hasSave());
 
     // Show start menu again
     this.startMenu?.show();
@@ -2812,9 +3174,11 @@ class CultTycoonGame {
    * Quit the game (Electron only).
    */
   private quitGame(): void {
-    const electronAPI = (window as unknown as {
-      electronAPI?: { quitApp?: () => void };
-    }).electronAPI;
+    const electronAPI = (
+      window as unknown as {
+        electronAPI?: { quitApp?: () => void };
+      }
+    ).electronAPI;
 
     if (electronAPI?.quitApp) {
       electronAPI.quitApp();
@@ -2823,12 +3187,15 @@ class CultTycoonGame {
 
     // Browser/dev fallback: return to the menu rather than attempting Node access.
     this.hud.logEvent('Quit is only available in the desktop build.', 'info');
-  }}
+  }
+}
 
 function init(): void {
   console.log('[init] Starting Cult Tycoon...');
   const game = new CultTycoonGame();
   // Show start menu first; game starts when "New Game" is clicked
+  if (new window.URLSearchParams(window.location.search).has('qa'))
+    (window as unknown as { __game: CultTycoonGame }).__game = game;
   game.showStartMenu();
   // Start the render loop immediately so the 3D scene renders behind the menu
   game.startRenderLoop();

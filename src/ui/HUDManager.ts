@@ -1,3 +1,4 @@
+import buildInfo from '../../package.json';
 /**
  * HUDManager — Manages DOM-based HUD elements for the game UI.
  * Resource bar, build panel, inspector, event log, time controls,
@@ -16,6 +17,7 @@ export interface HUDConfig {
 }
 
 export interface ResourceBarData {
+  food?: number;
   influence: number;
   wealth: number;
   notoriety: number;
@@ -28,19 +30,24 @@ export interface ResourceBarData {
 export interface MinimapData {
   width: number;
   height: number;
-  tiles: { x: number; y: number; terrain: 'grass' | 'dirt' | 'stone' | 'water'; explored: boolean }[];
+  tiles: {
+    x: number;
+    y: number;
+    terrain: 'grass' | 'dirt' | 'stone' | 'water';
+    explored: boolean;
+  }[];
   followers: { x: number; y: number }[];
   objects: { x: number; y: number }[];
   rooms: { tiles: { x: number; y: number }[] }[];
 }
-
 
 export interface BuildPanelEntry {
   id: string;
   label: string;
   icon: string;
   cost: number;
-  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure' | 'decor';
+  category:
+    'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure' | 'decor';
 }
 
 export interface BuildCategory {
@@ -53,7 +60,15 @@ export interface InspectorData {
   name: string;
   role: string;
   health: number;
-  needs: { hunger: number; faith: number; fun: number; sanity: number; energy: number; bladder: number; hygiene: number };
+  needs: {
+    hunger: number;
+    faith: number;
+    fun: number;
+    sanity: number;
+    energy: number;
+    bladder: number;
+    hygiene: number;
+  };
   job: string;
   traits: string[];
 }
@@ -80,12 +95,19 @@ export class HUDManager {
   private objectiveStrip: HTMLElement | null = null;
   private minimap: HTMLCanvasElement | null = null;
   private managementMenuOpen = false;
+  private mapSize = { width: 64, height: 64 };
+  private buildHint: HTMLElement | null = null;
+  private loading: HTMLElement | null = null;
+  private lastRoomSignature = '';
+  onMinimapNavigate?: (x: number, y: number) => void;
+  onSelectBuildObject?: (id: string) => void;
+  onOpenSettings?: () => void;
   private techTreePanel: TechTreePanel | null = null;
   private missionPanel: MissionPanel | null = null;
   private schedulePanel: SchedulePanel | null = null;
   private workPanel: WorkPanel | null = null;
   private eventLogEntries: EventLogEntry[] = [];
-  private eventLogCollapsed = false;
+  private eventLogCollapsed = true;
   private nextEventId = 1;
   private maxLogEntries = 20;
   private _timeMode: TimeControlMode = 'play';
@@ -114,7 +136,8 @@ export class HUDManager {
 
   private setupDOM(): void {
     this.container.innerHTML = '';
-    this.container.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;font-family:sans-serif;';
+    this.container.style.cssText =
+      'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;font-family:sans-serif;';
 
     this.resourceBar = this.createElement('div', 'hud-resource-bar');
     this.buildBar = this.createElement('div', 'hud-build-bar');
@@ -126,12 +149,28 @@ export class HUDManager {
     this.topBar = this.createElement('div', 'hud-top-bar');
     this.objectiveStrip = this.createElement('div', 'hud-objective-strip');
     const buildBadge = this.createElement('div', 'hud-build-version');
-    buildBadge.textContent = 'ALPHA 4';
+    buildBadge.textContent = `v${buildInfo.version}`;
 
     this.minimap = document.createElement('canvas');
     this.minimap.className = 'hud-minimap';
     this.minimap.width = 180;
     this.minimap.height = 180;
+    this.minimap.title = 'Compound map - click to move the camera';
+    this.minimap.addEventListener('click', (event) => {
+      const r = this.minimap!.getBoundingClientRect();
+      this.onMinimapNavigate?.(
+        ((event.clientX - r.left) / r.width) * this.mapSize.width,
+        ((event.clientY - r.top) / r.height) * this.mapSize.height,
+      );
+    });
+    this.buildHint = this.createElement('div', 'hud-build-hint');
+    this.container.appendChild(this.buildHint);
+    this.inspector.addEventListener('click', (event) => {
+      const id = (event.target as HTMLElement).closest<HTMLElement>('[data-build-object]')?.dataset
+        .buildObject;
+      if (id) this.onSelectBuildObject?.(id);
+      if ((event.target as HTMLElement).closest('.hud-inspector-close')) this.hideInspector();
+    });
 
     this.container.appendChild(this.resourceBar);
     this.container.appendChild(this.topBar);
@@ -165,13 +204,15 @@ export class HUDManager {
     this.techTreePanel.mount();
 
     this.missionPanel = new MissionPanel({
-      onSendMission: (templateId: string, cultistIds: number[]) => this.onSendMission?.(templateId, cultistIds),
+      onSendMission: (templateId: string, cultistIds: number[]) =>
+        this.onSendMission?.(templateId, cultistIds),
       onClose: () => this.hideMissionPanel(),
     });
     this.missionPanel.mount();
 
     this.schedulePanel = new SchedulePanel({
-      onAssignShift: (entityId: number, shift: 'morning' | 'afternoon' | 'night') => this.onAssignShift?.(entityId, shift),
+      onAssignShift: (entityId: number, shift: 'morning' | 'afternoon' | 'night') =>
+        this.onAssignShift?.(entityId, shift),
       onAutoAssign: () => this.onAutoAssignShifts?.(),
       onClose: () => this.hideSchedulePanel(),
     });
@@ -187,19 +228,23 @@ export class HUDManager {
 
     this.setupTopBar();
     this.injectTopBarStyles();
-    this.setObjective('Establish the compound', 'Build basic shelter, inspect your followers, then choose your first research or mission.');
+    this.setObjective(
+      'Establish the compound',
+      'Build basic shelter, inspect your followers, then choose your first research or mission.',
+    );
     this.renderTimeControls();
   }
 
   private setupTopBar(): void {
     if (!this.topBar) return;
     this.topBar.innerHTML = `
-      <button class="hud-menu-toggle" type="button" title="Management menu">☰</button>
+      <button class="hud-menu-toggle" type="button" title="Management menu" aria-label="Open management menu" aria-expanded="false">☰</button>
       <div class="hud-management-menu">
         <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
         <button class="hud-top-btn" data-panel="missions" title="Missions (M)">🎯 Missions</button>
         <button class="hud-top-btn" data-panel="work" title="Roles & Work (J)">👥 Work</button>
         <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
+        <button class="hud-top-btn" data-panel="settings">Settings / Save</button>
         <button class="hud-top-btn" data-panel="rituals" title="Rituals (R)">🔮 Rituals</button>
       </div>
     `;
@@ -208,17 +253,34 @@ export class HUDManager {
     toggle?.addEventListener('click', () => {
       this.managementMenuOpen = !this.managementMenuOpen;
       this.topBar?.classList.toggle('menu-open', this.managementMenuOpen);
+      toggle?.setAttribute('aria-expanded', String(this.managementMenuOpen));
     });
 
-    this.topBar.querySelectorAll('.hud-top-btn').forEach(btn => {
+    this.topBar.querySelectorAll('.hud-top-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const panel = (e.currentTarget as HTMLElement).dataset.panel;
         switch (panel) {
-          case 'techtree': if (this.onOpenTechTree) this.onOpenTechTree(); else this.toggleTechTreePanel(); break;
-          case 'missions': if (this.onOpenMissions) this.onOpenMissions(); else this.toggleMissionPanel(); break;
-          case 'work': if (this.onOpenWork) this.onOpenWork(); break;
-          case 'schedule': if (this.onOpenSchedule) this.onOpenSchedule(); else this.toggleSchedulePanel(); break;
-          case 'rituals': if (this.onOpenRituals) this.onOpenRituals(); break;
+          case 'settings':
+            this.onOpenSettings?.();
+            break;
+          case 'techtree':
+            if (this.onOpenTechTree) this.onOpenTechTree();
+            else this.toggleTechTreePanel();
+            break;
+          case 'missions':
+            if (this.onOpenMissions) this.onOpenMissions();
+            else this.toggleMissionPanel();
+            break;
+          case 'work':
+            if (this.onOpenWork) this.onOpenWork();
+            break;
+          case 'schedule':
+            if (this.onOpenSchedule) this.onOpenSchedule();
+            else this.toggleSchedulePanel();
+            break;
+          case 'rituals':
+            if (this.onOpenRituals) this.onOpenRituals();
+            break;
         }
         this.managementMenuOpen = false;
         this.topBar?.classList.remove('menu-open');
@@ -414,6 +476,7 @@ export class HUDManager {
   }
 
   showTechTreePanel(data: TechTreePanelData): void {
+    this.closeManagementPanels();
     if (!this.techTreePanel) return;
     this.techTreePanel.show(data);
     this.updateTopBarActive();
@@ -441,6 +504,7 @@ export class HUDManager {
   }
 
   showMissionPanel(data: MissionPanelData): void {
+    this.closeManagementPanels();
     if (!this.missionPanel) return;
     this.missionPanel.show(data);
     this.updateTopBarActive();
@@ -468,6 +532,7 @@ export class HUDManager {
   }
 
   showSchedulePanel(data: SchedulePanelData): void {
+    this.closeManagementPanels();
     if (!this.schedulePanel) return;
     this.schedulePanel.show(data);
     this.updateTopBarActive();
@@ -483,6 +548,7 @@ export class HUDManager {
   }
 
   showWorkPanel(data: WorkPanelData): void {
+    this.closeManagementPanels();
     this.workPanel?.show(data);
     this.updateTopBarActive();
   }
@@ -496,16 +562,100 @@ export class HUDManager {
     this.updateTopBarActive();
   }
 
+  hasManagementPanel(): boolean {
+    return !!(
+      this.techTreePanel?.isVisible ||
+      this.missionPanel?.isVisible ||
+      this.schedulePanel?.isVisible ||
+      this.workPanel?.isVisible
+    );
+  }
+  closeManagementPanels(): boolean {
+    const open = this.hasManagementPanel() || this.managementMenuOpen;
+    this.techTreePanel?.hide();
+    this.missionPanel?.hide();
+    this.schedulePanel?.hide();
+    this.workPanel?.hide();
+    this.managementMenuOpen = false;
+    this.topBar?.classList.remove('menu-open');
+    this.topBar?.querySelector('.hud-menu-toggle')?.setAttribute('aria-expanded', 'false');
+    this.updateTopBarActive();
+    return open;
+  }
+  setBuildHint(text: string): void {
+    if (this.buildHint) {
+      this.buildHint.textContent = text;
+      this.buildHint.hidden = !text;
+    }
+  }
+  setLoading(visible: boolean): void {
+    if (!visible) {
+      this.loading?.remove();
+      this.loading = null;
+      return;
+    }
+    if (this.loading) return;
+    this.loading = document.createElement('div');
+    this.loading.className = 'quality-loading';
+    this.loading.innerHTML =
+      '<div><h1>Preparing your compound</h1><p>Loading characters, animations and the world...</p></div>';
+    document.body.appendChild(this.loading);
+  }
+  showRoomInspector(
+    name: string,
+    area: number,
+    status: { complete: boolean; checks: { label: string; met: boolean; objectId?: string }[] },
+  ): void {
+    if (!this.inspector) return;
+    const signature = JSON.stringify([name, area, status]);
+    if (signature === this.lastRoomSignature && this.inspector.style.display !== 'none') return;
+    this.lastRoomSignature = signature;
+    this.inspector.style.display = 'block';
+    this.inspector.replaceChildren();
+    const title = document.createElement('h3');
+    title.textContent = name;
+    const close = document.createElement('button');
+    close.className = 'hud-inspector-close';
+    close.textContent = 'Close';
+    this.inspector.append(title, close);
+    const label = document.createElement('p');
+    label.textContent = `${area} tiles / ${status.complete ? 'Operational' : 'Needs attention'}`;
+    this.inspector.append(label);
+    for (const check of status.checks) {
+      const row = document.createElement('div');
+      row.className = 'room-check';
+      const text = document.createElement('span');
+      text.textContent = `${check.met ? 'OK' : 'Missing'} - ${check.label}`;
+      row.dataset.met = String(check.met);
+      row.append(text);
+      if (!check.met && check.objectId) {
+        const b = document.createElement('button');
+        b.dataset.buildObject = check.objectId;
+        b.textContent = 'Place';
+        row.append(b);
+      }
+      this.inspector.append(row);
+    }
+  }
+
   private updateTopBarActive(): void {
     if (!this.topBar) return;
-    this.topBar.querySelectorAll('.hud-top-btn').forEach(btn => {
+    this.topBar.querySelectorAll('.hud-top-btn').forEach((btn) => {
       const panel = (btn as HTMLElement).dataset.panel;
       let isActive = false;
       switch (panel) {
-        case 'techtree': isActive = this.techTreePanel?.isVisible ?? false; break;
-        case 'missions': isActive = this.missionPanel?.isVisible ?? false; break;
-        case 'work': isActive = this.workPanel?.isVisible ?? false; break;
-        case 'schedule': isActive = this.schedulePanel?.isVisible ?? false; break;
+        case 'techtree':
+          isActive = this.techTreePanel?.isVisible ?? false;
+          break;
+        case 'missions':
+          isActive = this.missionPanel?.isVisible ?? false;
+          break;
+        case 'work':
+          isActive = this.workPanel?.isVisible ?? false;
+          break;
+        case 'schedule':
+          isActive = this.schedulePanel?.isVisible ?? false;
+          break;
       }
       btn.classList.toggle('active', isActive);
     });
@@ -532,22 +682,37 @@ export class HUDManager {
   updateResourceBar(data: ResourceBarData): void {
     if (!this.resourceBar) return;
     const stats = [
-      { label: 'Influence', value: Math.floor(data.influence), icon: 'scifi_icon_faith', fallback: '🔮', barColor: '#a855f7', max: null },
-      { label: 'Wealth', value: Math.floor(data.wealth), icon: 'icon_wealth', fallback: '💰', barColor: '#fbbf24', max: null },
-      { label: 'Notoriety', value: Math.floor(data.notoriety), icon: 'scifi_icon_shield', fallback: '🛡️', barColor: '#ef4444', max: 100 },
-      { label: 'Faith', value: Math.floor(data.faith), icon: 'scifi_icon_health', fallback: '❤️', barColor: '#3b82f6', max: 100 },
-      { label: 'Morale', value: Math.floor(data.morale), icon: 'scifi_icon_morale', fallback: '😊', barColor: '#10b981', max: 100 },
-      { label: 'Pop', value: `${data.population}/${data.maxPopulation}`, icon: 'scifi_icon_hunger', fallback: '👥', barColor: '#f97316', max: null },
+      ['Coins', Math.floor(data.wealth), 'funds'],
+      ['Food', Math.floor(data.food ?? 0), 'food'],
+      ['Influence', Math.floor(data.influence), 'influence'],
+      ['Faith', Math.floor(data.faith) + '%', 'faith'],
+      ['Morale', Math.floor(data.morale) + '%', 'morale'],
+      ['Heat', Math.floor(data.notoriety), 'heat'],
+      ['People', `${data.population}/${data.maxPopulation}`, 'population'],
     ];
-    this.resourceBar.innerHTML = stats.map(s => {
-      return `
-        <div class="hud-stat" title="${s.label}">
-          ${this.iconHtml(s.icon, s.fallback)}
-          <span class="hud-stat-value" style="color:${s.barColor};">${s.label}: ${s.value}${s.max !== null ? '/100' : ''}</span>
-          ${s.max !== null ? `<div class="hud-stat-bar"><div class="hud-stat-bar-fill" style="width:${Math.min(100, typeof s.value === 'number' ? s.value : 0)}%;background:${s.barColor};"></div></div>` : ''}
-        </div>
-      `;
-    }).join('');
+    if (!this.resourceBar.children.length)
+      for (const [label, , key] of stats) {
+        const stat = document.createElement('div');
+        stat.className = 'quality-stat';
+        stat.dataset.stat = String(key);
+        const caption = document.createElement('span');
+        caption.textContent = String(label);
+        const value = document.createElement('strong');
+        stat.append(caption, value);
+        this.resourceBar.append(stat);
+      }
+    for (const [, value, key] of stats) {
+      const el = this.resourceBar.querySelector<HTMLElement>(`[data-stat="${key}"]`);
+      if (el) {
+        el.querySelector('strong')!.textContent = String(value);
+        el.classList.toggle(
+          'warning',
+          (key === 'food' && (data.food ?? 0) < 8) ||
+            (key === 'heat' && data.notoriety >= 75) ||
+            (key === 'funds' && data.wealth < 30),
+        );
+      }
+    }
   }
 
   /**
@@ -555,12 +720,15 @@ export class HUDManager {
    */
   setBuildCategories(categories: BuildCategory[]): void {
     if (!this.buildBar) return;
-    this.buildBar.innerHTML = categories.map(c =>
-      `<div class="hud-build-cat ${c.id === this._activeCategoryId ? 'active' : ''}" data-cat="${c.id}" title="${c.label}">
+    this.buildBar.innerHTML = categories
+      .map(
+        (c) =>
+          `<button type="button" class="hud-build-cat ${c.id === this._activeCategoryId ? 'active' : ''}" data-cat="${c.id}" title="${c.label}">
         <span class="hud-build-cat-icon">${c.icon}</span>
         <span class="hud-build-cat-label">${c.label}</span>
-      </div>`
-    ).join('');
+      </button>`,
+      )
+      .join('');
   }
 
   /**
@@ -570,16 +738,19 @@ export class HUDManager {
     if (!this.buildItems) return;
     this._activeCategoryId = categoryId;
     this.buildItems.style.display = 'flex';
-    this.buildItems.innerHTML = entries.map(e =>
-      `<div class="hud-build-item" data-id="${e.id}" data-cost="${e.cost}" title="${e.label} (${e.cost}g)">
+    this.buildItems.innerHTML = entries
+      .map(
+        (e) =>
+          `<button type="button" class="hud-build-item" data-id="${e.id}" data-cost="${e.cost}" title="${e.label} (${e.cost}g)">
         <span class="hud-build-item-icon">${e.icon}</span>
         <span class="hud-build-item-label">${e.label}</span>
-        <span class="hud-build-item-cost">${e.cost}g</span>
-      </div>`
-    ).join('');
+        <span class="hud-build-item-cost">${e.cost === 0 ? 'Designate' : e.cost + ' coins'}</span>
+      </button>`,
+      )
+      .join('');
     // Refresh category bar active state
     if (this.buildBar) {
-      this.buildBar.querySelectorAll('.hud-build-cat').forEach(el => {
+      this.buildBar.querySelectorAll('.hud-build-cat').forEach((el) => {
         el.classList.toggle('active', el.getAttribute('data-cat') === categoryId);
       });
     }
@@ -592,7 +763,9 @@ export class HUDManager {
     if (this.buildItems) this.buildItems.style.display = 'none';
     this._activeCategoryId = null;
     if (this.buildBar) {
-      this.buildBar.querySelectorAll('.hud-build-cat').forEach(el => el.classList.remove('active'));
+      this.buildBar
+        .querySelectorAll('.hud-build-cat')
+        .forEach((el) => el.classList.remove('active'));
     }
   }
 
@@ -601,7 +774,7 @@ export class HUDManager {
    */
   highlightBuildItem(itemId: string | null): void {
     if (!this.buildItems) return;
-    this.buildItems.querySelectorAll('.hud-build-item').forEach(el => {
+    this.buildItems.querySelectorAll('.hud-build-item').forEach((el) => {
       el.classList.toggle('selected', el.getAttribute('data-id') === itemId);
     });
   }
@@ -611,19 +784,23 @@ export class HUDManager {
    */
   setBuildPanel(entries: BuildPanelEntry[]): void {
     if (!this.buildPanel) return;
-    this.buildPanel.innerHTML = entries.map(e =>
-      `<div class="hud-build-entry" data-id="${e.id}" data-cost="${e.cost}">
+    this.buildPanel.innerHTML = entries
+      .map(
+        (e) =>
+          `<div class="hud-build-entry" data-id="${e.id}" data-cost="${e.cost}">
         <span class="hud-build-icon">${e.icon}</span>
         <span class="hud-build-label">${e.label}</span>
         <span class="hud-build-cost">${e.cost}g</span>
-      </div>`
-    ).join('');
+      </div>`,
+      )
+      .join('');
   }
 
   /**
    * Show inspector for a selected entity/follower
    */
   showInspector(data: InspectorData): void {
+    this.lastRoomSignature = '';
     if (!this.inspector) return;
     this.inspector.style.display = 'block';
     const needIcons: Record<string, { icon: string; fallback: string }> = {
@@ -635,10 +812,11 @@ export class HUDManager {
       bladder: { icon: 'scifi_icon_thirst', fallback: '🚽' },
       hygiene: { icon: 'scifi_icon_clean', fallback: '🧼' },
     };
-    const needsHtml = Object.entries(data.needs).map(([key, val]) => {
-      const { icon, fallback } = needIcons[key] || { icon: 'scifi_icon_health', fallback: '❓' };
-      const pct = Math.min(100, Math.floor(val));
-      return `
+    const needsHtml = Object.entries(data.needs)
+      .map(([key, val]) => {
+        const { icon, fallback } = needIcons[key] || { icon: 'scifi_icon_health', fallback: '❓' };
+        const pct = Math.min(100, Math.floor(val));
+        return `
         <div class="hud-inspector-need-row">
           ${this.iconHtml(icon, fallback, 'hud-need-icon')}
           <span class="hud-need-label">${key.charAt(0).toUpperCase() + key.slice(1)}</span>
@@ -646,7 +824,8 @@ export class HUDManager {
           <span class="hud-need-value">${Math.floor(val)}/100</span>
         </div>
       `;
-    }).join('');
+      })
+      .join('');
     this.inspector.innerHTML = `
       <div class="hud-inspector-name">${data.name}</div>
       <div class="hud-inspector-role">${data.role}</div>
@@ -691,7 +870,7 @@ export class HUDManager {
     const entries = this.eventLogCollapsed
       ? ''
       : this.eventLogEntries
-          .map(e => `<div class="hud-log-entry hud-log-${e.type}">${e.text}</div>`)
+          .map((e) => `<div class="hud-log-entry hud-log-${e.type}">${e.text}</div>`)
           .join('');
 
     this.eventLog.innerHTML = `
@@ -732,21 +911,23 @@ export class HUDManager {
 
   private renderTimeControls(): void {
     if (!this.timeControls) return;
-    const timeStr = `Day ${this._currentDay} · ${Math.floor(this._currentTime).toString().padStart(2, '0')}:00`;
-    const buttons: { mode: TimeControlMode; label: string; title: string }[] = [
-      { mode: 'pause', label: '⏸', title: 'Pause (Space)' },
-      { mode: 'play', label: '▶', title: 'Normal speed (1)' },
-      { mode: 'fast', label: '▶▶', title: 'Fast speed (2)' },
-    ];
-    this.timeControls.innerHTML =
-      `<span class="hud-time">${timeStr}</span>` +
-      buttons.map(btn =>
-        `<button class="hud-time-btn ${btn.mode === this._timeMode ? 'active' : ''}" data-mode="${btn.mode}" title="${btn.title}">${btn.label}</button>`
-      ).join('');
+    if (!this.timeControls.querySelector('.hud-time')) {
+      this.timeControls.innerHTML =
+        '<span class="hud-time"></span><button class="hud-time-btn" data-mode="pause" title="Pause (Space)">Pause</button><button class="hud-time-btn" data-mode="play" title="Normal speed (1)">1x</button><button class="hud-time-btn" data-mode="fast" title="Fast speed (2)">3x</button>';
+    }
+    const hour = Math.floor(this._currentTime),
+      minute = Math.floor((this._currentTime - hour) * 60);
+    this.timeControls.querySelector('.hud-time')!.textContent =
+      `Day ${this._currentDay} / ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    for (const b of this.timeControls.querySelectorAll<HTMLElement>('[data-mode]')) {
+      b.classList.toggle('active', b.dataset.mode === this._timeMode);
+      b.setAttribute('aria-pressed', String(b.dataset.mode === this._timeMode));
+    }
   }
 
   updateMinimap(data: MinimapData): void {
     if (!this.minimap) return;
+    this.mapSize = { width: data.width, height: data.height };
     const ctx = this.minimap.getContext('2d');
     if (!ctx || data.width <= 0 || data.height <= 0) return;
 
@@ -767,9 +948,7 @@ export class HUDManager {
     };
 
     for (const tile of data.tiles) {
-      ctx.fillStyle = tile.explored
-        ? (terrainColors[tile.terrain] ?? '#385c35')
-        : '#111722';
+      ctx.fillStyle = tile.explored ? (terrainColors[tile.terrain] ?? '#385c35') : '#111722';
       ctx.fillRect(tile.x * sx, tile.y * sy, Math.ceil(sx), Math.ceil(sy));
     }
 
@@ -788,7 +967,13 @@ export class HUDManager {
     ctx.fillStyle = '#f8fafc';
     for (const follower of data.followers) {
       ctx.beginPath();
-      ctx.arc((follower.x + 0.5) * sx, (follower.y + 0.5) * sy, Math.max(1.5, sx * 0.8), 0, Math.PI * 2);
+      ctx.arc(
+        (follower.x + 0.5) * sx,
+        (follower.y + 0.5) * sy,
+        Math.max(1.5, sx * 0.8),
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
     }
   }
@@ -796,8 +981,7 @@ export class HUDManager {
   setObjective(title: string, detail: string): void {
     if (!this.objectiveStrip) return;
     this.objectiveStrip.style.display = 'block';
-    this.objectiveStrip.innerHTML =
-      `<div class="hud-objective-title">Objective · ${title}</div><div class="hud-objective-detail">${detail}</div>`;
+    this.objectiveStrip.innerHTML = `<div class="hud-objective-title">Objective · ${title}</div><div class="hud-objective-detail">${detail}</div>`;
   }
 
   clearObjective(): void {

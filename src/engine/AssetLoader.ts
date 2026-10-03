@@ -40,12 +40,16 @@ export class AssetLoader {
           };
           this.cache.set(url, asset);
           this.pending.delete(url);
-          console.log(`[AssetLoader] Loaded ${url}: ${asset.scene.children.length} children, ${asset.animations.length} animations`);
+          console.log(
+            `[AssetLoader] Loaded ${url}: ${asset.scene.children.length} children, ${asset.animations.length} animations`,
+          );
           resolve(asset);
         },
         (progress) => {
           if (progress.total) {
-            console.log(`[AssetLoader] Loading ${url}: ${Math.round(progress.loaded / progress.total * 100)}%`);
+            console.log(
+              `[AssetLoader] Loading ${url}: ${Math.round((progress.loaded / progress.total) * 100)}%`,
+            );
           }
         },
         (err) => {
@@ -92,6 +96,14 @@ export class AssetLoader {
     // Update world matrices so bone world transforms are current.
     // This ensures the skeleton's boneMatrices are correct without
     // overwriting the IBM (which calculateInverses() would do).
+    clone.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.userData.sharedGeometry = true;
+        child.material = Array.isArray(child.material)
+          ? child.material.map((m) => m.clone())
+          : child.material.clone();
+      }
+    });
     clone.updateMatrixWorld(true);
 
     // Recompute the bone texture and update the skeleton in rest pose.

@@ -119,7 +119,7 @@ describe('EventSystem', () => {
     system.update(world, 1); // 1 tick, probability 1.0 for test_positive
 
     expect(firedEvents.length).toBeGreaterThan(0);
-    const positiveEvent = firedEvents.find(e => e.id === 'test_positive');
+    const positiveEvent = firedEvents.find((e) => e.id === 'test_positive');
     expect(positiveEvent).toBeDefined();
     expect(needs.faith).toBeGreaterThan(startingFaith);
   });
@@ -128,7 +128,7 @@ describe('EventSystem', () => {
     const system = new EventSystem(events, 42, (e) => firedEvents.push(e));
     // test_negative requires day 5, but we're at day 1
     system.update(world, 1);
-    const negativeEvent = firedEvents.find(e => e.id === 'test_negative');
+    const negativeEvent = firedEvents.find((e) => e.id === 'test_negative');
     expect(negativeEvent).toBeUndefined();
   });
 
@@ -159,8 +159,9 @@ describe('EventSystem', () => {
 
   it('should track day count', () => {
     const system = new EventSystem(events, 42);
-    // 1800 ticks = 1 day
-    system.update(world, 1800);
+    // The main clock owns the calendar; systems no longer invent incompatible days.
+    system.setDay(2);
+    system.update(world, 1);
     expect(system.day).toBe(2);
   });
 });

@@ -17,21 +17,25 @@ import * as THREE from 'three';
 export const TILE_SIZE = 1;
 const MIN_ZOOM = 5;
 const MAX_ZOOM = 100;
-const LERP_FACTOR = 0.12;
+
 const CAMERA_DISTANCE = 60;
 // 30° from vertical = 60° from horizontal — very dramatic low angle
-const ELEVATION = THREE.MathUtils.degToRad(30);
+const ELEVATION = THREE.MathUtils.degToRad(42);
 const ROTATION_DIRECTIONS = 4;
 const PAN_SPEED = 25;
 const MOUSE_PAN_SPEED = 1; // multiplier for mouse drag pan
 const MOUSE_ROTATE_SPEED = 0.005; // radians per pixel
 const RIGHT_CLICK_DRAG_THRESHOLD = 5; // pixels before right-drag is considered a rotate
 
-export interface TileCoord { x: number; y: number; }
+export interface TileCoord {
+  x: number;
+  y: number;
+}
 
 export class IsoCamera {
   readonly camera: THREE.OrthographicCamera;
 
+  private enabled = true;
   private targetZoom = 50;
   private currentZoom = 50;
   private targetRotationStep = 0;
@@ -83,13 +87,16 @@ export class IsoCamera {
     this.viewHeight = viewHeight ?? (typeof window !== 'undefined' ? window.innerHeight : 600);
 
     this.camera = new THREE.OrthographicCamera(
-      -this.viewWidth / 2, this.viewWidth / 2,
-      this.viewHeight / 2, -this.viewHeight / 2,
-      0.1, 1000,
+      -this.viewWidth / 2,
+      this.viewWidth / 2,
+      this.viewHeight / 2,
+      -this.viewHeight / 2,
+      0.1,
+      1000,
     );
 
     this.raycaster = new THREE.Raycaster();
-    this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
 
     this.updateCameraPosition();
 
@@ -116,11 +123,23 @@ export class IsoCamera {
     }
   }
 
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.onBlur();
+  }
+  getTarget(): { x: number; z: number } {
+    return { x: this.targetOffset.x, z: this.targetOffset.z };
+  }
   update(dt: number): void {
-    this.processKeyboardPan(dt);
+    const LERP_FACTOR = 1 - Math.exp(-12 * Math.max(0, dt));
+    if (this.enabled) this.processKeyboardPan(dt);
 
     if (this.wheelDelta !== 0) {
-      this.targetZoom = THREE.MathUtils.clamp(this.targetZoom - this.wheelDelta * 0.05, MIN_ZOOM, MAX_ZOOM);
+      this.targetZoom = THREE.MathUtils.clamp(
+        this.targetZoom - this.wheelDelta * 0.05,
+        MIN_ZOOM,
+        MAX_ZOOM,
+      );
       this.wheelDelta = 0;
     }
 
@@ -129,19 +148,37 @@ export class IsoCamera {
     // Only lerp rotation when not actively rotating with mouse
     if (!this.isMouseRotating) {
       const targetRotationRad = this.targetRotationStep * (Math.PI / 2);
-      this.currentRotationRad = THREE.MathUtils.lerp(this.currentRotationRad, targetRotationRad, LERP_FACTOR);
+      this.currentRotationRad +=
+        Math.atan2(
+          Math.sin(targetRotationRad - this.currentRotationRad),
+          Math.cos(targetRotationRad - this.currentRotationRad),
+        ) * LERP_FACTOR;
     }
 
     this.currentOffset.lerp(this.targetOffset, LERP_FACTOR);
     this.updateCameraPosition();
   }
 
-  setZoom(zoom: number): void { this.targetZoom = THREE.MathUtils.clamp(zoom, MIN_ZOOM, MAX_ZOOM); }
-  getZoom(): number { return this.currentZoom; }
-  rotateClockwise(): void { this.targetRotationStep = (this.targetRotationStep + 1) % ROTATION_DIRECTIONS; }
-  rotateCounterClockwise(): void { this.targetRotationStep = (this.targetRotationStep - 1 + ROTATION_DIRECTIONS) % ROTATION_DIRECTIONS; }
-  getRotationStep(): number { return this.targetRotationStep; }
-  setRotationStep(step: number): void { this.targetRotationStep = ((step % ROTATION_DIRECTIONS) + ROTATION_DIRECTIONS) % ROTATION_DIRECTIONS; }
+  setZoom(zoom: number): void {
+    this.targetZoom = THREE.MathUtils.clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+  }
+  getZoom(): number {
+    return this.currentZoom;
+  }
+  rotateClockwise(): void {
+    this.targetRotationStep = (this.targetRotationStep + 1) % ROTATION_DIRECTIONS;
+  }
+  rotateCounterClockwise(): void {
+    this.targetRotationStep =
+      (this.targetRotationStep - 1 + ROTATION_DIRECTIONS) % ROTATION_DIRECTIONS;
+  }
+  getRotationStep(): number {
+    return this.targetRotationStep;
+  }
+  setRotationStep(step: number): void {
+    this.targetRotationStep =
+      ((step % ROTATION_DIRECTIONS) + ROTATION_DIRECTIONS) % ROTATION_DIRECTIONS;
+  }
 
   /**
    * Set the map offset (world-space position of tile (0,0) corner).
@@ -176,13 +213,17 @@ export class IsoCamera {
   }
 
   /** Legacy pan alias — now screen-aligned (dx=right, dz=up on screen). */
-  pan(dx: number, dz: number): void { this.panScreen(dx, dz); }
+  pan(dx: number, dz: number): void {
+    this.panScreen(dx, dz);
+  }
 
   setTarget(x: number, z: number): void {
     this.targetOffset.set(x, 0, z);
     this.clampTargetOffset();
   }
-  getOffset(): THREE.Vector3 { return this.currentOffset.clone(); }
+  getOffset(): THREE.Vector3 {
+    return this.currentOffset.clone();
+  }
 
   /**
    * Cast a ray from screen coordinates through the camera and intersect
@@ -217,14 +258,14 @@ export class IsoCamera {
     // Tile center in world space
     const worldX = tileX + this.mapOffset.x + 0.5;
     const worldZ = tileY + this.mapOffset.z + 0.5;
-    const worldPos = new THREE.Vector3(worldX, 0, worldZ);
+    const worldPos = new THREE.Vector3(worldX, 0.5, worldZ);
 
     // Project to NDC using camera
     const projected = worldPos.project(this.camera);
 
     // Convert NDC to screen pixels
-    const screenX = (projected.x + 1) / 2 * this.viewWidth;
-    const screenY = (1 - projected.y) / 2 * this.viewHeight;
+    const screenX = ((projected.x + 1) / 2) * this.viewWidth;
+    const screenY = ((1 - projected.y) / 2) * this.viewHeight;
     return { x: screenX, y: screenY };
   }
 
@@ -282,18 +323,37 @@ export class IsoCamera {
    * W = up on screen (+groundForward), D = right on screen (+groundRight)
    */
   private processKeyboardPan(dt: number): void {
-    let dx = 0, dy = 0;
+    let dx = 0,
+      dy = 0;
     // Keep movement feeling similar at every zoom level.
     const zoomScale = THREE.MathUtils.clamp(50 / Math.max(this.currentZoom, 1), 0.45, 2.2);
     const speed = PAN_SPEED * dt * zoomScale;
-    if (this.keysPressed.has('w') || this.keysPressed.has('W') || this.keysPressed.has('ArrowUp')) dy += speed;
-    if (this.keysPressed.has('s') || this.keysPressed.has('S') || this.keysPressed.has('ArrowDown')) dy -= speed;
-    if (this.keysPressed.has('a') || this.keysPressed.has('A') || this.keysPressed.has('ArrowLeft')) dx -= speed;
-    if (this.keysPressed.has('d') || this.keysPressed.has('D') || this.keysPressed.has('ArrowRight')) dx += speed;
+    if (this.keysPressed.has('w') || this.keysPressed.has('W') || this.keysPressed.has('ArrowUp'))
+      dy += speed;
+    if (this.keysPressed.has('s') || this.keysPressed.has('S') || this.keysPressed.has('ArrowDown'))
+      dy -= speed;
+    if (this.keysPressed.has('a') || this.keysPressed.has('A') || this.keysPressed.has('ArrowLeft'))
+      dx -= speed;
+    if (
+      this.keysPressed.has('d') ||
+      this.keysPressed.has('D') ||
+      this.keysPressed.has('ArrowRight')
+    )
+      dx += speed;
     if (dx !== 0 || dy !== 0) this.panScreen(dx, dy);
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    if (
+      !this.enabled ||
+      (e.target as HTMLElement)?.closest?.('input,select,textarea,[contenteditable=true]')
+    )
+      return;
+    if (
+      e.repeat &&
+      !['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
+    )
+      return;
     this.keysPressed.add(e.key);
     if (e.key === 'q' || e.key === 'Q') this.rotateCounterClockwise();
     else if (e.key === 'e' || e.key === 'E') this.rotateClockwise();
@@ -302,9 +362,12 @@ export class IsoCamera {
     else if (e.key === '-' || e.key === '_') this.setZoom(this.targetZoom - 8);
   }
 
-  private onKeyUp(e: KeyboardEvent): void { this.keysPressed.delete(e.key); }
+  private onKeyUp(e: KeyboardEvent): void {
+    this.keysPressed.delete(e.key);
+  }
 
   private onWheel(e: WheelEvent): void {
+    if (!this.enabled) return;
     e.preventDefault();
     // 30% more zoom per scroll step for faster zoom-in
     this.wheelDelta += e.deltaY * 1.3;
@@ -313,6 +376,7 @@ export class IsoCamera {
   // ─── Mouse Controls ──────────────────────────────────────────
 
   private onMouseDown(e: MouseEvent): void {
+    if (!this.enabled) return;
     if (e.button === 1) {
       // Middle mouse — start panning
       e.preventDefault();
@@ -341,8 +405,8 @@ export class IsoCamera {
       // Grab & drag: world follows mouse direction.
       // Mouse right → world moves right → target moves left (-groundRight)
       // Mouse down  → world moves down  → target moves up   (-groundForward)
-      const worldDx = -deltaX / this.currentZoom * MOUSE_PAN_SPEED;
-      const worldDy = -deltaY / this.currentZoom * MOUSE_PAN_SPEED;
+      const worldDx = (-deltaX / this.currentZoom) * MOUSE_PAN_SPEED;
+      const worldDy = (-deltaY / this.currentZoom) * MOUSE_PAN_SPEED;
       this.targetOffset.addScaledVector(this.groundRight, worldDx);
       this.targetOffset.addScaledVector(this.groundForward, worldDy);
       this.clampTargetOffset();
@@ -380,7 +444,8 @@ export class IsoCamera {
       if (wasRotating && wasDrag) {
         // Snap to nearest 90° step
         const stepRad = Math.PI / 2;
-        this.targetRotationStep = Math.round(this.currentRotationRad / stepRad) % ROTATION_DIRECTIONS;
+        this.targetRotationStep =
+          Math.round(this.currentRotationRad / stepRad) % ROTATION_DIRECTIONS;
         if (this.targetRotationStep < 0) this.targetRotationStep += ROTATION_DIRECTIONS;
       } else if (wasRotating && !wasDrag) {
         // Right-click without drag — fire callback for cancel/deselect

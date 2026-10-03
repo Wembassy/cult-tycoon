@@ -37,7 +37,7 @@ export class TechTreeSystem {
   constructor(onUnlock?: (node: TechNode) => void) {
     this.onUnlock = onUnlock;
     // Deep clone so each instance has its own unlock state
-    this.nodes = TECH_TREE_NODES.map(n => ({ ...n, effects: { ...n.effects } }));
+    this.nodes = TECH_TREE_NODES.map((n) => ({ ...n, effects: { ...n.effects } }));
     this.effects = {
       maxPopulationBonus: 0,
       recruitmentBonus: 0,
@@ -48,18 +48,37 @@ export class TechTreeSystem {
     };
   }
 
+  restore(ids: string[] = []): void {
+    for (const node of this.nodes) node.unlocked = false;
+    this.effects = {
+      maxPopulationBonus: 0,
+      recruitmentBonus: 0,
+      heatReductionRate: 0,
+      unlockedRooms: [],
+      unlockedObjects: [],
+      ideology: null,
+    };
+    for (const id of ids) {
+      const node = this.nodes.find((n) => n.id === id);
+      if (node && !node.unlocked) {
+        node.unlocked = true;
+        this.applyEffects(node);
+      }
+    }
+  }
+
   /**
    * Try to unlock a tech node by spending influence (and faith if required).
    */
   unlock(techId: string, influence: number, faith: number): UnlockResult {
-    const node = this.nodes.find(n => n.id === techId);
+    const node = this.nodes.find((n) => n.id === techId);
     if (!node) return { success: false, reason: 'Unknown tech node' };
     if (node.unlocked) return { success: false, reason: 'Already unlocked' };
 
     // Check prerequisites
-    const unlockedIds = this.getUnlocked().map(n => n.id);
+    const unlockedIds = this.getUnlocked().map((n) => n.id);
     const available = getAvailableTechs(unlockedIds);
-    const isAvailable = available.some(n => n.id === techId);
+    const isAvailable = available.some((n) => n.id === techId);
     if (!isAvailable) return { success: false, reason: 'Prerequisites not met' };
 
     // Check cost
@@ -106,16 +125,16 @@ export class TechTreeSystem {
    * Get all tech nodes (with current unlock state).
    */
   getTree(): TechNode[] {
-    return this.nodes.map(n => ({ ...n, effects: { ...n.effects } }));
+    return this.nodes.map((n) => ({ ...n, effects: { ...n.effects } }));
   }
 
   /**
    * Get nodes that are available to unlock (prerequisites met, not yet unlocked).
    */
   getAvailable(): TechNode[] {
-    const unlockedIds = this.getUnlocked().map(n => n.id);
-    return getAvailableTechs(unlockedIds).map(n => {
-      const live = this.nodes.find(node => node.id === n.id)!;
+    const unlockedIds = this.getUnlocked().map((n) => n.id);
+    return getAvailableTechs(unlockedIds).map((n) => {
+      const live = this.nodes.find((node) => node.id === n.id)!;
       return { ...live, effects: { ...live.effects } };
     });
   }
@@ -124,14 +143,14 @@ export class TechTreeSystem {
    * Get all unlocked nodes.
    */
   getUnlocked(): TechNode[] {
-    return this.nodes.filter(n => n.unlocked);
+    return this.nodes.filter((n) => n.unlocked);
   }
 
   /**
    * Check if a tech is unlocked.
    */
   isUnlocked(id: string): boolean {
-    return this.nodes.find(n => n.id === id)?.unlocked ?? false;
+    return this.nodes.find((n) => n.id === id)?.unlocked ?? false;
   }
 
   /**

@@ -12,9 +12,9 @@ export interface ActiveRitual {
   id: string;
   name: string;
   def: RitualDef;
-  progress: number;     // 0 to def.duration
+  progress: number; // 0 to def.duration
   participants: number[]; // entity IDs
-  tick: number;         // start tick
+  tick: number; // start tick
 }
 
 export interface RitualResult {
@@ -40,11 +40,32 @@ export class RitualSystem {
     onRitualStart?: (ritual: ActiveRitual) => void,
     onRitualComplete?: (result: RitualResult) => void,
   ) {
-    unlockedTech.forEach(t => this.unlockedTech.add(t));
+    unlockedTech.forEach((t) => this.unlockedTech.add(t));
     this.onRitualStart = onRitualStart;
     this.onRitualComplete = onRitualComplete;
   }
 
+  reset(): void {
+    this.activeRituals = [];
+    this.completedRituals = [];
+    this.unlockedTech = new Set(['basic_rituals']);
+    this.tickCount = 0;
+  }
+  snapshot() {
+    return {
+      active: this.activeRituals,
+      completed: this.completedRituals,
+      tech: [...this.unlockedTech],
+      elapsed: this.tickCount,
+    };
+  }
+  restore(data: ReturnType<RitualSystem['snapshot']>): void {
+    this.reset();
+    this.activeRituals = data.active.filter((r) => !!DataManager.getRitual(r.def.id));
+    this.completedRituals = data.completed;
+    this.unlockedTech = new Set(data.tech);
+    this.tickCount = data.elapsed;
+  }
   /**
    * Unlock a tech node, enabling its rituals.
    */
@@ -70,7 +91,7 @@ export class RitualSystem {
       // req could be a tech id or a room id — we only track tech unlocks here
       if (!this.unlockedTech.has(req)) {
         // Room requirements are checked externally — skip if it looks like a room
-        const roomIds = DataManager.getRooms().map(r => r.id);
+        const roomIds = DataManager.getRooms().map((r) => r.id);
         if (!roomIds.includes(req)) {
           return { ok: false, reason: `Requires tech: ${req}` };
         }
@@ -78,7 +99,10 @@ export class RitualSystem {
     }
 
     if (availableFollowers.length < def.minFollowers) {
-      return { ok: false, reason: `Need ${def.minFollowers} followers, have ${availableFollowers.length}` };
+      return {
+        ok: false,
+        reason: `Need ${def.minFollowers} followers, have ${availableFollowers.length}`,
+      };
     }
     if (cultFaith < def.faithCost) {
       return { ok: false, reason: `Need ${def.faithCost} faith, have ${Math.floor(cultFaith)}` };
@@ -94,10 +118,7 @@ export class RitualSystem {
    * Start a ritual. Deducts costs upfront.
    * Returns the ActiveRitual or null if it can't start.
    */
-  startRitual(
-    ritualId: string,
-    participants: number[],
-  ): ActiveRitual | null {
+  startRitual(ritualId: string, participants: number[]): ActiveRitual | null {
     const def = DataManager.getRitual(ritualId);
     if (!def) return null;
 
@@ -168,7 +189,7 @@ export class RitualSystem {
     }
 
     // Remove from active
-    this.activeRituals = this.activeRituals.filter(r => r.id !== ritual.id);
+    this.activeRituals = this.activeRituals.filter((r) => r.id !== ritual.id);
     this.completedRituals.push(result);
     this.onRitualComplete?.(result);
   }
@@ -177,10 +198,10 @@ export class RitualSystem {
    * Get all available rituals (tech-unlocked + no requirement blocking).
    */
   getAvailableRituals(): RitualDef[] {
-    return DataManager.getRituals().filter(r => {
+    return DataManager.getRituals().filter((r) => {
       // Check tech requirements
       for (const req of r.requirements) {
-        const roomIds = DataManager.getRooms().map(room => room.id);
+        const roomIds = DataManager.getRooms().map((room) => room.id);
         if (!roomIds.includes(req) && !this.unlockedTech.has(req)) {
           return false;
         }
@@ -207,7 +228,7 @@ export class RitualSystem {
    * Get progress of a ritual (0-1).
    */
   getRitualProgress(ritualId: string): number {
-    const ritual = this.activeRituals.find(r => r.id === ritualId);
+    const ritual = this.activeRituals.find((r) => r.id === ritualId);
     if (!ritual) return 0;
     return ritual.progress / ritual.def.duration;
   }

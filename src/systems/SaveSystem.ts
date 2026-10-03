@@ -16,6 +16,12 @@ import { Inventory } from '../components/Inventory';
 import { Schedule } from '../components/Schedule';
 import { WorkPreferences } from '../components/WorkPreferences';
 import type { TileMap } from '../world/TileMap';
+import { OnMission } from '../components/OnMission';
+import type { RitualSystem } from './RitualSystem';
+import type { MissionSystem } from './MissionSystem';
+import type { HeatSystem } from './HeatSystem';
+import type { FogOfWar } from '../world/FogOfWar';
+import type { GameState } from '../game/GameState';
 import type { BuildingSnapshot } from './BuildingSystem';
 
 export interface SaveData {
@@ -27,6 +33,17 @@ export interface SaveData {
   time: { hour: number; day: number };
   settings: GameSettings;
   building?: BuildingSnapshot;
+  session?: {
+    rituals?: ReturnType<RitualSystem['snapshot']>;
+    elapsed: number;
+    resources: GameState['resources'];
+    tech: string[];
+    names: [number, string][];
+    missions: ReturnType<MissionSystem['snapshot']>;
+    heat: ReturnType<HeatSystem['snapshot']>;
+    fog: ReturnType<FogOfWar['snapshot']>;
+    camera: { x: number; y: number; zoom: number };
+  };
 }
 
 export interface SerializedWorld {
@@ -42,7 +59,13 @@ export interface SerializedEntity {
 export interface SerializedTileMap {
   width: number;
   height: number;
-  tiles: { terrain: string; occupied: boolean; buildable: boolean; roomId: number | null }[];
+  tiles: {
+    terrain: string;
+    occupied: boolean;
+    buildable: boolean;
+    roomId: number | null;
+    decor?: string;
+  }[];
 }
 
 export interface SerializedCult {
@@ -65,7 +88,7 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.4.0';
+const SAVE_VERSION = '0.5.0';
 const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
 const AUTOSAVE_KEY = 'cult_tycoon_autosave';
 const MAX_SLOTS = 6;
@@ -86,7 +109,13 @@ export class SaveSystem {
   /**
    * Serialize the entire game state
    */
-  serialize(world: World, tileMap: TileMap, cult: SerializedCult, time: { hour: number; day: number }, building?: BuildingSnapshot): SaveData {
+  serialize(
+    world: World,
+    tileMap: TileMap,
+    cult: SerializedCult,
+    time: { hour: number; day: number },
+    building?: BuildingSnapshot,
+  ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
 
@@ -94,53 +123,103 @@ export class SaveSystem {
       const components: Record<string, any> = {};
 
       const transform = world.getComponent(entityId, Transform);
-      if (transform) components.Transform = { x: transform.x, y: transform.y, z: transform.z, rotation: transform.rotation, scale: transform.scale };
+      if (transform)
+        components.Transform = {
+          x: transform.x,
+          y: transform.y,
+          z: transform.z,
+          rotation: transform.rotation,
+          scale: transform.scale,
+        };
 
       const renderable = world.getComponent(entityId, Renderable);
-      if (renderable) components.Renderable = { meshId: renderable.meshId, visible: renderable.visible, tint: renderable.tint };
+      if (renderable)
+        components.Renderable = {
+          meshId: renderable.meshId,
+          visible: renderable.visible,
+          tint: renderable.tint,
+        };
 
       const needs = world.getComponent(entityId, Needs);
-      if (needs) components.Needs = { hunger: needs.hunger, faith: needs.faith, fun: needs.fun, health: needs.health, sanity: needs.sanity, energy: needs.energy, bladder: needs.bladder, hygiene: needs.hygiene };
+      if (needs)
+        components.Needs = {
+          hunger: needs.hunger,
+          faith: needs.faith,
+          fun: needs.fun,
+          health: needs.health,
+          sanity: needs.sanity,
+          energy: needs.energy,
+          bladder: needs.bladder,
+          hygiene: needs.hygiene,
+        };
 
       const job = world.getComponent(entityId, Job);
-      if (job) components.Job = { jobId: job.jobId, type: job.type, priority: job.priority, targetTile: job.targetTile, workProgress: job.workProgress };
+      if (job)
+        components.Job = {
+          jobId: job.jobId,
+          type: job.type,
+          priority: job.priority,
+          targetTile: job.targetTile,
+          workProgress: job.workProgress,
+        };
 
       const skills = world.getComponent(entityId, Skills);
-      if (skills) components.Skills = { cooking: skills.cooking, research: skills.research, construction: skills.construction, faith: skills.faith, combat: skills.combat, social: skills.social };
+      if (skills)
+        components.Skills = {
+          cooking: skills.cooking,
+          research: skills.research,
+          construction: skills.construction,
+          faith: skills.faith,
+          combat: skills.combat,
+          social: skills.social,
+        };
 
       const traits = world.getComponent(entityId, Traits);
       if (traits) components.Traits = { traits: traits.traits };
 
       const health = world.getComponent(entityId, Health);
-      if (health) components.Health = { hp: health.hp, maxHp: health.maxHp, statusEffects: health.statusEffects };
+      if (health)
+        components.Health = {
+          hp: health.hp,
+          maxHp: health.maxHp,
+          statusEffects: health.statusEffects,
+        };
 
       const inventory = world.getComponent(entityId, Inventory);
-      if (inventory) components.Inventory = { items: inventory.items, capacity: inventory.capacity };
+      if (inventory)
+        components.Inventory = { items: inventory.items, capacity: inventory.capacity };
 
       const schedule = world.getComponent(entityId, Schedule);
-      if (schedule) components.Schedule = {
-        shift: schedule.shift,
-        sleepStartHour: schedule.sleepStartHour,
-        sleepDuration: schedule.sleepDuration,
-      };
+      if (schedule)
+        components.Schedule = {
+          shift: schedule.shift,
+          sleepStartHour: schedule.sleepStartHour,
+          sleepDuration: schedule.sleepDuration,
+        };
 
       const workPreferences = world.getComponent(entityId, WorkPreferences);
-      if (workPreferences) components.WorkPreferences = {
-        role: workPreferences.role,
-        priorities: { ...workPreferences.priorities },
-      };
+      if (workPreferences)
+        components.WorkPreferences = {
+          role: workPreferences.role,
+          priorities: { ...workPreferences.priorities },
+        };
+
+      const mission = world.getComponent(entityId, OnMission);
+      if (mission) components.OnMission = { missionId: mission.missionId };
 
       const ai = world.getComponent(entityId, FollowerAI);
-      if (ai) components.FollowerAI = {
-        state: ai.state,
-        path: ai.path,
-        pathIndex: ai.pathIndex,
-        stateTimer: ai.stateTimer,
-        tier: ai.tier,
-        roomEntityId: ai.roomEntityId,
-        needTarget: ai.needTarget,
-        needTargetTile: ai.needTargetTile,
-      };
+      if (ai)
+        components.FollowerAI = {
+          state: ai.state,
+          path: ai.path,
+          pathIndex: ai.pathIndex,
+          stateTimer: ai.stateTimer,
+          tier: ai.tier,
+          roomEntityId: ai.roomEntityId,
+          needTarget: ai.needTarget,
+          needTargetTile: ai.needTargetTile,
+          needFacilityId: ai.needFacilityId,
+        };
 
       serializedEntities.push({ id: entityId, components });
     }
@@ -155,6 +234,7 @@ export class SaveSystem {
           occupied: tile?.occupied ?? false,
           buildable: tile?.buildable ?? true,
           roomId: tile?.roomId ?? null,
+          decor: tile?.decor ?? 'none',
         });
       }
     }
@@ -195,6 +275,36 @@ export class SaveSystem {
       const json = localStorage.getItem(key);
       if (!json) return null;
       const data = JSON.parse(json) as SaveData;
+      if (
+        !data ||
+        !data.world ||
+        !Array.isArray(data.world.entities) ||
+        !data.tileMap ||
+        !Array.isArray(data.tileMap.tiles) ||
+        !data.cult ||
+        !data.time
+      )
+        return null;
+      if (
+        ![
+          data.cult.wealth,
+          data.cult.influence,
+          data.cult.notoriety,
+          data.time.hour,
+          data.time.day,
+        ].every(Number.isFinite)
+      )
+        return null;
+      if (
+        !Number.isInteger(data.tileMap.width) ||
+        !Number.isInteger(data.tileMap.height) ||
+        data.tileMap.width < 1 ||
+        data.tileMap.height < 1 ||
+        data.tileMap.width > 256 ||
+        data.tileMap.height > 256
+      )
+        return null;
+      if (data.tileMap.tiles.length !== data.tileMap.width * data.tileMap.height) return null;
       if (data.version !== SAVE_VERSION) {
         console.warn(`Save version mismatch: ${data.version} vs ${SAVE_VERSION}`);
       }
@@ -229,28 +339,23 @@ export class SaveSystem {
   /**
    * Get info for all save slots (for save/load UI).
    */
-  getSaveSlots(): { slot: number; exists: boolean; timestamp: number; day: number; cultName: string }[] {
-    const slots: { slot: number; exists: boolean; timestamp: number; day: number; cultName: string }[] = [];
-    for (let i = 0; i < MAX_SLOTS; i++) {
-      const json = localStorage.getItem(`${SAVE_KEY_PREFIX}${i}`);
-      if (json) {
-        try {
-          const data = JSON.parse(json) as SaveData;
-          slots.push({
-            slot: i,
-            exists: true,
-            timestamp: data.timestamp,
-            day: data.cult.day,
-            cultName: data.cult.leaderName,
-          });
-        } catch {
-          slots.push({ slot: i, exists: false, timestamp: 0, day: 0, cultName: '' });
-        }
-      } else {
-        slots.push({ slot: i, exists: false, timestamp: 0, day: 0, cultName: '' });
-      }
-    }
-    return slots;
+  getSaveSlots(): {
+    slot: number;
+    exists: boolean;
+    timestamp: number;
+    day: number;
+    cultName: string;
+  }[] {
+    return Array.from({ length: MAX_SLOTS }, (_, slot) => {
+      const data = this.load(slot);
+      return {
+        slot,
+        exists: !!data,
+        timestamp: data?.timestamp ?? 0,
+        day: data?.time.day ?? 0,
+        cultName: data?.cult.leaderName ?? '',
+      };
+    });
   }
 
   /**
@@ -274,7 +379,9 @@ export class SaveSystem {
     return this.load(-1);
   }
 
-  get maxSlots(): number { return MAX_SLOTS; }
+  get maxSlots(): number {
+    return MAX_SLOTS;
+  }
 
   /**
    * Deserialize world from save data
@@ -283,7 +390,7 @@ export class SaveSystem {
     world.clear();
 
     for (const serialized of data.world.entities) {
-      const entity = world.createEntity();
+      const entity = world.createEntity(serialized.id);
 
       if (serialized.components.Transform) {
         const t = new Transform(entity);
@@ -345,6 +452,11 @@ export class SaveSystem {
         world.addComponent(entity, prefs);
       }
 
+      if (serialized.components.OnMission) {
+        const mission = new OnMission(entity);
+        Object.assign(mission, serialized.components.OnMission);
+        world.addComponent(entity, mission);
+      }
       if (serialized.components.FollowerAI) {
         const ai = new FollowerAI(entity);
         Object.assign(ai, serialized.components.FollowerAI);

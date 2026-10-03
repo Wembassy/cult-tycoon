@@ -130,6 +130,8 @@ export class WorkPanel {
   }
 
   update(data: WorkPanelData): void {
+    if (this.panel.contains(document.activeElement)) return;
+    if (JSON.stringify(this.currentData) === JSON.stringify(data)) return;
     this.currentData = data;
     if (this._isVisible) this.render();
   }
@@ -146,34 +148,43 @@ export class WorkPanel {
     this.container.classList.remove('visible');
   }
 
-  get isVisible(): boolean { return this._isVisible; }
+  get isVisible(): boolean {
+    return this._isVisible;
+  }
 
   mount(parent?: HTMLElement): void {
     (parent ?? document.body).appendChild(this.container);
   }
 
-  destroy(): void { this.container.remove(); }
+  destroy(): void {
+    this.container.remove();
+  }
 
   private render(): void {
-    const headers = JOBS.map(job => `<div class="work-head">${job.icon}<br>${job.label}</div>`).join('');
-    const rows = this.currentData.cultists.map(cultist => {
-      const roleOptions = ROLES.map(role =>
-        `<option value="${role.key}" ${role.key === cultist.role ? 'selected' : ''}>${role.label}</option>`
-      ).join('');
-      const cells = JOBS.map(job => {
-        const priority = cultist.priorities[job.key];
-        const skill = cultist.skills[job.key];
-        return `<div class="work-cell">
+    const headers = JOBS.map(
+      (job) => `<div class="work-head">${job.icon}<br>${job.label}</div>`,
+    ).join('');
+    const rows = this.currentData.cultists
+      .map((cultist) => {
+        const roleOptions = ROLES.map(
+          (role) =>
+            `<option value="${role.key}" ${role.key === cultist.role ? 'selected' : ''}>${role.label}</option>`,
+        ).join('');
+        const cells = JOBS.map((job) => {
+          const priority = cultist.priorities[job.key];
+          const skill = cultist.skills[job.key];
+          return `<div class="work-cell">
           <button class="work-priority" data-entity="${cultist.id}" data-job="${job.key}" data-priority="${priority}" title="1 = highest, 4 = lowest, X = disabled">${priority === 0 ? '×' : priority}</button>
           <span class="work-skill" title="Skill">${skill}</span>
         </div>`;
-      }).join('');
-      return `<div class="work-row">
-        <div class="work-name"><span>${cultist.name}</span><span class="work-tier">${cultist.tier.replaceAll('_',' ')}</span></div>
+        }).join('');
+        return `<div class="work-row">
+        <div class="work-name"><span>${cultist.name}</span><span class="work-tier">${cultist.tier.replaceAll('_', ' ')}</span></div>
         <div class="work-role-cell"><select class="work-role" data-entity="${cultist.id}">${roleOptions}</select></div>
         ${cells}
       </div>`;
-    }).join('');
+      })
+      .join('');
 
     this.panel.innerHTML = `
       <div class="work-header">
@@ -194,21 +205,27 @@ export class WorkPanel {
       <div class="work-help">Priority 1 is highest. Click a number to cycle 1 → 2 → 3 → 4 → disabled. Skill is shown beside each priority.</div>
     `;
 
-    this.panel.querySelector('.work-close')?.addEventListener('click', () => this.callbacks.onClose());
-    this.panel.querySelector('.work-auto')?.addEventListener('click', () => this.callbacks.onAutoAssign());
+    this.panel
+      .querySelector('.work-close')
+      ?.addEventListener('click', () => this.callbacks.onClose());
+    this.panel
+      .querySelector('.work-auto')
+      ?.addEventListener('click', () => this.callbacks.onAutoAssign());
 
-    this.panel.querySelectorAll('.work-role').forEach(el => {
+    this.panel.querySelectorAll('.work-role').forEach((el) => {
       el.addEventListener('change', () => {
         const select = el as HTMLSelectElement;
         this.callbacks.onSetRole(Number(select.dataset.entity), select.value as WorkRole);
       });
     });
 
-    this.panel.querySelectorAll('.work-priority').forEach(el => {
+    this.panel.querySelectorAll('.work-priority').forEach((el) => {
       el.addEventListener('click', () => {
         const btn = el as HTMLButtonElement;
         const current = Number(btn.dataset.priority) as WorkPriority;
-        const next = (current === 1 ? 2 : current === 2 ? 3 : current === 3 ? 4 : current === 4 ? 0 : 1) as WorkPriority;
+        const next = (
+          current === 1 ? 2 : current === 2 ? 3 : current === 3 ? 4 : current === 4 ? 0 : 1
+        ) as WorkPriority;
         this.callbacks.onSetPriority(
           Number(btn.dataset.entity),
           btn.dataset.job as WorkJobKey,

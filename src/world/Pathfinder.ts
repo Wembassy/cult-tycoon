@@ -22,8 +22,8 @@ export interface PathResult {
 
 const DIRS = [
   { dx: 0, dy: -1 }, // north
-  { dx: 1, dy: 0 },  // east
-  { dx: 0, dy: 1 },  // south
+  { dx: 1, dy: 0 }, // east
+  { dx: 0, dy: 1 }, // south
   { dx: -1, dy: 0 }, // west
 ];
 
@@ -35,6 +35,7 @@ export class Pathfinder {
   private cache: Map<string, PathResult> = new Map();
   private cacheVersion = 0;
   private lastCacheVersion = -1;
+  private mapRevision = -1;
 
   constructor(map: TileMap) {
     this.map = map;
@@ -52,6 +53,10 @@ export class Pathfinder {
    * Returns smoothed path (redundant waypoints removed).
    */
   findPath(startX: number, startY: number, goalX: number, goalY: number): PathResult {
+    if (this.mapRevision !== this.map.revision) {
+      this.invalidateCache();
+      this.mapRevision = this.map.revision;
+    }
     const cacheKey = `${startX},${startY}->${goalX},${goalY}`;
 
     // Return cached path if available and cache is valid
@@ -104,9 +109,12 @@ export class Pathfinder {
     const openSet = new Set<string>();
 
     const startNode: PathNode = {
-      x: startX, y: startY, g: 0,
+      x: startX,
+      y: startY,
+      g: 0,
       h: this.heuristic(startX, startY, goalX, goalY),
-      f: 0, parent: null,
+      f: 0,
+      parent: null,
     };
     startNode.f = startNode.g + startNode.h;
     openList.push(startNode);
@@ -158,14 +166,17 @@ export class Pathfinder {
         const cost = TILE_COST;
         const g = current.g + cost;
 
-        let neighbor = openList.find(n => n.x === nx && n.y === ny);
+        let neighbor = openList.find((n) => n.x === nx && n.y === ny);
 
         if (!neighbor) {
           if (openSet.has(key)) continue;
           neighbor = {
-            x: nx, y: ny, g,
+            x: nx,
+            y: ny,
+            g,
             h: this.heuristic(nx, ny, goalX, goalY),
-            f: 0, parent: current,
+            f: 0,
+            parent: current,
           };
           neighbor.f = neighbor.g + neighbor.h;
           openList.push(neighbor);
@@ -205,26 +216,16 @@ export class Pathfinder {
    * Remove redundant waypoints in straight lines
    */
   private smoothPath(path: { x: number; y: number }[]): PathResult {
-    if (path.length <= 2) {
-      return { path, success: true, length: path.length };
+    if(path.length<=2)return {path,success:true,length:path.length};
+    const points=[path[0]];
+    for(let i=1;i<path.length-1;i++) {
+      const a=path[i-1],b=path[i],c=path[i+1];
+      const corner=b.x-a.x!==c.x-b.x||b.y-a.y!==c.y-b.y;
+      const doorway=[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>{const t=this.map.getTile(b.x+dx,b.y+dy);return t && (!t.buildable||t.occupied);});
+      if(corner||doorway)points.push(b);
     }
-
-    const smoothed: { x: number; y: number }[] = [path[0]];
-    let lastDir = { dx: 0, dy: 0 };
-
-    for (let i = 1; i < path.length; i++) {
-      const dir = {
-        dx: path[i].x - path[i - 1].x,
-        dy: path[i].y - path[i - 1].y,
-      };
-
-      if (i === path.length - 1 || dir.dx !== lastDir.dx || dir.dy !== lastDir.dy) {
-        smoothed.push(path[i]);
-        lastDir = dir;
-      }
-    }
-
-    return { path: smoothed, success: true, length: smoothed.length };
+    points.push(path[path.length-1]);
+    return {path:points,success:true,length:points.length};
   }
 
   /**

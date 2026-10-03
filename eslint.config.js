@@ -64,6 +64,10 @@ export default [
     },
   },
   {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { fetch: 'readonly', setTimeout: 'readonly', console: 'readonly', process: 'readonly', Buffer: 'readonly', URL: 'readonly' } },
+  },
+  {
     ignores: ['dist/', 'node_modules/'],
   },
 ];

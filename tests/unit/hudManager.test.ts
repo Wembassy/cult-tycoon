@@ -1,3 +1,4 @@
+import buildInfo from '../../package.json';
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { HUDManager, ResourceBarData, BuildPanelEntry, InspectorData } from '@ui/HUDManager';
@@ -25,13 +26,18 @@ describe('HUDManager — Resource Bar', () => {
     expect(container.querySelector('.hud-menu-toggle')).not.toBeNull();
     expect(container.querySelector('.hud-management-menu')).not.toBeNull();
     expect(container.querySelector('.hud-minimap')).not.toBeNull();
-    expect(container.querySelector('.hud-build-version')?.textContent).toContain('ALPHA 4');
+    expect(container.querySelector('.hud-build-version')?.textContent).toContain(buildInfo.version);
   });
 
   it('should update resource bar with stats', () => {
     const data: ResourceBarData = {
-      influence: 100, wealth: 250, notoriety: 15,
-      faith: 80, morale: 75, population: 8, maxPopulation: 15,
+      influence: 100,
+      wealth: 250,
+      notoriety: 15,
+      faith: 80,
+      morale: 75,
+      population: 8,
+      maxPopulation: 15,
     };
     hud.updateResourceBar(data);
     const bar = container.querySelector('.hud-resource-bar');
@@ -74,9 +80,12 @@ describe('HUDManager — Inspector', () => {
 
   it('should show inspector with follower data', () => {
     const data: InspectorData = {
-      name: 'Alice', role: 'Follower', health: 90,
+      name: 'Alice',
+      role: 'Follower',
+      health: 90,
       needs: { hunger: 60, faith: 80, fun: 70, sanity: 85, energy: 75, bladder: 80, hygiene: 70 },
-      job: 'cleaning', traits: ['zealous', 'hardy'],
+      job: 'cleaning',
+      traits: ['zealous', 'hardy'],
     };
     hud.showInspector(data);
     const inspector = container.querySelector('.hud-inspector');
@@ -87,9 +96,20 @@ describe('HUDManager — Inspector', () => {
 
   it('should hide inspector', () => {
     const data: InspectorData = {
-      name: 'Bob', role: 'Follower', health: 100,
-      needs: { hunger: 100, faith: 100, fun: 100, sanity: 100, energy: 100, bladder: 100, hygiene: 100 },
-      job: 'idle', traits: [],
+      name: 'Bob',
+      role: 'Follower',
+      health: 100,
+      needs: {
+        hunger: 100,
+        faith: 100,
+        fun: 100,
+        sanity: 100,
+        energy: 100,
+        bladder: 100,
+        hygiene: 100,
+      },
+      job: 'idle',
+      traits: [],
     };
     hud.showInspector(data);
     hud.hideInspector();
@@ -115,6 +135,7 @@ describe('HUDManager — Event Log', () => {
 
   it('should render events in DOM', () => {
     hud.logEvent('Test event', 'info');
+    (container.querySelector('.hud-log-toggle') as HTMLButtonElement).click();
     const log = container.querySelector('.hud-event-log');
     expect(log).not.toBeNull();
     expect(log!.querySelectorAll('.hud-log-entry').length).toBe(1);

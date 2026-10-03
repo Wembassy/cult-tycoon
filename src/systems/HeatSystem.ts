@@ -75,6 +75,8 @@ export interface RaidResult {
 export class HeatSystem {
   private heat = 0;
   private dayCount = 1;
+  private lastNotoriety = 0;
+  private terminalTriggered = false;
   private rng: () => number;
   private onEvent?: HeatEventCallback;
   private onLose?: (reason: LoseReason) => void;
@@ -146,11 +148,10 @@ export class HeatSystem {
    * This method sets the base heat to the notoriety value.
    */
   syncNotoriety(notoriety: number): void {
-    // Notoriety contributes to heat as a base
-    // If notoriety is higher than current heat, heat rises to meet it
-    if (notoriety > this.heat) {
-      this.heat = notoriety;
-    }
+    const delta = notoriety - this.lastNotoriety;
+    this.lastNotoriety = notoriety;
+    this.heat = Math.max(0, this.heat + delta);
+    this.checkThresholds();
   }
 
   /**
@@ -164,7 +165,8 @@ export class HeatSystem {
     }
 
     // Game-ending raid threshold
-    if (this.heat >= HEAT_CONFIG.GAME_OVER_THRESHOLD) {
+    if (this.heat >= HEAT_CONFIG.GAME_OVER_THRESHOLD && !this.terminalTriggered) {
+      this.terminalTriggered = true;
       this.emitEvent('game_over_raid', {});
       this.onLose?.('busted');
       return;
@@ -196,7 +198,7 @@ export class HeatSystem {
 
     // Confiscate funds
     const fundsConfiscated = Math.min(
-      currentWealth,
+      Math.max(0, currentWealth),
       HEAT_CONFIG.RAID_MIN_FUNDS +
         Math.floor(this.rng() * (HEAT_CONFIG.RAID_MAX_FUNDS - HEAT_CONFIG.RAID_MIN_FUNDS + 1)),
     );
@@ -253,8 +255,28 @@ export class HeatSystem {
   reset(): void {
     this.heat = 0;
     this.dayCount = 1;
+    this.lastNotoriety = 0;
+    this.terminalTriggered = false;
     this.protestTriggered = false;
     this.raidCooldown = 0;
+  }
+
+  snapshot(): { heat: number; day: number; cooldown: number; notoriety: number; protest: boolean } {
+    return {
+      heat: this.heat,
+      day: this.dayCount,
+      cooldown: this.raidCooldown,
+      notoriety: this.lastNotoriety,
+      protest: this.protestTriggered,
+    };
+  }
+  restore(data: ReturnType<HeatSystem['snapshot']>): void {
+    this.heat = Math.max(0, data.heat);
+    this.dayCount = data.day;
+    this.raidCooldown = Math.max(0, data.cooldown);
+    this.lastNotoriety = data.notoriety;
+    this.protestTriggered = data.protest;
+    this.terminalTriggered = false;
   }
 
   /**

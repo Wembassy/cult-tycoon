@@ -1,391 +1,289 @@
-/**
- * AISystem — Follower AI state machine.
- * States: idle → moving → working → done → idle (or → needs → idle)
- *
- * Transitions driven by:
- * - NeedsSystem (sets state to 'needs' on critical needs)
- * - JobSystem (sets state to 'moving' on job assignment, 'working' when arrived)
- * - AISystem (pathfinding, arrival detection, state timeouts)
- */
-
+/** Follower navigation and self-care. All durations are simulation seconds. */
 import type { World } from '../ecs/World';
 import { FollowerAI } from '../components/FollowerAI';
 import { Transform } from '../components/Transform';
 import { Job } from '../components/Job';
 import { Needs } from '../components/Needs';
+import { OnMission } from '../components/OnMission';
 import { Pathfinder } from '../world/Pathfinder';
 import { TileMap } from '../world/TileMap';
 
 export type NeedKind = 'hunger' | 'faith' | 'fun' | 'sanity' | 'energy' | 'bladder' | 'hygiene';
-export interface NeedFacilityTarget { x: number; y: number; }
-export type NeedFacilityProvider = (need: NeedKind, from: { x: number; y: number }) => NeedFacilityTarget | null;
-
-export interface AISystemConfig {
-  moveSpeed: number;       // tiles per tick
-  idleTimeout: number;     // ticks before idle follower looks for work
-  needsCooldown: number;   // ticks before needs-satisfied follower returns to idle
-  stuckTimeout: number;    // ticks before stuck follower re-paths
-  doneCooldown: number;    // ticks in 'done' before returning to idle
+export interface NeedFacilityTarget {
+  x: number;
+  y: number;
+  id?: string;
 }
-
+export type NeedFacilityProvider = (
+  need: NeedKind,
+  from: { x: number; y: number },
+  entity?: number,
+) => NeedFacilityTarget | null;
+export interface AISystemConfig {
+  moveSpeed: number;
+  idleTimeout: number;
+  needsCooldown: number;
+  stuckTimeout: number;
+  doneCooldown: number;
+}
 const DEFAULT_CONFIG: AISystemConfig = {
-  moveSpeed: 0.08,      // tiles per tick — slower for more visible movement
-  idleTimeout: 15,      // ~0.5s at 30fps before wandering
-  needsCooldown: 60,
-  stuckTimeout: 50,
-  doneCooldown: 5,      // short pause before next wander
+  moveSpeed: 2.4,
+  idleTimeout: 1.5,
+  needsCooldown: 2,
+  stuckTimeout: 3,
+  doneCooldown: 0.2,
+};
+const NEEDS: NeedKind[] = ['hunger', 'energy', 'bladder', 'hygiene', 'faith', 'sanity', 'fun'];
+const RATE: Record<NeedKind, number> = {
+  hunger: 14,
+  energy: 9,
+  bladder: 28,
+  hygiene: 14,
+  faith: 9,
+  fun: 9,
+  sanity: 8,
 };
 
 export class AISystem {
   private config: AISystemConfig;
-  private pathfinder: Pathfinder;
   private needFacilityProvider: NeedFacilityProvider | null = null;
-
-  constructor(_map: TileMap, pathfinder: Pathfinder, config: Partial<AISystemConfig> = {}) {
-    this.pathfinder = pathfinder;
+  private validFacility?: (entity: number, need: NeedKind, target: NeedFacilityTarget) => boolean;
+  private useFacility?: (entity: number, need: NeedKind, amount: number) => number;
+  private retryAt = new Map<number, number>();
+  private elapsed = 0;
+  constructor(
+    private map: TileMap,
+    private pathfinder: Pathfinder,
+    config: Partial<AISystemConfig> = {},
+  ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
-
-  setNeedFacilityProvider(provider: NeedFacilityProvider): void {
+  setNeedFacilityProvider(
+    provider: NeedFacilityProvider,
+    valid?: (entity: number, need: NeedKind, target: NeedFacilityTarget) => boolean,
+    use?: (entity: number, need: NeedKind, amount: number) => number,
+  ): void {
     this.needFacilityProvider = provider;
+    this.validFacility = valid;
+    this.useFacility = use;
   }
-
-  /**
-   * Update AI for all followers.
-   * Returns the number of state transitions that occurred.
-   */
-  update(world: World, dt: number): number {
-    const entities = world.query([FollowerAI, Transform]);
-    let transitions = 0;
-
-    for (const entity of entities) {
-      const ai = world.getComponent(entity, FollowerAI)!;
-      const transform = world.getComponent(entity, Transform)!;
-      ai.stateTimer += dt;
-
-      switch (ai.state) {
-        case 'idle':
-          transitions += this.handleIdle(world, entity, ai);
-          break;
-        case 'moving':
-          transitions += this.handleMoving(world, entity, ai, transform);
-          break;
-        case 'working':
-          // JobSystem handles work progress; AI just waits
-          break;
-        case 'needs':
-          transitions += this.handleNeeds(world, entity, ai, dt);
-          break;
-        case 'done':
-          transitions += this.handleDone(ai);
-          break;
-        case 'stuck':
-          transitions += this.handleStuck(world, entity, ai, transform);
-          break;
-      }
-    }
-
-    return transitions;
+  reset(): void {
+    this.retryAt.clear();
+    this.elapsed = 0;
   }
-
-  private handleIdle(world: World, entity: number, ai: FollowerAI): number {
-    // After idle timeout, try to find something to do
-    if (ai.stateTimer >= this.config.idleTimeout) {
-      const needs = world.getComponent(entity, Needs);
-      if (needs) {
-        const criticalNeed = this.getMostUrgentNeed(needs);
-        if (criticalNeed) {
-          ai.needTarget = criticalNeed;
-          ai.state = 'needs';
-          ai.stateTimer = 0;
-          return 1;
-        }
-      }
-
-      // No job assigned — wander to a random nearby tile so followers look alive
-      const transform = world.getComponent(entity, Transform);
-      if (transform) {
-        const wanderRange = 12;
-        const targetX = Math.round(transform.x) + Math.floor((Math.random() - 0.5) * wanderRange * 2);
-        const targetY = Math.round(transform.y) + Math.floor((Math.random() - 0.5) * wanderRange * 2);
-
-        const path = this.pathfinder.findPath(
-          Math.round(transform.x),
-          Math.round(transform.y),
-          targetX,
-          targetY,
-        );
-
-        if (path.success && path.path.length > 1) {
-          ai.path = path.path;
-          ai.pathIndex = 1;
-          ai.state = 'moving';
-          ai.stateTimer = 0;
-
-          // Set a wander job so handleMoving knows this isn't a real job
-          const job = world.getComponent(entity, Job);
-          if (job) {
-            job.type = 'wander';
-            job.targetTile = { x: targetX, y: targetY };
-          }
-          return 1;
-        }
-      }
-
-      // Couldn't find a wander path — reset timer and try again later
-      ai.stateTimer = 0;
-    }
-    return 0;
-  }
-
-  private handleMoving(world: World, entity: number, ai: FollowerAI, transform: Transform): number {
-    const job = world.getComponent(entity, Job);
-
-    // If no path, compute one
-    if (ai.path.length === 0 && job?.targetTile) {
-      const path = this.pathfinder.findPath(
-        Math.round(transform.x),
-        Math.round(transform.y),
-        job.targetTile.x,
-        job.targetTile.y
-      );
-
-      if (path.success && path.path.length > 0) {
-        ai.path = path.path;
-        ai.pathIndex = 1; // skip current tile
-      } else {
-        // Can't path to job — mark stuck
-        ai.state = 'stuck';
-        ai.stateTimer = 0;
-        return 1;
-      }
-    }
-
-    // Follow path
-    if (ai.path.length > 0 && ai.pathIndex < ai.path.length) {
-      const target = ai.path[ai.pathIndex];
-      const dx = target.x - transform.x;
-      const dy = target.y - transform.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist <= this.config.moveSpeed) {
-        // Reached this tile
-        transform.x = target.x;
-        transform.y = target.y;
-        ai.pathIndex++;
-
-        // Reached destination?
-        if (ai.pathIndex >= ai.path.length) {
-          ai.path = [];
-          ai.pathIndex = 0;
-          // Need-seeking movement resolves into facility use before normal job logic.
-          if (ai.needTarget && ai.needTargetTile) {
-            ai.state = 'needs';
-          } else if (job && job.type !== 'wander' && job.type !== 'idle') {
-            ai.state = 'working';
-          } else {
-            ai.state = 'done';
-            // Clear wander job
-            if (job) {
-              job.type = 'idle';
-              job.targetTile = null;
-            }
-          }
-          ai.stateTimer = 0;
-          return 1;
-        }
-      } else {
-        // Move toward target
-        const moveX = (dx / dist) * this.config.moveSpeed;
-        const moveY = (dy / dist) * this.config.moveSpeed;
-        transform.x += moveX;
-        transform.y += moveY;
-      }
-    }
-
-    // Stuck timeout
-    if (ai.stateTimer >= this.config.stuckTimeout) {
-      ai.state = 'stuck';
-      ai.stateTimer = 0;
-      ai.path = [];
-      ai.pathIndex = 0;
-      return 1;
-    }
-
-    return 0;
-  }
-
-  private handleNeeds(world: World, entity: number, ai: FollowerAI, dt: number): number {
-    const needs = world.getComponent(entity, Needs);
-    const transform = world.getComponent(entity, Transform);
-    if (!needs || !transform) {
-      this.clearNeedTarget(ai);
-      ai.state = 'idle';
-      ai.stateTimer = 0;
-      return 1;
-    }
-
-    const need = ai.needTarget ?? this.getMostUrgentNeed(needs);
-    if (!need) {
-      this.finishNeedAndResumeJob(world, entity, ai);
-      return 1;
-    }
-    ai.needTarget = need;
-
-    // If we have not chosen a facility yet, ask the game layer for the nearest valid one.
-    if (!ai.needTargetTile) {
-      const facility = this.needFacilityProvider?.(need, { x: transform.x, y: transform.y }) ?? null;
-      if (!facility) {
-        // No appropriate facility exists. Stay needy so the player feels the consequence.
-        ai.stateTimer = Math.min(ai.stateTimer, this.config.needsCooldown);
-        return 0;
-      }
-
-      const path = this.pathfinder.findPath(
-        Math.round(transform.x),
-        Math.round(transform.y),
-        facility.x,
-        facility.y,
-      );
-      if (!path.success || path.path.length === 0) {
-        return 0;
-      }
-
-      ai.needTargetTile = facility;
-      ai.path = path.path;
-      ai.pathIndex = path.path.length > 1 ? 1 : 0;
-      if (path.path.length > 1) {
-        ai.state = 'moving';
-        ai.stateTimer = 0;
-        return 1;
-      }
-    }
-
-    // At the facility: restore only the need this facility is intended to satisfy.
-    const recoveryRate = this.getNeedRecoveryRate(need);
-    needs[need] = clamp(needs[need] + recoveryRate * dt, 0, 100);
-
-    if (needs[need] >= 80) {
-      this.finishNeedAndResumeJob(world, entity, ai);
-      return 1;
-    }
-
-    return 0;
-  }
-
-  private handleDone(ai: FollowerAI): number {
-    if (ai.stateTimer >= this.config.doneCooldown) {
-      ai.state = 'idle';
-      ai.stateTimer = 0;
-      return 1;
-    }
-    return 0;
-  }
-
-  private handleStuck(world: World, entity: number, ai: FollowerAI, transform: Transform): number {
-    // Try to re-path
-    const job = world.getComponent(entity, Job);
-
-    if (job?.targetTile) {
-      // Try finding path to nearest accessible tile near the target
-      const path = this.pathfinder.findPath(
-        Math.round(transform.x),
-        Math.round(transform.y),
-        job.targetTile.x,
-        job.targetTile.y
-      );
-
-      if (path.success && path.path.length > 0) {
-        ai.path = path.path;
-        ai.pathIndex = 1;
-        ai.state = 'moving';
-        ai.stateTimer = 0;
-        return 1;
-      }
-    }
-
-    // Give up after stuck timeout
-    if (ai.stateTimer >= this.config.stuckTimeout * 2) {
-      // Abandon job
-      const jobComp = world.getComponent(entity, Job);
-      if (jobComp) {
-        jobComp.type = 'idle';
-        jobComp.jobId = null;
-        jobComp.targetTile = null;
-        jobComp.workProgress = 0;
-      }
-      this.clearNeedTarget(ai);
-      ai.state = 'idle';
-      ai.stateTimer = 0;
-      ai.path = [];
-      ai.pathIndex = 0;
-      return 1;
-    }
-
-    return 0;
-  }
-
-  private getMostUrgentNeed(needs: Needs): NeedKind | null {
-    const thresholds: { need: NeedKind; threshold: number }[] = [
-      { need: 'hunger', threshold: 30 },
-      { need: 'energy', threshold: 25 },
-      { need: 'bladder', threshold: 25 },
-      { need: 'hygiene', threshold: 25 },
-      { need: 'faith', threshold: 30 },
-      { need: 'sanity', threshold: 25 },
-      { need: 'fun', threshold: 25 },
-    ];
-
-    let selected: NeedKind | null = null;
-    let lowestRatio = Infinity;
-    for (const entry of thresholds) {
-      const value = needs[entry.need];
-      if (value >= entry.threshold) continue;
-      const ratio = value / entry.threshold;
-      if (ratio < lowestRatio) {
-        lowestRatio = ratio;
-        selected = entry.need;
-      }
-    }
-    return selected;
-  }
-
-  private getNeedRecoveryRate(need: NeedKind): number {
-    switch (need) {
-      case 'hunger': return 18;
-      case 'faith': return 12;
-      case 'fun': return 12;
-      case 'sanity': return 10;
-      case 'energy': return 22;
-      case 'bladder': return 35;
-      case 'hygiene': return 18;
-    }
-  }
-
-  private clearNeedTarget(ai: FollowerAI): void {
-    ai.needTarget = null;
-    ai.needTargetTile = null;
-  }
-
-  private finishNeedAndResumeJob(world: World, entity: number, ai: FollowerAI): void {
-    this.clearNeedTarget(ai);
-    ai.stateTimer = 0;
-    ai.path = [];
-    ai.pathIndex = 0;
-
-    const job = world.getComponent(entity, Job);
-    if (job && job.type !== 'idle' && job.type !== 'wander' && job.targetTile) {
-      ai.state = 'moving';
-    } else {
-      ai.state = 'idle';
-    }
-  }
-
   getConfig(): AISystemConfig {
     return { ...this.config };
   }
-}
-
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
+  update(world: World, dt: number): number {
+    if (!Number.isFinite(dt) || dt <= 0) return 0;
+    this.elapsed += dt;
+    let changes = 0;
+    for (const entity of world.query([FollowerAI, Transform])) {
+      if (world.hasComponent(entity, OnMission)) continue;
+      const ai = world.getComponent(entity, FollowerAI)!;
+      const pos = world.getComponent(entity, Transform)!;
+      const before = ai.state;
+      ai.stateTimer += dt;
+      const needs = world.getComponent(entity, Needs);
+      // Never interrupt an existing self-care journey with the same critical need.
+      if (!ai.needTarget && needs) {
+        const urgent = NEEDS.filter((n) => needs[n] < (n === 'hunger' ? 30 : 25)).sort(
+          (a, b) => needs[a] - needs[b],
+        )[0];
+        if (urgent) {
+          ai.needTarget = urgent;
+          ai.needTargetTile = null;
+          ai.path = [];
+          ai.pathIndex = 0;
+          ai.state = 'needs';
+        }
+      }
+      if (
+        ai.needTarget &&
+        ai.needTargetTile &&
+        this.validFacility &&
+        !this.validFacility(entity, ai.needTarget, ai.needTargetTile)
+      ) {
+        ai.needTargetTile = null;
+        ai.needFacilityId = null;
+        ai.path = [];
+        ai.pathIndex = 0;
+        ai.state = 'needs';
+      }
+      if (ai.state === 'needs') this.handleNeeds(world, entity, ai, pos, dt);
+      else if (ai.state === 'moving') this.move(world, entity, ai, pos, dt);
+      else if (ai.state === 'stuck' && ai.stateTimer >= this.config.stuckTimeout) {
+        ai.path = [];
+        ai.pathIndex = 0;
+        ai.stateTimer = 0;
+        ai.state = ai.needTarget ? 'needs' : 'idle';
+        const job = world.getComponent(entity, Job);
+        if (job) {
+          job.type = 'idle';
+          job.jobId = null;
+          job.targetTile = null;
+        }
+      } else if (ai.state === 'done' && ai.stateTimer >= this.config.doneCooldown) {
+        ai.state = 'idle';
+        ai.stateTimer = 0;
+      } else if (ai.state === 'idle' && ai.stateTimer >= this.config.idleTimeout) {
+        this.wander(world, entity, ai, pos);
+      }
+      if (before !== ai.state) changes++;
+    }
+    return changes;
+  }
+  private handleNeeds(
+    world: World,
+    entity: number,
+    ai: FollowerAI,
+    pos: Transform,
+    dt: number,
+  ): void {
+    const needs = world.getComponent(entity, Needs);
+    if (!needs || !ai.needTarget) {
+      this.finish(world, entity, ai);
+      return;
+    }
+    if (needs[ai.needTarget] >= 85) {
+      this.finish(world, entity, ai);
+      return;
+    }
+    if (!ai.needTargetTile) {
+      if ((this.retryAt.get(entity) ?? 0) > this.elapsed) return;
+      const target = this.needFacilityProvider?.(ai.needTarget, pos, entity);
+      if (!target) {
+        ai.activityReason = `Waiting for ${ai.needTarget === 'hunger' ? 'food and a dining facility' : ai.needTarget + ' facility'}`;
+        this.retryAt.set(entity, this.elapsed + this.config.needsCooldown);
+        return;
+      }
+      ai.needTargetTile = target;
+      ai.needFacilityId = target.id ?? null;
+      ai.path = [];
+      ai.pathIndex = 0;
+    }
+    const target = ai.needTargetTile;
+    if (Math.hypot(target.x - pos.x, target.y - pos.y) > 0.08) {
+      ai.state = 'moving';
+      ai.stateTimer = 0;
+      ai.activityReason = `Going to satisfy ${ai.needTarget}`;
+      return;
+    }
+    const wanted = Math.min(85 - needs[ai.needTarget], RATE[ai.needTarget] * dt);
+    const actual = this.useFacility ? this.useFacility(entity, ai.needTarget, wanted) : wanted;
+    needs[ai.needTarget] = Math.min(100, needs[ai.needTarget] + Math.max(0, actual));
+    ai.activityReason = actual > 0 ? `Restoring ${ai.needTarget}` : 'Waiting for food';
+    if (needs[ai.needTarget] >= 85) this.finish(world, entity, ai);
+  }
+  private move(world: World, entity: number, ai: FollowerAI, pos: Transform, dt: number): void {
+    const job = world.getComponent(entity, Job);
+    const goal = ai.needTargetTile ?? job?.targetTile;
+    if (!goal) {
+      ai.state = 'idle';
+      ai.path = [];
+      return;
+    }
+    if (Math.hypot(goal.x - pos.x, goal.y - pos.y) <= 0.08) {
+      this.arrive(ai, job);
+      return;
+    }
+    const next = ai.path[ai.pathIndex];
+    if (!next || !this.segmentOpen(pos, next)) {
+      const route = this.pathfinder.findPath(Math.round(pos.x), Math.round(pos.y), goal.x, goal.y);
+      if (!route.success) {
+        ai.state = 'stuck';
+        ai.stateTimer = 0;
+        ai.path = [];
+        ai.activityReason = 'Route blocked';
+        return;
+      }
+      ai.path = route.path;
+      ai.pathIndex = route.path.length > 1 ? 1 : 0;
+    }
+    let distanceLeft = this.config.moveSpeed * dt;
+    while (distanceLeft > 0 && ai.pathIndex < ai.path.length) {
+      const point = ai.path[ai.pathIndex];
+      if (!this.segmentOpen(pos, point)) {
+        ai.path = [];
+        break;
+      }
+      const dx = point.x - pos.x,
+        dy = point.y - pos.y,
+        distance = Math.hypot(dx, dy);
+      if (distance > 0.00001) pos.rotation = Math.atan2(dx, dy);
+      if (distance <= distanceLeft) {
+        pos.x = point.x;
+        pos.y = point.y;
+        ai.pathIndex++;
+        distanceLeft -= distance;
+      } else {
+        pos.x += (dx / distance) * distanceLeft;
+        pos.y += (dy / distance) * distanceLeft;
+        distanceLeft = 0;
+      }
+      ai.stateTimer = 0;
+    }
+    if (Math.hypot(goal.x - pos.x, goal.y - pos.y) <= 0.08) this.arrive(ai, job);
+  }
+  private segmentOpen(from: { x: number; y: number }, to: { x: number; y: number }): boolean {
+    const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) * 3));
+    for (let i = 1; i <= steps; i++) {
+      if (
+        !this.map.isBuildable(
+          Math.round(from.x + ((to.x - from.x) * i) / steps),
+          Math.round(from.y + ((to.y - from.y) * i) / steps),
+        )
+      )
+        return false;
+    }
+    return true;
+  }
+  private arrive(ai: FollowerAI, job?: Job): void {
+    ai.path = [];
+    ai.pathIndex = 0;
+    ai.stateTimer = 0;
+    if (ai.needTarget) ai.state = 'needs';
+    else if (job && job.type !== 'idle' && job.type !== 'wander') {
+      ai.state = 'working';
+      ai.activityReason = `Working: ${job.type}`;
+    } else {
+      ai.state = 'done';
+      ai.activityReason = 'Free time';
+      if (job) {
+        job.type = 'idle';
+        job.targetTile = null;
+      }
+    }
+  }
+  private finish(world: World, entity: number, ai: FollowerAI): void {
+    ai.needTarget = null;
+    ai.needTargetTile = null;
+    ai.needFacilityId = null;
+    ai.path = [];
+    ai.pathIndex = 0;
+    ai.stateTimer = 0;
+    ai.activityReason = 'Available';
+    const job = world.getComponent(entity, Job);
+    ai.state = job?.targetTile && job.type !== 'wander' && job.type !== 'idle' ? 'moving' : 'idle';
+    this.retryAt.delete(entity);
+  }
+  private wander(world: World, entity: number, ai: FollowerAI, pos: Transform): void {
+    ai.stateTimer = 0;
+    const job = world.getComponent(entity, Job);
+    if (!job || (job.type !== 'idle' && job.type !== 'wander')) return;
+    for (let i = 0; i < 4; i++) {
+      const x = Math.round(pos.x) + (Math.floor(Math.random() * 7) - 3),
+        y = Math.round(pos.y) + (Math.floor(Math.random() * 7) - 3);
+      if (!this.map.isBuildable(x, y)) continue;
+      const route = this.pathfinder.findPath(Math.round(pos.x), Math.round(pos.y), x, y);
+      if (!route.success || route.path.length < 2) continue;
+      job.type = 'wander';
+      job.targetTile = { x, y };
+      ai.path = route.path;
+      ai.pathIndex = 1;
+      ai.state = 'moving';
+      ai.activityReason = 'Free time';
+      return;
+    }
+  }
 }

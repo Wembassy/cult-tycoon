@@ -12,10 +12,12 @@ import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
 import { FollowerAI } from '../components/FollowerAI';
 import { Job } from '../components/Job';
+import { OnMission } from '../components/OnMission';
+import { DataManager } from '../data/DataManager';
 import type { AssetLoader } from './AssetLoader';
 import { FogOfWar } from '../world/FogOfWar';
 import type { BuildingSystem } from '../systems/BuildingSystem';
-import { TIER_COLORS, getBuildingModel, getWorkStation } from '../data/BuildingModels';
+import { TIER_COLORS, getBuildingModel } from '../data/BuildingModels';
 import { findFollowerAnimationClip, type FollowerAnimationState } from '../data/FollowerAnimations';
 
 // Richer terrain colors
@@ -30,11 +32,9 @@ const TERRAIN_COLORS: Record<string, number> = {
 const TERRAIN_HEIGHT: Record<string, number> = {
   grass: 0.5,
   water: 0.05,
-  stone: 1.5,
-  dirt: 0.35,
+  stone: 0.5,
+  dirt: 0.5,
 };
-
-const TILE_SIZE = 1;
 
 // Display names for room types (used for floating labels)
 const ROOM_TYPE_NAMES: Record<string, string> = {
@@ -49,7 +49,6 @@ const ROOM_TYPE_NAMES: Record<string, string> = {
   generic: 'Room',
 };
 
-
 export class SceneManager {
   private scene: THREE.Scene;
   private tileGroup: THREE.Group;
@@ -57,10 +56,18 @@ export class SceneManager {
   private buildingGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
   private tileMeshes: Map<string, THREE.Mesh> = new Map();
+  private tileInstances = new Map<
+    string,
+    { mesh: THREE.InstancedMesh; index: number; color: THREE.Color }
+  >();
+  private decorMeshes = new Map<string, THREE.Object3D>();
+  private previewGroup = new THREE.Group();
+  private animationDelta = 0;
   private entityMeshes: Map<number, THREE.Object3D> = new Map();
   private entityMeshIsPlaceholder: Map<number, boolean> = new Map();
   private mixers: Map<number, THREE.AnimationMixer> = new Map();
-  private animationActions: Map<number, Map<FollowerAnimationState, THREE.AnimationAction>> = new Map();
+  private animationActions: Map<number, Map<FollowerAnimationState, THREE.AnimationAction>> =
+    new Map();
   private activeAnimationState: Map<number, FollowerAnimationState> = new Map();
   private lastFollowerPositions: Map<number, THREE.Vector2> = new Map();
   private sharedFollowerAnimations: THREE.AnimationClip[] = [];
@@ -88,6 +95,7 @@ export class SceneManager {
     this.scene.add(this.tileGroup);
     this.scene.add(this.entityGroup);
     this.scene.add(this.buildingGroup);
+    this.scene.add(this.previewGroup);
 
     // Fill light to enhance isometric view — softens shadows from the front
     this.buildingFillLight = new THREE.DirectionalLight(0x99bbdd, 0.35);
@@ -95,20 +103,31 @@ export class SceneManager {
     this.scene.add(this.buildingFillLight);
   }
 
-  setAssetLoader(assets: AssetLoader): void { this.assets = assets; }
+  setAssetLoader(assets: AssetLoader): void {
+    this.assets = assets;
+  }
 
-  setFog(fog: FogOfWar): void { this.fog = fog; }
+  setFog(fog: FogOfWar): void {
+    this.fog = fog;
+  }
 
-  setBuildingSystem(bs: BuildingSystem): void { this.buildingSystem = bs; }
+  setBuildingSystem(bs: BuildingSystem): void {
+    this.buildingSystem = bs;
+  }
 
-  setFollowerNames(names: Map<number, string>): void { this.followerNames = names; }
+  setFollowerNames(names: Map<number, string>): void {
+    this.followerNames = names;
+  }
 
   setFollowerAnimationLibrary(clips: THREE.AnimationClip[]): void {
     this.sharedFollowerAnimations = clips;
+    this.resetEntities();
   }
 
   /** Get the current BuildingSystem reference (if set). */
-  getBuildingSystem(): BuildingSystem | null { return this.buildingSystem; }
+  getBuildingSystem(): BuildingSystem | null {
+    return this.buildingSystem;
+  }
 
   /**
    * Update tile appearance based on fog of war state.
@@ -117,167 +136,143 @@ export class SceneManager {
    */
   updateFog(): void {
     if (!this.fog) return;
-
-    // Update tiles that changed visibility
-    for (const tileCoord of this.fog.getNewlyVisible()) {
-      const mesh = this.tileMeshes.get(`${tileCoord.x},${tileCoord.y}`);
-      if (mesh) {
-        // Restore original color (recompute from terrain)
-        const tile = this.map.getTile(tileCoord.x, tileCoord.y);
-        if (tile) {
-          const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
-          const noiseVal = Math.sin(tileCoord.x * 0.5) * Math.cos(tileCoord.y * 0.5) + Math.sin((tileCoord.x + tileCoord.y) * 0.3);
-          const variation = noiseVal * 0.06;
-          const finalColor = new THREE.Color(color).offsetHSL(0, 0, variation);
-          (mesh.material as THREE.MeshStandardMaterial).color.copy(finalColor);
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 1;
-          (mesh.material as THREE.MeshStandardMaterial).transparent = false;
-          mesh.visible = true;
-        }
-      }
-    }
-
-    for (const tileCoord of this.fog.getNewlyHidden()) {
-      const mesh = this.tileMeshes.get(`${tileCoord.x},${tileCoord.y}`);
-      if (mesh) {
-        // Dim explored tiles, hide hidden tiles
-        if (this.fog.isExplored(tileCoord.x, tileCoord.y)) {
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.3);
-          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.5;
-        } else {
-          // Unexplored tiles remain as a very dark silhouette instead of disappearing.
-          const tile = this.map.getTile(tileCoord.x, tileCoord.y);
-          if (tile) {
-            const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
-            (mesh.material as THREE.MeshStandardMaterial).color.setHex(color).multiplyScalar(0.24);
-            (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-            (mesh.material as THREE.MeshStandardMaterial).opacity = 0.822;
-            mesh.visible = true;
-          }
-        }
-      }
-    }
+    for (const t of [...this.fog.getNewlyVisible(), ...this.fog.getNewlyHidden()])
+      this.applyTileFog(`${t.x},${t.y}`);
   }
-
+  private applyTileFog(key: string): void {
+    const entry = this.tileInstances.get(key);
+    if (!entry) return;
+    const [x, y] = key.split(',').map(Number),
+      state = this.fog?.getState(x, y) ?? 'visible';
+    const factor = state === 'visible' ? 1 : state === 'explored' ? 0.68 : 0.25;
+    entry.mesh.setColorAt(entry.index, entry.color.clone().multiplyScalar(factor));
+    if (entry.mesh.instanceColor) entry.mesh.instanceColor.needsUpdate = true;
+    const decor = this.decorMeshes.get(key);
+    if (decor) decor.visible = state !== 'hidden';
+  }
   buildTiles(): void {
-    while (this.tileGroup.children.length > 0) {
-      const child = this.tileGroup.children[0];
+    for (const child of [...this.tileGroup.children]) {
       this.tileGroup.remove(child);
       this.disposeObject(child);
     }
     this.tileMeshes.clear();
-
-    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
-
-    for (let y = 0; y < this.map.height; y++) {
-      for (let x = 0; x < this.map.width; x++) {
-        const tile = this.map.getTile(x, y);
-        if (!tile) continue;
-
-        const color = TERRAIN_COLORS[tile.terrain] ?? 0x3d6b35;
-        const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
-        const isWater = tile.terrain === 'water';
-
-        // Stronger per-tile noise-based color variation for texture
-        const noiseVal = Math.sin(x * 0.5) * Math.cos(y * 0.5) + Math.sin((x + y) * 0.3);
-        const variation = noiseVal * 0.06;
-        const finalColor = new THREE.Color(color).offsetHSL(0, 0, variation);
-        if (tile.roomId !== null) {
-          // Designated rooms get a subtle blueprint tint so painted areas are legible.
-          finalColor.lerp(new THREE.Color(0x4777aa), 0.22);
-        }
-
-        const geom = new THREE.BoxGeometry(TILE_SIZE, height, TILE_SIZE);
-        const mat = isWater
-          ? new THREE.MeshStandardMaterial({
-              color: finalColor, transparent: true, opacity: 0.8,
-              flatShading: true, roughness: 0.2, metalness: 0.3,
-            })
-          : new THREE.MeshStandardMaterial({
-              color: finalColor, flatShading: true, roughness: 0.9,
-            });
-
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.position.set(x + offset.x + 0.5, height / 2, y + offset.z + 0.5);
-        mesh.castShadow = !isWater;
-        mesh.receiveShadow = true;
-        mesh.userData = { tileX: x, tileY: y };
-
-        if (tile.occupied && tile.decor === 'none') {
-          mat.color.lerp(new THREE.Color(0x222222), 0.5);
-        }
-
-        this.tileGroup.add(mesh);
-        this.tileMeshes.set(`${x},${y}`, mesh);
-
-        // Add grass blade particles on grass tiles
-        if (tile.terrain === 'grass') {
-          const bladeCount = 3 + ((x * 3 + y * 7) % 4); // 3-6 blades per tile
-          const grassGeom = new THREE.ConeGeometry(0.04, 0.2, 4);
-          for (let b = 0; b < bladeCount; b++) {
-            const bladeColor = new THREE.Color(0x4a8c3a).offsetHSL(0, 0, ((b * 17 + x * 3) % 5 - 2) * 0.03);
-            const bladeMat = new THREE.MeshStandardMaterial({ color: bladeColor, flatShading: true, roughness: 0.95 });
-            const blade = new THREE.Mesh(grassGeom, bladeMat);
-            const bx = (Math.random() - 0.5) * 0.7;
-            const bz = (Math.random() - 0.5) * 0.7;
-            blade.position.set(x + offset.x + 0.5 + bx, height + 0.1, y + offset.z + 0.5 + bz);
-            blade.rotation.y = Math.random() * Math.PI;
-            blade.rotation.x = (Math.random() - 0.5) * 0.2;
-            blade.castShadow = false;
-            this.tileGroup.add(blade);
+    this.tileInstances.clear();
+    this.decorMeshes.clear();
+    this.highlightMesh = null;
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 },
+      matrix = new THREE.Matrix4();
+    for (const terrain of Object.keys(TERRAIN_COLORS)) {
+      const tiles = this.map.getAllTiles().filter((t) => t.terrain === terrain),
+        height = TERRAIN_HEIGHT[terrain];
+      if (!tiles.length) continue;
+      const geom = new THREE.BoxGeometry(1, height, 1);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: terrain === 'water' ? 0.35 : 0.92,
+        flatShading: true,
+      });
+      const mesh = new THREE.InstancedMesh(geom, mat, tiles.length);
+      mesh.receiveShadow = true;
+      mesh.castShadow = false;
+      tiles.forEach((tile, index) => {
+        matrix.makeTranslation(tile.x + offset.x + 0.5, height / 2, tile.y + offset.z + 0.5);
+        mesh.setMatrixAt(index, matrix);
+        const noise =
+          Math.sin(tile.x * 0.5) * Math.cos(tile.y * 0.5) + Math.sin((tile.x + tile.y) * 0.3);
+        const color = new THREE.Color(TERRAIN_COLORS[terrain]).offsetHSL(0, 0, noise * 0.025);
+        if (tile.roomId !== null) color.lerp(new THREE.Color(0x5d91a0), 0.3);
+        const key = `${tile.x},${tile.y}`;
+        this.tileInstances.set(key, { mesh, index, color });
+        this.tileMeshes.set(key, mesh);
+        if (tile.decor !== 'none' && !tile.occupied && tile.roomId === null) {
+          const decor = this.createDecorMesh(tile.decor);
+          if (decor) {
+            decor.position.set(tile.x + offset.x + 0.5, height, tile.y + offset.z + 0.5);
+            this.tileGroup.add(decor);
+            this.decorMeshes.set(key, decor);
           }
         }
-
-        if (tile.decor !== 'none') {
-          const decorMesh = this.createDecorMesh(tile.decor);
-          if (decorMesh) {
-            decorMesh.position.set(x + offset.x + 0.5, height, y + offset.z + 0.5);
-            this.tileGroup.add(decorMesh);
-          }
-        }
-      }
+        this.applyTileFog(key);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      this.tileGroup.add(mesh);
     }
-
-    // Ground plane
-    const groundGeom = new THREE.PlaneGeometry(this.map.width + 40, this.map.height + 40);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x202634, roughness: 1 });
-    const ground = new THREE.Mesh(groundGeom, groundMat);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.map.width + 32, this.map.height + 32),
+      new THREE.MeshStandardMaterial({ color: 0x35463d, roughness: 1 }),
+    );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.1;
+    ground.position.y = -0.02;
     ground.receiveShadow = true;
     this.tileGroup.add(ground);
-
-    // Apply fog of war if set — hide all tiles initially (fog will reveal them)
-    if (this.fog) {
-      for (const [key, mesh] of this.tileMeshes) {
-        const [tx, ty] = key.split(',').map(Number);
-        const state = this.fog.getState(tx, ty);
-        if (state === 'hidden') {
-          // Keep unexplored terrain barely visible so the world never becomes a black void.
-          // The player can read the map silhouette, but details remain concealed.
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.24);
-          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.822;
-          mesh.visible = true;
-        } else if (state === 'explored') {
-          (mesh.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.58);
-          (mesh.material as THREE.MeshStandardMaterial).transparent = true;
-          (mesh.material as THREE.MeshStandardMaterial).opacity = 0.82;
-          mesh.visible = true;
-        }
-      }
+  }
+  showBuildPreview(tiles: { x: number; y: number }[], valid: boolean): void {
+    this.clearBuildPreview();
+    if (!tiles.length) return;
+    const mesh = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(0.96, 0.96),
+      new THREE.MeshBasicMaterial({
+        color: valid ? 0x68d9b2 : 0xf08080,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+      tiles.length,
+    );
+    const dummy = new THREE.Object3D();
+    tiles.forEach((t, i) => {
+      const tile = this.map.getTile(t.x, t.y);
+      dummy.rotation.x = -Math.PI / 2;
+      dummy.position.set(
+        t.x - this.map.width / 2 + 0.5,
+        (tile ? TERRAIN_HEIGHT[tile.terrain] : 0.5) + 0.07,
+        t.y - this.map.height / 2 + 0.5,
+      );
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.frustumCulled = false;
+    this.previewGroup.add(mesh);
+  }
+  clearBuildPreview(): void {
+    for (const child of [...this.previewGroup.children]) {
+      this.previewGroup.remove(child);
+      this.disposeObject(child);
     }
+  }
+  resetEntities(): void {
+    for (const mixer of this.mixers.values()) mixer.stopAllAction();
+    for (const child of [...this.entityGroup.children]) {
+      this.entityGroup.remove(child);
+      this.disposeObject(child);
+    }
+    this.entityMeshes.clear();
+    this.entityMeshIsPlaceholder.clear();
+    this.mixers.clear();
+    this.animationActions.clear();
+    this.activeAnimationState.clear();
+    this.lastFollowerPositions.clear();
+    this.entityLights.clear();
   }
 
   private createDecorMesh(decor: string): THREE.Mesh | null {
     switch (decor) {
       case 'tree': {
-        const tree = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+        const tree = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.01, 0.01),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
 
         // Trunk
         const trunkGeom = new THREE.CylinderGeometry(0.12, 0.18, 0.6, 6);
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, flatShading: true, roughness: 0.95 });
+        const trunkMat = new THREE.MeshStandardMaterial({
+          color: 0x3a2a1a,
+          flatShading: true,
+          roughness: 0.95,
+        });
         const trunk = new THREE.Mesh(trunkGeom, trunkMat);
         trunk.position.y = 0.3;
         trunk.castShadow = true;
@@ -292,7 +287,11 @@ export class SceneManager {
           const height = 0.55;
           const y = 0.7 + i * 0.4;
           const coneGeom = new THREE.ConeGeometry(radius, height, 8);
-          const coneMat = new THREE.MeshStandardMaterial({ color: leafColor, flatShading: true, roughness: 0.9 });
+          const coneMat = new THREE.MeshStandardMaterial({
+            color: leafColor,
+            flatShading: true,
+            roughness: 0.9,
+          });
           const cone = new THREE.Mesh(coneGeom, coneMat);
           cone.position.y = y;
           cone.castShadow = true;
@@ -301,12 +300,19 @@ export class SceneManager {
         return tree;
       }
       case 'rock': {
-        const rock = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+        const rock = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.01, 0.01),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
         // Main rock
         const rockColors = [0x7a7a72, 0x8a8a82, 0x6a6a62];
         const rc = rockColors[Math.floor(Math.random() * 3)] ?? 0x7a7a72;
         const mainGeom = new THREE.DodecahedronGeometry(0.4, 0);
-        const mainMat = new THREE.MeshStandardMaterial({ color: rc, flatShading: true, roughness: 0.9 });
+        const mainMat = new THREE.MeshStandardMaterial({
+          color: rc,
+          flatShading: true,
+          roughness: 0.9,
+        });
         const main = new THREE.Mesh(mainGeom, mainMat);
         main.position.y = 0.2;
         main.castShadow = true;
@@ -314,7 +320,11 @@ export class SceneManager {
         rock.add(main);
         // Small rock beside it
         const smallGeom = new THREE.DodecahedronGeometry(0.2, 0);
-        const smallMat = new THREE.MeshStandardMaterial({ color: rc, flatShading: true, roughness: 0.9 });
+        const smallMat = new THREE.MeshStandardMaterial({
+          color: rc,
+          flatShading: true,
+          roughness: 0.9,
+        });
         const small = new THREE.Mesh(smallGeom, smallMat);
         small.position.set(0.25, 0.1, 0.15);
         small.castShadow = true;
@@ -322,23 +332,37 @@ export class SceneManager {
         return rock;
       }
       case 'bush': {
-        const bush = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+        const bush = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.01, 0.01),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
         const bushColors = [0x2a5a2a, 0x1a4a1a, 0x3a6a3a];
         const bc = bushColors[Math.floor(Math.random() * 3)] ?? 0x2a5a2a;
         // 3 overlapping spheres for organic look
         for (let i = 0; i < 3; i++) {
           const r = 0.22 + Math.random() * 0.08;
           const g = new THREE.SphereGeometry(r, 8, 6);
-          const m = new THREE.MeshStandardMaterial({ color: bc, flatShading: true, roughness: 0.9 });
+          const m = new THREE.MeshStandardMaterial({
+            color: bc,
+            flatShading: true,
+            roughness: 0.9,
+          });
           const s = new THREE.Mesh(g, m);
-          s.position.set((Math.random() - 0.5) * 0.3, 0.15 + Math.random() * 0.1, (Math.random() - 0.5) * 0.3);
+          s.position.set(
+            (Math.random() - 0.5) * 0.3,
+            0.15 + Math.random() * 0.1,
+            (Math.random() - 0.5) * 0.3,
+          );
           s.castShadow = true;
           bush.add(s);
         }
         return bush;
       }
       case 'flower': {
-        const flower = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+        const flower = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.01, 0.01),
+          new THREE.MeshBasicMaterial({ visible: false }),
+        );
         // Stem
         const stemGeom = new THREE.CylinderGeometry(0.025, 0.025, 0.2, 4);
         const stemMat = new THREE.MeshStandardMaterial({ color: 0x2a7a2a, flatShading: true });
@@ -349,7 +373,12 @@ export class SceneManager {
         const flowerColors = [0xff5588, 0xffdd33, 0xff8833, 0xdd55ff, 0xff4444, 0xffffff];
         const fc = flowerColors[Math.floor(Math.random() * flowerColors.length)] ?? 0xff5588;
         const headGeom = new THREE.IcosahedronGeometry(0.12, 0);
-        const headMat = new THREE.MeshStandardMaterial({ color: fc, flatShading: true, emissive: fc, emissiveIntensity: 0.3 });
+        const headMat = new THREE.MeshStandardMaterial({
+          color: fc,
+          flatShading: true,
+          emissive: fc,
+          emissiveIntensity: 0.3,
+        });
         const head = new THREE.Mesh(headGeom, headMat);
         head.position.y = 0.22;
         flower.add(head);
@@ -498,7 +527,15 @@ export class SceneManager {
       const objMesh = this.createObjectMesh(obj.objectId);
       if (objMesh) {
         const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
-        objMesh.position.set(obj.x + offset.x + 0.5, height, obj.y + offset.z + 0.5);
+        const footprint = bs.getFootprint(obj.x, obj.y, obj.objectId, obj.rotation);
+        const width = Math.max(...footprint.map((t) => t.x)) - obj.x + 1,
+          heightTiles = Math.max(...footprint.map((t) => t.y)) - obj.y + 1;
+        objMesh.rotation.y = obj.rotation;
+        objMesh.position.set(
+          obj.x + offset.x + width / 2,
+          height,
+          obj.y + offset.z + heightTiles / 2,
+        );
         this.buildingGroup.add(objMesh);
       }
     }
@@ -508,8 +545,12 @@ export class SceneManager {
       if (room.tiles.length === 0) continue;
 
       // Compute room center
-      let cx = 0, cy = 0;
-      for (const t of room.tiles) { cx += t.x; cy += t.y; }
+      let cx = 0,
+        cy = 0;
+      for (const t of room.tiles) {
+        cx += t.x;
+        cy += t.y;
+      }
       cx /= room.tiles.length;
       cy /= room.tiles.length;
 
@@ -518,124 +559,23 @@ export class SceneManager {
       const labelZ = cy + offset.z;
 
       // Room label floating above
-      const roomTypeDef = ROOM_TYPE_NAMES[room.type] ?? room.type;
-      const label = this.createTextSprite(roomTypeDef, '#aaccff', 28);
+      const roomTypeDef =
+        (room.roomDefinitionId ? DataManager.getRoom(room.roomDefinitionId)?.name : null) ??
+        ROOM_TYPE_NAMES[room.type] ??
+        room.type;
+      const status = bs.getRoomStatus(room.id);
+      const label = this.createTextSprite(
+        roomTypeDef + (status.complete ? '' : ' !'),
+        status.complete ? '#bde7cc' : '#f2c477',
+        22,
+      );
       label.position.set(labelX, height + 2.5, labelZ);
       this.buildingGroup.add(label);
-
-      // Work station at room center
-      const station = this.createWorkStation(room.type);
-      if (station) {
-        station.position.set(labelX, height, labelZ);
-        this.buildingGroup.add(station);
-      }
     }
   }
 
   /**
    * Create a work station mesh for a room type.
-   */
-  private createWorkStation(roomType: string): THREE.Object3D | null {
-    const config = getWorkStation(roomType);
-    if (!config) return null;
-
-    const root = new THREE.Group();
-    const color = config.color;
-
-    if (config.geometry === 'cylinder') {
-      const geom = new THREE.CylinderGeometry(config.dimensions[0], config.dimensions[0], config.dimensions[1], 12);
-      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.y = config.yOffset;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      root.add(mesh);
-
-      // Add a small top detail
-      if (roomType === 'bathroom') {
-        const lidGeom = new THREE.BoxGeometry(config.dimensions[0] * 1.5, 0.05, config.dimensions[2] * 1.5);
-        const lidMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, flatShading: true });
-        const lid = new THREE.Mesh(lidGeom, lidMat);
-        lid.position.y = config.yOffset + config.dimensions[1] / 2;
-        lid.castShadow = true;
-        root.add(lid);
-      }
-    } else if (config.geometry === 'sphere') {
-      const r = config.dimensions[0];
-      const geom = new THREE.SphereGeometry(r, 12, 8);
-      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.6 });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.y = config.yOffset + r;
-      mesh.castShadow = true;
-      root.add(mesh);
-    } else if (config.geometry === 'cone') {
-      const geom = new THREE.ConeGeometry(config.dimensions[0], config.dimensions[1], 8);
-      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.y = config.yOffset;
-      mesh.castShadow = true;
-      root.add(mesh);
-    } else {
-      // Box geometry (default)
-      const [w, h, d] = config.dimensions;
-      const geom = new THREE.BoxGeometry(w, h, d);
-      const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.y = config.yOffset;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      root.add(mesh);
-
-      // Add details for specific work stations
-      if (roomType === 'temple') {
-        // Add candle on top of altar
-        const candleGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.15, 6);
-        const candleMat = new THREE.MeshStandardMaterial({
-          color: 0xffddaa,
-          emissive: 0xff8833,
-          emissiveIntensity: 0.5,
-        });
-        const candle = new THREE.Mesh(candleGeom, candleMat);
-        candle.position.y = h / 2 + 0.1;
-        root.add(candle);
-
-        // Small point light for altar candle
-        const light = new THREE.PointLight(0xff9944, 0.5, 3, 2);
-        light.position.y = h / 2 + 0.2;
-        root.add(light);
-      } else if (roomType === 'research_office') {
-        // Add book on desk
-        const bookGeom = new THREE.BoxGeometry(0.3, 0.06, 0.2);
-        const bookMat = new THREE.MeshStandardMaterial({ color: 0xaa3333, flatShading: true });
-        const book = new THREE.Mesh(bookGeom, bookMat);
-        book.position.y = h / 2 + 0.03;
-        book.castShadow = true;
-        root.add(book);
-      } else if (roomType === 'kitchen') {
-        // Add pot on stove
-        const potGeom = new THREE.CylinderGeometry(0.15, 0.12, 0.15, 8);
-        const potMat = new THREE.MeshStandardMaterial({ color: 0x555555, flatShading: true, metalness: 0.3 });
-        const pot = new THREE.Mesh(potGeom, potMat);
-        pot.position.y = h / 2 + 0.08;
-        pot.castShadow = true;
-        root.add(pot);
-      } else if (roomType === 'recreation_room') {
-        // Add game piece (small sphere)
-        const pieceGeom = new THREE.SphereGeometry(0.08, 8, 6);
-        const pieceMat = new THREE.MeshStandardMaterial({ color: 0xff6644, flatShading: true });
-        const piece = new THREE.Mesh(pieceGeom, pieceMat);
-        piece.position.y = h / 2 + 0.08;
-        piece.castShadow = true;
-        root.add(piece);
-      }
-    }
-
-    return root;
-  }
-
-  /**
-   * Create an object mesh from a placed object type string.
-   * Delegates to createPlaceholderMesh for geometry, but wraps in a group.
    */
   private createObjectMesh(objType: string): THREE.Object3D | null {
     const mesh = this.createPlaceholderMesh(objType, 0);
@@ -643,11 +583,9 @@ export class SceneManager {
     return mesh;
   }
 
-  syncEntities(): void {
-    const now = performance.now();
-    const dt = this.lastAnimTime > 0 ? Math.min((now - this.lastAnimTime) / 1000, 0.1) : 0;
+  syncEntities(dt = this.animationDelta): void {
+    const now = this.lastAnimTime + Math.max(0, dt) * 1000;
     this.lastAnimTime = now;
-
     const entities = this.world.query([Transform, Renderable]);
     const seen = new Set<number>();
 
@@ -665,7 +603,9 @@ export class SceneManager {
         const assetPath = this.getAssetPath(renderable.meshId, entity);
         const cached = assetPath && this.assets ? this.assets.get(assetPath) : null;
         if (cached) {
-          console.log(`[SceneManager] Replacing placeholder for entity ${entity}, meshId=${renderable.meshId}, path=${assetPath}`);
+          console.log(
+            `[SceneManager] Replacing placeholder for entity ${entity}, meshId=${renderable.meshId}, path=${assetPath}`,
+          );
           this.entityGroup.remove(obj);
           this.disposeObject(obj);
           this.entityMeshes.delete(entity);
@@ -717,7 +657,10 @@ export class SceneManager {
             // Take/BaseLayer names, so they intentionally remain in a safe rest pose
             // instead of playing an arbitrary clip that may be a ritual/combat pose.
             const asset = this.assets!.get(assetPath);
-            if (asset && asset.animations.length > 0) {
+            if (
+              asset &&
+              (asset.animations.length > 0 || this.sharedFollowerAnimations.length > 0)
+            ) {
               const controller = this.createFollowerAnimationController(cloned, asset.animations);
               if (controller) {
                 this.mixers.set(entity, controller.mixer);
@@ -745,19 +688,24 @@ export class SceneManager {
       const targetZ = transform.y + offset.z + 0.5;
 
       // Hide entities in unexplored fog areas
-      if (this.fog && !this.fog.isVisible(Math.round(transform.x), Math.round(transform.y))) {
+      if (
+        !renderable.visible ||
+        this.world.hasComponent(entity, OnMission) ||
+        (this.fog && !this.fog.isVisible(Math.round(transform.x), Math.round(transform.y)))
+      ) {
         obj.visible = false;
         continue;
       } else {
         obj.visible = true;
       }
 
-      obj.position.x += (targetX - obj.position.x) * 0.15;
-      obj.position.z += (targetZ - obj.position.z) * 0.15;
+      obj.position.x = targetX;
+      obj.position.z = targetZ;
 
       // Terrain grass top is at y=0.5. Place model wrapper so feet rest on terrain.
       // The wrapper contains the model shifted up so feet are at y=0 in the wrapper.
-      let baseY = transform.z + 0.5;
+      const terrain = this.map.getTile(Math.round(transform.x), Math.round(transform.y));
+      let baseY = transform.z + (terrain ? TERRAIN_HEIGHT[terrain.terrain] : 0.5);
 
       if (renderable.meshId.startsWith('follower')) {
         const ai = this.world.getComponent(entity, FollowerAI);
@@ -793,7 +741,7 @@ export class SceneManager {
             baseY += Math.sin(phase * 0.5) * 0.012;
             obj.rotation.z = Math.sin(phase * 0.35) * 0.015;
           } else if (animState === 'sleep') {
-            obj.rotation.z += (0.10 - obj.rotation.z) * 0.08;
+            obj.rotation.z += (0.1 - obj.rotation.z) * 0.08;
           } else {
             obj.rotation.z += (0 - obj.rotation.z) * 0.08;
           }
@@ -829,18 +777,29 @@ export class SceneManager {
   private createFollowerAnimationController(
     root: THREE.Object3D,
     embeddedClips: THREE.AnimationClip[],
-  ): { mixer: THREE.AnimationMixer; actions: Map<FollowerAnimationState, THREE.AnimationAction> } | null {
+  ): {
+    mixer: THREE.AnimationMixer;
+    actions: Map<FollowerAnimationState, THREE.AnimationAction>;
+  } | null {
     const mixer = new THREE.AnimationMixer(root);
     const actions = new Map<FollowerAnimationState, THREE.AnimationAction>();
 
-    for (const state of ['idle', 'walk', 'work', 'pray', 'eat', 'sleep'] as FollowerAnimationState[]) {
+    for (const state of [
+      'idle',
+      'walk',
+      'work',
+      'pray',
+      'eat',
+      'sleep',
+    ] as FollowerAnimationState[]) {
       const sharedIndex = findFollowerAnimationClip(this.sharedFollowerAnimations, state);
       const embeddedIndex = findFollowerAnimationClip(embeddedClips, state);
-      const clip = sharedIndex >= 0
-        ? this.sharedFollowerAnimations[sharedIndex]
-        : embeddedIndex >= 0
-          ? embeddedClips[embeddedIndex]
-          : null;
+      const clip =
+        sharedIndex >= 0
+          ? this.sharedFollowerAnimations[sharedIndex]
+          : embeddedIndex >= 0
+            ? embeddedClips[embeddedIndex]
+            : null;
 
       if (!clip) continue;
       const action = mixer.clipAction(clip);
@@ -853,11 +812,14 @@ export class SceneManager {
     return { mixer, actions };
   }
 
-  private getFollowerAnimationState(ai: FollowerAI | null | undefined, job: Job | null | undefined): FollowerAnimationState {
+  private getFollowerAnimationState(
+    ai: FollowerAI | null | undefined,
+    job: Job | null | undefined,
+  ): FollowerAnimationState {
     if (!ai) return 'idle';
     if (ai.state === 'moving') return 'walk';
 
-    if (ai.state === 'needs') {
+    if (ai.state === 'needs' && ai.needTargetTile && ai.activityReason.startsWith('Restoring')) {
       if (ai.needTarget === 'energy') return 'sleep';
       if (ai.needTarget === 'hunger') return 'eat';
       if (ai.needTarget === 'faith') return 'pray';
@@ -879,11 +841,7 @@ export class SceneManager {
     const actions = this.animationActions.get(entity);
     if (!actions || actions.size === 0) return;
 
-    const resolved = actions.has(state)
-      ? state
-      : actions.has('idle')
-        ? 'idle'
-        : null;
+    const resolved = actions.has(state) ? state : actions.has('idle') ? 'idle' : null;
     if (!resolved) return;
 
     if (this.activeAnimationState.get(entity) === resolved) return;
@@ -922,9 +880,12 @@ export class SceneManager {
     if (meshId.includes('wall')) return './assets/models/buildings/wall_straight.glb';
     if (meshId.includes('door')) return './assets/models/buildings/door.glb';
     if (meshId.includes('bed')) return './assets/models/buildings/bed.glb';
-    if (meshId.includes('altar') || meshId.includes('prayer')) return './assets/models/buildings/prayer_mat.glb';
-    if (meshId.includes('cookpot') || meshId.includes('cooking')) return './assets/models/buildings/cooking_pot.glb';
-    if (meshId.includes('desk') || meshId.includes('research')) return './assets/models/buildings/research_desk.glb';
+    if (meshId.includes('altar') || meshId.includes('prayer'))
+      return './assets/models/buildings/prayer_mat.glb';
+    if (meshId.includes('cookpot') || meshId.includes('cooking'))
+      return './assets/models/buildings/cooking_pot.glb';
+    if (meshId.includes('desk') || meshId.includes('research'))
+      return './assets/models/buildings/research_desk.glb';
     if (meshId.includes('ritual')) return './assets/models/buildings/ritual_circle.glb';
     return null;
   }
@@ -932,7 +893,10 @@ export class SceneManager {
   private createPlaceholderMesh(meshId: string, entityId: number = 0): THREE.Mesh {
     if (meshId.startsWith('follower')) {
       // Enhanced follower: capsule body with tier color + head + status indicator + name label
-      const root = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshBasicMaterial({ visible: false }));
+      const root = new THREE.Mesh(
+        new THREE.BoxGeometry(0.01, 0.01, 0.01),
+        new THREE.MeshBasicMaterial({ visible: false }),
+      );
 
       // Determine tier color from FollowerAI component
       let tierColor = TIER_COLORS['average'] ?? 0x4a7fc1;
@@ -961,7 +925,11 @@ export class SceneManager {
 
       // Head (sphere)
       const headGeom = new THREE.SphereGeometry(0.2, 10, 8);
-      const headMat = new THREE.MeshStandardMaterial({ color: 0xe0c0a0, flatShading: true, roughness: 0.6 });
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0xe0c0a0,
+        flatShading: true,
+        roughness: 0.6,
+      });
       const head = new THREE.Mesh(headGeom, headMat);
       head.position.y = 1.25;
       head.castShadow = true;
@@ -969,7 +937,11 @@ export class SceneManager {
 
       // Hood (cone, same color as body)
       const hoodGeom = new THREE.ConeGeometry(0.26, 0.35, 6);
-      const hoodMat = new THREE.MeshStandardMaterial({ color: tierColor, flatShading: true, roughness: 0.8 });
+      const hoodMat = new THREE.MeshStandardMaterial({
+        color: tierColor,
+        flatShading: true,
+        roughness: 0.8,
+      });
       const hood = new THREE.Mesh(hoodGeom, hoodMat);
       hood.position.y = 1.38;
       hood.castShadow = true;
@@ -978,9 +950,16 @@ export class SceneManager {
       // Status indicator — small sphere above head
       let statusColor = 0x000000;
       let showStatus = false;
-      if (aiState === 'working') { statusColor = 0x00ff00; showStatus = true; }
-      else if (aiState === 'sleeping') { statusColor = 0x4444ff; showStatus = true; }
-      else if (aiState === 'needs') { statusColor = 0xff0000; showStatus = true; }
+      if (aiState === 'working') {
+        statusColor = 0x00ff00;
+        showStatus = true;
+      } else if (aiState === 'sleeping') {
+        statusColor = 0x4444ff;
+        showStatus = true;
+      } else if (aiState === 'needs') {
+        statusColor = 0xff0000;
+        showStatus = true;
+      }
 
       if (showStatus) {
         const dotGeom = new THREE.SphereGeometry(0.06, 8, 6);
@@ -1070,7 +1049,10 @@ export class SceneManager {
     const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
     const geom = new THREE.BoxGeometry(1.02, height + 0.05, 1.02);
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xffff44, transparent: true, opacity: 0.35, depthWrite: false,
+      color: 0xffff44,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
     });
     this.highlightMesh = new THREE.Mesh(geom, mat);
     this.highlightMesh.position.set(x + offset.x + 0.5, height + 0.02, y + offset.z + 0.5);
@@ -1084,10 +1066,10 @@ export class SceneManager {
   private disposeObject(obj: THREE.Object3D): void {
     obj.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.geometry?.dispose();
+        if (!child.userData.sharedGeometry) child.geometry?.dispose();
         if (child.material) {
           if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose());
+            child.material.forEach((m) => m.dispose());
           } else {
             child.material.dispose();
           }
@@ -1104,6 +1086,8 @@ export class SceneManager {
     this.scene.remove(this.tileGroup);
     this.scene.remove(this.entityGroup);
     this.scene.remove(this.buildingGroup);
+    this.clearBuildPreview();
+    this.scene.remove(this.previewGroup);
     if (this.buildingFillLight) this.scene.remove(this.buildingFillLight);
   }
 }

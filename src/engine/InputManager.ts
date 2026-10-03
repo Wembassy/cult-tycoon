@@ -5,7 +5,10 @@
  * so that right-drag can be used for camera rotation without triggering cancel.
  */
 
-export interface TileCoord { x: number; y: number }
+export interface TileCoord {
+  x: number;
+  y: number;
+}
 
 export type InputMode = 'select' | 'build' | 'demolish';
 
@@ -27,6 +30,7 @@ export class InputManager {
   private screenToTile: (x: number, y: number) => TileCoord;
   private state: InputState;
   private disposed = false;
+  private enabled = true;
 
   // Callbacks
   onTileHover?: MouseHandler;
@@ -70,11 +74,28 @@ export class InputManager {
     this.canvas.addEventListener('contextmenu', this.boundContextMenu);
   }
 
-  getMode(): InputMode { return this.state.mode; }
-  setMode(mode: InputMode): void { this.state.mode = mode; }
-  getState(): InputState { return { ...this.state }; }
+  getMode(): InputMode {
+    return this.state.mode;
+  }
+  setMode(mode: InputMode): void {
+    if (mode !== this.state.mode) this.cancelDrag();
+    this.state.mode = mode;
+  }
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.cancelDrag();
+  }
+  private cancelDrag(): void {
+    this.state.isDragging = false;
+    this.state.dragStart = null;
+    this.state.dragEnd = null;
+  }
+  getState(): InputState {
+    return { ...this.state };
+  }
 
   private handleMouseMove(e: MouseEvent): void {
+    if (!this.enabled) return;
     const rect = this.canvas.getBoundingClientRect();
     const tile = this.screenToTile(e.clientX - rect.left, e.clientY - rect.top);
     this.state.hoveredTile = tile;
@@ -88,7 +109,7 @@ export class InputManager {
 
   private handleMouseDown(e: MouseEvent): void {
     // Only handle left-click; right-click is handled by IsoCamera for rotation
-    if (e.button !== 0) return;
+    if (!this.enabled || e.button !== 0) return;
 
     const rect = this.canvas.getBoundingClientRect();
     const tile = this.screenToTile(e.clientX - rect.left, e.clientY - rect.top);
@@ -105,7 +126,12 @@ export class InputManager {
     }
   }
 
-  private handleMouseUp(_e: MouseEvent): void {
+  private handleMouseUp(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    if (!this.enabled || e.target !== this.canvas) {
+      this.cancelDrag();
+      return;
+    }
     if (this.state.isDragging && this.state.dragStart && this.state.dragEnd) {
       this.onDragEnd?.(this.state.dragStart, this.state.dragEnd);
     }
@@ -115,15 +141,18 @@ export class InputManager {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
+    if (
+      !this.enabled ||
+      (e.target as HTMLElement)?.closest?.('input,select,textarea,[contenteditable=true]')
+    )
+      return;
     const key = e.key.toLowerCase();
     this.onKeyPressed?.(key);
 
     // Built-in shortcuts
     switch (key) {
       case 'escape':
-        this.state.mode = 'select';
-        this.state.selectedTile = null;
-        this.state.isDragging = false;
+        this.cancelDrag();
         break;
       case ' ':
         e.preventDefault();

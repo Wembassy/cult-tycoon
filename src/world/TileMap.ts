@@ -25,6 +25,7 @@ const TERRAIN_BUILDABLE: Record<TerrainType, boolean> = {
 
 export class TileMap {
   private tiles: Tile[][] = [];
+  revision = 0;
   readonly width: number;
   readonly height: number;
 
@@ -53,13 +54,22 @@ export class TileMap {
   }
 
   getTile(x: number, y: number): Tile | null {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return null;
+    if (
+      !Number.isInteger(x) ||
+      !Number.isInteger(y) ||
+      x < 0 ||
+      x >= this.width ||
+      y < 0 ||
+      y >= this.height
+    )
+      return null;
     return this.tiles[y][x];
   }
 
   setTerrain(x: number, y: number, terrain: TerrainType): void {
     const tile = this.getTile(x, y);
     if (!tile) return;
+    if (tile.terrain !== terrain) this.revision++;
     tile.terrain = terrain;
     tile.buildable = TERRAIN_BUILDABLE[terrain];
   }
@@ -76,7 +86,10 @@ export class TileMap {
 
   setOccupied(x: number, y: number, occupied: boolean): void {
     const tile = this.getTile(x, y);
-    if (tile) tile.occupied = occupied;
+    if (tile && tile.occupied !== occupied) {
+      tile.occupied = occupied;
+      this.revision++;
+    }
   }
 
   setRoomId(x: number, y: number, roomId: number | null): void {
@@ -101,7 +114,11 @@ export class TileMap {
    * that share the same properties (for room detection).
    * Returns array of {x, y} coordinates.
    */
-  floodFill(startX: number, startY: number, predicate: (tile: Tile) => boolean): { x: number; y: number }[] {
+  floodFill(
+    startX: number,
+    startY: number,
+    predicate: (tile: Tile) => boolean,
+  ): { x: number; y: number }[] {
     const visited = new Set<string>();
     const result: { x: number; y: number }[] = [];
     const queue: { x: number; y: number }[] = [{ x: startX, y: startY }];
@@ -116,12 +133,7 @@ export class TileMap {
       if (!tile || !predicate(tile)) continue;
 
       result.push({ x, y });
-      queue.push(
-        { x: x + 1, y },
-        { x: x - 1, y },
-        { x, y: y + 1 },
-        { x, y: y - 1 },
-      );
+      queue.push({ x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 });
     }
 
     return result;
@@ -134,8 +146,8 @@ export class TileMap {
   isEnclosed(x: number, y: number): boolean {
     const directions = [
       { dx: 0, dy: -1 }, // north
-      { dx: 1, dy: 0 },  // east
-      { dx: 0, dy: 1 },  // south
+      { dx: 1, dy: 0 }, // east
+      { dx: 0, dy: 1 }, // south
       { dx: -1, dy: 0 }, // west
     ];
     let blockedSides = 0;
@@ -150,6 +162,7 @@ export class TileMap {
 
   clear(): void {
     this.tiles = [];
+    this.revision++;
     this.initialize();
   }
 

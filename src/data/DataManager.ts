@@ -29,6 +29,8 @@ export interface ObjectDef {
 }
 
 export interface RoomDef {
+  requiresFloor?: boolean;
+  requiresEnclosure?: boolean;
   id: string;
   name: string;
   minSize: number;
@@ -127,18 +129,18 @@ export class DataManager {
   }
 
   static getObject(id: string): ObjectDef | undefined {
-    return this.getObjects().find(o => o.id === id);
+    return this.getObjects().find((o) => o.id === id);
   }
 
   static getRoom(id: string): RoomDef | undefined {
-    return this.getRooms().find(r => r.id === id);
+    return this.getRooms().find((r) => r.id === id);
   }
 
   static getRitual(id: string): RitualDef | undefined {
-    return this.getRituals().find(r => r.id === id);
+    return this.getRituals().find((r) => r.id === id);
   }
 
   static getTechNode(id: string): TechDef | undefined {
-    return this.getTech().find(t => t.id === id);
+    return this.getTech().find((t) => t.id === id);
   }
 }

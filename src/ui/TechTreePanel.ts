@@ -264,6 +264,8 @@ export class TechTreePanel {
    * Update the panel with current tech tree state.
    */
   update(data: TechTreePanelData): void {
+    if (this.panel.contains(document.activeElement)) return;
+    if (JSON.stringify(this.currentData) === JSON.stringify(data)) return;
     this.currentData = data;
     if (!this._isVisible) return;
     this.render();
@@ -273,7 +275,7 @@ export class TechTreePanel {
     const branches = getTechBranches();
     const unlockedSet = new Set(this.currentData.unlockedIds);
     const availableNodes = getAvailableTechs(this.currentData.unlockedIds);
-    const availableIds = new Set(availableNodes.map(n => n.id));
+    const availableIds = new Set(availableNodes.map((n) => n.id));
 
     // Header
     this.panel.innerHTML = `
@@ -329,7 +331,8 @@ export class TechTreePanel {
     const isUnlocked = unlockedSet.has(node.id);
     const isAvailable = availableIds.has(node.id);
     const canAffordInfluence = this.currentData.influence >= node.cost.influence;
-    const canAffordFaith = node.cost.faith === undefined || this.currentData.faith >= node.cost.faith;
+    const canAffordFaith =
+      node.cost.faith === undefined || this.currentData.faith >= node.cost.faith;
 
     if (isUnlocked) {
       el.className = 'tech-tree-node unlocked';
@@ -356,8 +359,8 @@ export class TechTreePanel {
     // Prerequisites
     let prereqsHtml = '';
     if (node.prerequisites.length > 0) {
-      const prereqLabels = node.prerequisites.map(prereqId => {
-        const prereqNode = TECH_TREE_NODES.find(n => n.id === prereqId);
+      const prereqLabels = node.prerequisites.map((prereqId) => {
+        const prereqNode = TECH_TREE_NODES.find((n) => n.id === prereqId);
         const prereqName = prereqNode ? prereqNode.name : prereqId;
         const met = unlockedSet.has(prereqId);
         return `<span class="${met ? 'prereq-met' : 'prereq-unmet'}">${met ? '✓' : '🔒'} ${prereqName}</span>`;
@@ -367,7 +370,9 @@ export class TechTreePanel {
 
     // Special case for divine_inspiration
     if (node.id === 'divine_inspiration' && node.prerequisites.length === 0) {
-      const otherUnlocked = this.currentData.unlockedIds.filter(id => id !== 'divine_inspiration').length;
+      const otherUnlocked = this.currentData.unlockedIds.filter(
+        (id) => id !== 'divine_inspiration',
+      ).length;
       const met = otherUnlocked >= 3;
       prereqsHtml = `<div class="tech-tree-node-prereqs">Requires: <span class="${met ? 'prereq-met' : 'prereq-unmet'}">${met ? '✓' : '🔒'} Any 3 other techs (${otherUnlocked}/3)</span></div>`;
     }

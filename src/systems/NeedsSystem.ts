@@ -7,6 +7,7 @@ import type { World } from '../ecs/World';
 import { Needs } from '../components/Needs';
 import { FollowerAI } from '../components/FollowerAI';
 import { Traits, TraitType } from '../components/Traits';
+import { OnMission } from '../components/OnMission';
 import { Prestige } from '../components/Prestige';
 import type { QualityTier } from '../components/CultistTier';
 
@@ -21,13 +22,13 @@ const TIER_EXPECTED_PRESTIGE: Record<QualityTier, number> = {
 };
 
 export interface NeedsConfig {
-  hungerDecay: number;   // per tick
+  hungerDecay: number; // per tick
   faithDecay: number;
   funDecay: number;
   sanityDecay: number;
-  energyDecay: number;   // per tick (restored by sleep)
-  bladderDecay: number;  // per tick (restored by bathroom)
-  hygieneDecay: number;  // per tick (restored by shower)
+  energyDecay: number; // per tick (restored by sleep)
+  bladderDecay: number; // per tick (restored by bathroom)
+  hygieneDecay: number; // per tick (restored by shower)
 }
 
 const DEFAULT_CONFIG: NeedsConfig = {
@@ -66,6 +67,7 @@ export class NeedsSystem {
     let critical = 0;
 
     for (const entity of entities) {
+      if (world.hasComponent(entity, OnMission)) continue;
       const needs = world.getComponent(entity, Needs)!;
       const ai = world.getComponent(entity, FollowerAI)!;
       const traits = world.getComponent(entity, Traits);
@@ -97,31 +99,23 @@ export class NeedsSystem {
         }
       }
 
-      // Trigger state changes on critical needs
-      if (needs.hunger < 20 && ai.state !== 'needs') {
-        ai.state = 'needs';
-        ai.stateTimer = 0;
-        critical++;
-      } else if (needs.faith < 20 && ai.state !== 'needs') {
-        ai.state = 'needs';
-        ai.stateTimer = 0;
-        critical++;
-      } else if (needs.sanity < 15 && ai.state !== 'needs') {
-        ai.state = 'needs';
-        ai.stateTimer = 0;
-        critical++;
-      } else if (needs.energy < 15 && ai.state !== 'needs') {
-        ai.state = 'needs';
-        ai.stateTimer = 0;
-        critical++;
-      } else if (needs.bladder < 15 && ai.state !== 'needs') {
-        ai.state = 'needs';
-        ai.stateTimer = 0;
-        critical++;
-      } else if (needs.hygiene < 15 && ai.state !== 'needs') {
-        ai.state = 'needs';
-        ai.stateTimer = 0;
-        critical++;
+      // Establish one self-care intent. Do not stop its navigation every frame.
+      if (!ai.needTarget) {
+        const urgent = (
+          ['hunger', 'energy', 'bladder', 'hygiene', 'faith', 'sanity', 'fun'] as const
+        )
+          .filter((need) => needs[need] < (need === 'hunger' || need === 'faith' ? 20 : 15))
+          .sort((a, b) => needs[a] - needs[b])[0];
+        if (urgent) {
+          ai.needTarget = urgent;
+          ai.needTargetTile = null;
+          ai.needFacilityId = null;
+          ai.path = [];
+          ai.pathIndex = 0;
+          ai.state = 'needs';
+          ai.stateTimer = 0;
+          critical++;
+        }
       }
     }
 

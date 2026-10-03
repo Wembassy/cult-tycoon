@@ -31,6 +31,9 @@ export class DialogSystem {
   private overlay: HTMLDivElement | null = null;
   private styleEl: HTMLStyleElement | null = null;
 
+  get isVisible(): boolean {
+    return !!this.overlay;
+  }
   constructor() {
     this.injectStyles();
   }
@@ -53,7 +56,7 @@ export class DialogSystem {
         to { opacity: 1; }
       }
       .ds-card {
-        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+        background: #162321;
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 2px solid rgba(168,85,247,0.4);
@@ -148,8 +151,8 @@ export class DialogSystem {
       btnEl.className = `ds-btn ds-btn-${btn.style ?? 'default'}`;
       btnEl.textContent = btn.label;
       btnEl.addEventListener('click', () => {
-        btn.onClick?.();
         this.close();
+        btn.onClick?.();
       });
       btnContainer.appendChild(btnEl);
     }
@@ -207,12 +210,15 @@ export class DialogSystem {
   /**
    * Show a ritual result dialog.
    */
-  ritualResult(ritualName: string, result: {
-    influenceGain: number;
-    faithGain: number;
-    notorietyGain: number;
-    sideEffects?: string[];
-  }): void {
+  ritualResult(
+    ritualName: string,
+    result: {
+      influenceGain: number;
+      faithGain: number;
+      notorietyGain: number;
+      sideEffects?: string[];
+    },
+  ): void {
     const body = `
       <p><b>${ritualName}</b> has been completed!</p>
       <p>✨ Influence: +${result.influenceGain}</p>
@@ -254,13 +260,17 @@ export class DialogSystem {
   /**
    * Show a game over dialog.
    */
-  gameOver(victory: boolean, stats: {
-    day: number;
-    pop: number;
-    influence: number;
-    wealth: number;
-    notoriety: number;
-  }, onNewGame: () => void): void {
+  gameOver(
+    victory: boolean,
+    stats: {
+      day: number;
+      pop: number;
+      influence: number;
+      wealth: number;
+      notoriety: number;
+    },
+    onNewGame: () => void,
+  ): void {
     const body = `
       <div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin:12px 0;">
         <div>Day: <b>${stats.day}</b></div>

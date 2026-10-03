@@ -314,6 +314,8 @@ export class SchedulePanel {
    * Update the panel with current data.
    */
   update(data: SchedulePanelData): void {
+    if (this.panel.contains(document.activeElement)) return;
+    if (JSON.stringify(this.currentData) === JSON.stringify(data)) return;
     this.currentData = data;
     if (!this._isVisible) return;
     this.render();
@@ -337,7 +339,7 @@ export class SchedulePanel {
     const body = this.panel.querySelector('.schedule-panel-body') as HTMLElement;
 
     for (const shift of shifts) {
-      const shiftCultists = this.currentData.cultists.filter(c => c.shift === shift);
+      const shiftCultists = this.currentData.cultists.filter((c) => c.shift === shift);
       const shiftColor = SHIFT_COLORS[shift];
 
       const group = document.createElement('div');
@@ -402,11 +404,13 @@ export class SchedulePanel {
 
     // Shift toggle buttons
     const shifts: Shift[] = ['morning', 'afternoon', 'night'];
-    const toggleHtml = shifts.map(s => {
-      const isActive = cultist.shift === s;
-      const icon = SHIFT_ICONS[s];
-      return `<button class="schedule-shift-btn ${isActive ? 'active' : ''}" data-shift="${s}" data-entity="${cultist.id}" title="${SHIFT_LABELS[s]}">${icon}</button>`;
-    }).join('');
+    const toggleHtml = shifts
+      .map((s) => {
+        const isActive = cultist.shift === s;
+        const icon = SHIFT_ICONS[s];
+        return `<button class="schedule-shift-btn ${isActive ? 'active' : ''}" data-shift="${s}" data-entity="${cultist.id}" title="${SHIFT_LABELS[s]}">${icon}</button>`;
+      })
+      .join('');
 
     el.innerHTML = `
       <span class="schedule-cultist-name">${cultist.name}</span>
@@ -417,7 +421,7 @@ export class SchedulePanel {
     `;
 
     // Wire shift toggle buttons
-    el.querySelectorAll('.schedule-shift-btn').forEach(btn => {
+    el.querySelectorAll('.schedule-shift-btn').forEach((btn) => {
       const button = btn as HTMLButtonElement;
       button.addEventListener('click', () => {
         const newShift = button.getAttribute('data-shift') as Shift;

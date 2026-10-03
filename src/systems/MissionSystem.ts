@@ -86,6 +86,7 @@ export type MissionResolvedCallback = (
 let missionIdCounter = 0;
 
 export class MissionSystem {
+  completedCount = 0;
   private activeMissions = new Map<string, ActiveMission>();
   private rng: () => number;
   private onEvent?: MissionEventCallback;
@@ -143,6 +144,9 @@ export class MissionSystem {
         return { success: false, reason: `Cultist ${id} is already on a mission` };
       }
     }
+
+    if (new Set(cultistIds).size !== cultistIds.length)
+      return { success: false, reason: 'Select different cultists for each team slot' };
 
     // Create the mission
     const missionId = `mission_${++missionIdCounter}`;
@@ -207,11 +211,12 @@ export class MissionSystem {
 
           // Surface event to UI via callback
           this.onEvent?.(missionId, event, event.choices);
+          break; // One decision at a time, even after a large time step.
         }
       }
 
       // Check if mission is complete
-      if (mission.progress >= 1 && !mission.completed) {
+      if (mission.progress >= 1 && !mission.completed && !mission.pendingEvent) {
         this.resolveMission(missionId, world);
       }
     }
@@ -290,6 +295,7 @@ export class MissionSystem {
     this.activeMissions.delete(missionId);
 
     // Fire resolved callback
+    this.completedCount++;
     this.onResolved?.(missionId, mission.templateId, isSuccess, rewards);
 
     return { success: isSuccess, rewards };
@@ -320,7 +326,11 @@ export class MissionSystem {
 
     if (choice.skillCheck) {
       // Perform skill check
-      const teamSkill = this.calculateTeamSkillForSkill(world, mission.cultistIds, choice.skillCheck.skill);
+      const teamSkill = this.calculateTeamSkillForSkill(
+        world,
+        mission.cultistIds,
+        choice.skillCheck.skill,
+      );
       const successChance = teamSkill / (teamSkill + choice.skillCheck.difficulty * 2);
       success = this.rng() < successChance;
     }
@@ -343,7 +353,8 @@ export class MissionSystem {
         (mission.accumulatedRewards.heatReduction ?? 0) + outcome.heatReduction;
     }
     if (outcome.heatGain) {
-      mission.accumulatedRewards.heatGain = (mission.accumulatedRewards.heatGain ?? 0) + outcome.heatGain;
+      mission.accumulatedRewards.heatGain =
+        (mission.accumulatedRewards.heatGain ?? 0) + outcome.heatGain;
     }
     if (outcome.decorItemId) {
       mission.accumulatedRewards.decorItemIds.push(outcome.decorItemId);
@@ -409,7 +420,11 @@ export class MissionSystem {
   /**
    * Calculate team skill for a specific skill name.
    */
-  private calculateTeamSkillForSkill(world: World, cultistIds: number[], skillName: string): number {
+  private calculateTeamSkillForSkill(
+    world: World,
+    cultistIds: number[],
+    skillName: string,
+  ): number {
     let total = 0;
     let count = 0;
 
@@ -440,5 +455,46 @@ export class MissionSystem {
       total += this.calculateTeamSkillForSkill(world, cultistIds, skillName);
     }
     return total / skillNames.length;
+  }
+  snapshot(): {
+    completedCount: number;
+    missions: (Omit<ActiveMission, 'triggeredEvents'> & { triggeredEvents: string[] })[];
+  } {
+    return {
+      completedCount: this.completedCount,
+      missions: [...this.activeMissions.values()].map((m) => ({
+        ...m,
+        triggeredEvents: [...m.triggeredEvents],
+      })),
+    };
+  }
+  restore(data: ReturnType<MissionSystem['snapshot']> | undefined, world: World): void {
+    this.activeMissions.clear();
+    this.completedCount = data?.completedCount ?? 0;
+    for (const id of world.query([OnMission])) world.removeComponent(id, OnMission);
+    for (const item of data?.missions ?? []) {
+      if (!MISSION_TEMPLATES[item.templateId] || item.completed) continue;
+      const mission = {
+        ...item,
+        cultistIds: item.cultistIds.filter((id) => world.hasEntity(id)),
+        triggeredEvents: new Set(item.triggeredEvents),
+      };
+      if (!mission.cultistIds.length) continue;
+      this.activeMissions.set(item.id, mission);
+      missionIdCounter = Math.max(missionIdCounter, Number(item.id.replace('mission_', '')) || 0);
+      for (const id of mission.cultistIds) {
+        const marker = new OnMission(id);
+        marker.missionId = item.id;
+        world.addComponent(id, marker);
+      }
+    }
+  }
+  presentPendingEvents(): void {
+    for (const mission of this.activeMissions.values()) {
+      const event = MISSION_TEMPLATES[mission.templateId]?.events.find(
+        (e) => e.id === mission.pendingEvent?.eventId,
+      );
+      if (event) this.onEvent?.(mission.id, event, event.choices);
+    }
   }
 }

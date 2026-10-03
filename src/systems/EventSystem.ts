@@ -52,7 +52,11 @@ export class EventSystem {
   private rng: () => number;
   private onEventFired?: (event: GameEvent) => void;
 
-  constructor(events: EventDef[], seed: number = Date.now(), onEventFired?: (event: GameEvent) => void) {
+  constructor(
+    events: EventDef[],
+    seed: number = Date.now(),
+    onEventFired?: (event: GameEvent) => void,
+  ) {
     this.events = events;
     this.onEventFired = onEventFired;
     let state = seed;
@@ -62,16 +66,20 @@ export class EventSystem {
     };
   }
 
+  reset(): void {
+    this.tickCount = 0;
+    this.dayCount = 1;
+    this.firedEvents = [];
+  }
+  setDay(day: number): void {
+    this.dayCount = day;
+  }
   /**
    * Update event system. Checks for events each tick.
    * Events fire stochastically based on their probability per tick.
    */
   update(world: World, dt: number): void {
     this.tickCount += dt;
-    const newDay = Math.floor(this.tickCount / 1800) + 1; // 60 ticks/sec * 30 sec = 1800 ticks per day
-    if (newDay > this.dayCount) {
-      this.dayCount = newDay;
-    }
 
     // Check each event
     for (const event of this.events) {
@@ -116,7 +124,7 @@ export class EventSystem {
       }
       if (event.effects.moraleBoost && needs) {
         needs.fun = Math.min(100, needs.fun + (event.effects.moraleBoost as number));
-        needs.sanity = Math.min(100, needs.sanity + (event.effects.moraleBoost as number / 2));
+        needs.sanity = Math.min(100, needs.sanity + (event.effects.moraleBoost as number) / 2);
       }
       if (event.effects.influenceGain) {
         // Influence is tracked at cult level — caller handles

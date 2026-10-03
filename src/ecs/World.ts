@@ -13,8 +13,11 @@ export class World {
   /**
    * Create a new entity and return its ID
    */
-  createEntity(): Entity {
-    const id = this.nextEntityId++;
+  createEntity(requestedId?: number): Entity {
+    const id = requestedId ?? this.nextEntityId;
+    if (!Number.isSafeInteger(id) || id < 0 || this.entitySet.has(id))
+      throw new Error('Invalid or duplicate entity ID');
+    this.nextEntityId = Math.max(this.nextEntityId, id + 1);
     this.entitySet.add(id);
     return id;
   }
@@ -54,7 +57,10 @@ export class World {
   /**
    * Remove a component type from an entity
    */
-  removeComponent<T extends Component>(entity: Entity, componentType: new (entity: Entity) => T): void {
+  removeComponent<T extends Component>(
+    entity: Entity,
+    componentType: new (entity: Entity) => T,
+  ): void {
     const typeName = componentType.name;
     const store = this.components.get(typeName);
     if (store) {
@@ -65,7 +71,10 @@ export class World {
   /**
    * Get a component for an entity, or undefined
    */
-  getComponent<T extends Component>(entity: Entity, componentType: new (entity: Entity) => T): T | undefined {
+  getComponent<T extends Component>(
+    entity: Entity,
+    componentType: new (entity: Entity) => T,
+  ): T | undefined {
     const typeName = componentType.name;
     const store = this.components.get(typeName);
     if (!store) return undefined;
@@ -75,7 +84,10 @@ export class World {
   /**
    * Check if an entity has a component
    */
-  hasComponent<T extends Component>(entity: Entity, componentType: new (entity: Entity) => T): boolean {
+  hasComponent<T extends Component>(
+    entity: Entity,
+    componentType: new (entity: Entity) => T,
+  ): boolean {
     const typeName = componentType.name;
     const store = this.components.get(typeName);
     return store ? store.has(entity) : false;

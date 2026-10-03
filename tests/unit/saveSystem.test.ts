@@ -15,7 +15,8 @@ import { SaveSystem, SerializedCult } from '@systems/SaveSystem';
 function createFollower(world: World): number {
   const entity = world.createEntity();
   const transform = new Transform(entity);
-  transform.x = 5; transform.y = 5;
+  transform.x = 5;
+  transform.y = 5;
   world.addComponent(entity, transform);
   world.addComponent(entity, new Renderable(entity));
   world.addComponent(entity, new Needs(entity));
@@ -29,17 +30,29 @@ function createFollower(world: World): number {
 }
 
 const TEST_CULT: SerializedCult = {
-  influence: 150, wealth: 300, notoriety: 20,
-  faith: 75, morale: 80, population: 5, maxPopulation: 10,
-  leaderName: 'Chris', leaderTitle: 'Founder', day: 3, hour: 14,
+  influence: 150,
+  wealth: 300,
+  notoriety: 20,
+  faith: 75,
+  morale: 80,
+  population: 5,
+  maxPopulation: 10,
+  leaderName: 'Chris',
+  leaderTitle: 'Founder',
+  day: 3,
+  hour: 14,
 };
 
 // Mock localStorage
 const mockStorage: Record<string, string> = {};
 const localStorageMock = {
   getItem: (key: string) => mockStorage[key] ?? null,
-  setItem: (key: string, value: string) => { mockStorage[key] = value; },
-  removeItem: (key: string) => { delete mockStorage[key]; },
+  setItem: (key: string, value: string) => {
+    mockStorage[key] = value;
+  },
+  removeItem: (key: string) => {
+    delete mockStorage[key];
+  },
 };
 
 vi.stubGlobal('localStorage', localStorageMock);
@@ -218,9 +231,17 @@ describe('SaveSystem — Edge Cases', () => {
 
   it('should save with zero resources', () => {
     const zeroCult: SerializedCult = {
-      influence: 0, wealth: 0, notoriety: 0,
-      faith: 0, morale: 0, population: 0, maxPopulation: 0,
-      leaderName: '', leaderTitle: '', day: 0, hour: 0,
+      influence: 0,
+      wealth: 0,
+      notoriety: 0,
+      faith: 0,
+      morale: 0,
+      population: 0,
+      maxPopulation: 0,
+      leaderName: '',
+      leaderTitle: '',
+      day: 0,
+      hour: 0,
     };
     const data = save.serialize(world, map, zeroCult, { hour: 0, day: 0 });
     const success = save.save(data);
@@ -247,10 +268,14 @@ describe('SaveSystem — Edge Cases', () => {
 
   it('should overwrite previous save on multiple saves', () => {
     const cult1: SerializedCult = {
-      ...TEST_CULT, influence: 100, leaderName: 'Alice',
+      ...TEST_CULT,
+      influence: 100,
+      leaderName: 'Alice',
     };
     const cult2: SerializedCult = {
-      ...TEST_CULT, influence: 999, leaderName: 'Bob',
+      ...TEST_CULT,
+      influence: 999,
+      leaderName: 'Bob',
     };
 
     save.save(save.serialize(world, map, cult1, { hour: 0, day: 1 }));
@@ -291,14 +316,15 @@ describe('SaveSystem — Corrupted Data', () => {
     mockStorage['cult_tycoon_save_0'] = JSON.stringify({ foo: 'bar' });
     const loaded = save.load();
     // load() parses and returns it (version check is just a warning, not a failure)
-    expect(loaded).not.toBeNull();
-    expect((loaded as any).foo).toBe('bar');
+    expect(loaded).toBeNull();
   });
 
   it('should handle localStorage errors gracefully on save', () => {
     // Override setItem to throw
     const originalSetItem = localStorageMock.setItem;
-    localStorageMock.setItem = () => { throw new Error('QuotaExceeded'); };
+    localStorageMock.setItem = () => {
+      throw new Error('QuotaExceeded');
+    };
 
     const world = new World();
     const map = new TileMap(4, 4);
@@ -312,7 +338,9 @@ describe('SaveSystem — Corrupted Data', () => {
 
   it('should handle localStorage errors gracefully on delete', () => {
     const originalRemoveItem = localStorageMock.removeItem;
-    localStorageMock.removeItem = () => { throw new Error('Storage error'); };
+    localStorageMock.removeItem = () => {
+      throw new Error('Storage error');
+    };
 
     const success = save.deleteSave();
     expect(success).toBe(false);
@@ -336,9 +364,17 @@ describe('SaveSystem — Full Round-Trip', () => {
 
   it('should restore all cult stats fields after save/load', () => {
     const cult: SerializedCult = {
-      influence: 250, wealth: 1000, notoriety: 75,
-      faith: 120, morale: 65, population: 8, maxPopulation: 15,
-      leaderName: 'Zelda', leaderTitle: 'High Priestess', day: 42, hour: 23,
+      influence: 250,
+      wealth: 1000,
+      notoriety: 75,
+      faith: 120,
+      morale: 65,
+      population: 8,
+      maxPopulation: 15,
+      leaderName: 'Zelda',
+      leaderTitle: 'High Priestess',
+      day: 42,
+      hour: 23,
     };
     const data = save.serialize(world, map, cult, { hour: 23, day: 42 });
     save.save(data);

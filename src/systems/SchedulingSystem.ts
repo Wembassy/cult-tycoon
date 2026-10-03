@@ -1,67 +1,41 @@
-/**
- * SchedulingSystem — Manages shift assignments and daily activity scheduling.
- *
- * Three shifts provide 24/7 coverage:
- *   Morning   (6-14):  work 6-12, eat 12-13, free 13-14
- *   Afternoon (14-22): free 6-10, eat 10-11, work 14-20, eat 20-21, free 21-22
- *   Night     (22-6):  free 22-23, work 0-4, eat 4-5, sleep 5-6
- *
- * During update(), the system checks the current game hour and sets each
- * cultist's FollowerAI.state to the appropriate activity.
- */
-
+/** Schedules express availability; AI owns movement and self-care. */
 import type { World } from '../ecs/World';
 import { System } from '../ecs/System';
 import { Schedule, Shift } from '../components/Schedule';
 import { FollowerAI } from '../components/FollowerAI';
-
+import { Needs } from '../components/Needs';
+import { OnMission } from '../components/OnMission';
+export type ScheduledActivity = 'working' | 'eating' | 'free' | 'sleeping';
+export function getScheduledActivity(shift: Shift, hour: number): ScheduledActivity {
+  const h = ((hour % 24) + 24) % 24;
+  const offset: Record<Shift, number> = { morning: 0, afternoon: 8, night: 16 };
+  const local = (h - offset[shift] + 24) % 24;
+  if (local >= 22 || local < 6) return 'sleeping';
+  if (local >= 6 && local < 12) return 'working';
+  if (local >= 12 && local < 13) return 'eating';
+  if (local >= 14 && local < 18) return 'working';
+  return 'free';
+}
 export class SchedulingSystem implements System {
-  private currentHour: number = 6;
-
-  /**
-   * Set the current game hour (0-23). Called externally by the game loop.
-   */
+  private currentHour = 8;
   setHour(hour: number): void {
-    this.currentHour = hour % 24;
+    this.currentHour = ((hour % 24) + 24) % 24;
   }
-
-  /**
-   * Auto-assign shifts evenly across all cultists who don't yet have a Schedule.
-   * Existing schedules are preserved.
-   */
   autoAssignShifts(world: World): void {
-    const entities = world.query([FollowerAI]);
-    const shiftCounts: Record<Shift, number> = { morning: 0, afternoon: 0, night: 0 };
-
-    // Count existing shift assignments
-    for (const entity of entities) {
-      const schedule = world.getComponent(entity, Schedule);
-      if (schedule) {
-        shiftCounts[schedule.shift]++;
-      }
+    const counts: Record<Shift, number> = { morning: 0, afternoon: 0, night: 0 };
+    for (const id of world.query([FollowerAI])) {
+      const schedule = world.getComponent(id, Schedule);
+      if (schedule) counts[schedule.shift]++;
     }
-
-    // Assign new followers to the least-populated shift
-    for (const entity of entities) {
-      let schedule = world.getComponent(entity, Schedule);
-      if (!schedule) {
-        schedule = new Schedule(entity);
-        // Pick the shift with the fewest members
-        const leastShift = (Object.keys(shiftCounts) as Shift[]).reduce((a, b) =>
-          shiftCounts[a] <= shiftCounts[b] ? a : b,
+    for (const id of world.query([FollowerAI]))
+      if (!world.hasComponent(id, Schedule)) {
+        const shift = (Object.keys(counts) as Shift[]).reduce((a, b) =>
+          counts[a] <= counts[b] ? a : b,
         );
-        schedule.shift = leastShift;
-        // Set sleep hours based on shift
-        schedule.sleepStartHour = this.getSleepStartForShift(leastShift);
-        world.addComponent(entity, schedule);
-        shiftCounts[leastShift]++;
+        this.assignShift(world, id, shift);
+        counts[shift]++;
       }
-    }
   }
-
-  /**
-   * Manually assign a specific shift to a cultist.
-   */
   assignShift(world: World, entityId: number, shift: Shift): void {
     let schedule = world.getComponent(entityId, Schedule);
     if (!schedule) {
@@ -69,109 +43,30 @@ export class SchedulingSystem implements System {
       world.addComponent(entityId, schedule);
     }
     schedule.shift = shift;
-    schedule.sleepStartHour = this.getSleepStartForShift(shift);
+    schedule.sleepStartHour = ({ morning: 22, afternoon: 6, night: 14 } as const)[shift];
+    schedule.activity = getScheduledActivity(shift, this.currentHour);
   }
-
-  /**
-   * Get the default sleep start hour for a given shift.
-   */
-  private getSleepStartForShift(shift: Shift): number {
-    switch (shift) {
-      case 'morning': return 22;   // Sleep at 10pm after evening free time
-      case 'afternoon': return 2;  // Sleep at 2am after late evening
-      case 'night': return 5;      // Sleep at 5am before shift ends
-    }
-  }
-
-  /**
-   * Determine what activity a cultist should be doing based on their shift
-   * and the current hour.
-   */
-  private getActivityForShift(shift: Shift, hour: number): 'working' | 'eating' | 'free' | 'sleeping' {
-    switch (shift) {
-      case 'morning':
-        // Shift: 6-14 — work 6-12, eat 12-13, free 13-14
-        if (hour >= 6 && hour < 12) return 'working';
-        if (hour >= 12 && hour < 13) return 'eating';
-        if (hour >= 13 && hour < 14) return 'free';
-        // Off-shift: free time, sleep at night
-        if (hour >= this.getSleepStartForShift('morning') ||
-            hour < this.getSleepStartForShift('morning') - 22) {
-          // Sleep 22-4 (10pm to 4am, 6 hours)
-          if (hour >= 22 || hour < 4) return 'sleeping';
-        }
-        return 'free';
-
-      case 'afternoon':
-        // Shift: 14-22 — free 6-10, eat 10-11, work 14-20, eat 20-21, free 21-22
-        if (hour >= 6 && hour < 10) return 'free';
-        if (hour >= 10 && hour < 11) return 'eating';
-        if (hour >= 14 && hour < 20) return 'working';
-        if (hour >= 20 && hour < 21) return 'eating';
-        if (hour >= 21 && hour < 22) return 'free';
-        // Off-shift: 22-6 — sleep 2-8
-        if (hour >= 2 && hour < 8) return 'sleeping';
-        return 'free';
-
-      case 'night':
-        // Shift: 22-6 — free 22-23, work 0-4, eat 4-5, sleep 5-6
-        if (hour >= 22 && hour < 23) return 'free';
-        if (hour >= 0 && hour < 4) return 'working';
-        if (hour >= 4 && hour < 5) return 'eating';
-        if (hour >= 5 && hour < 6) return 'sleeping';
-        // Off-shift: 6-22 — free time, sleep during the day
-        if (hour >= 8 && hour < 14) return 'sleeping';
-        return 'free';
-    }
-  }
-
-  /**
-   * Update all cultists' AI states based on their shift schedule.
-   */
   update(world: World, _dt: number): void {
-    const entities = world.query([FollowerAI, Schedule]);
-
-    for (const entity of entities) {
-      const ai = world.getComponent(entity, FollowerAI)!;
-      const schedule = world.getComponent(entity, Schedule)!;
-
-      const activity = this.getActivityForShift(schedule.shift, this.currentHour);
-
-      // Critical needs and active movement take priority over the shift schedule.
-      if (ai.state === 'moving' || ai.state === 'stuck' || ai.state === 'needs') continue;
-
-      switch (activity) {
-        case 'working':
-          // Availability window only. JobSystem decides which actual job to perform.
-          if (ai.state === 'sleeping') {
-            ai.state = 'idle';
-            ai.stateTimer = 0;
-          }
-          break;
-        case 'eating':
-          if (ai.needTarget === null) {
-            ai.needTarget = 'hunger';
-            ai.needTargetTile = null;
-          }
-          ai.state = 'needs';
-          ai.stateTimer = 0;
-          break;
-        case 'sleeping':
-          if (ai.needTarget === null) {
-            ai.needTarget = 'energy';
-            ai.needTargetTile = null;
-          }
-          ai.state = 'needs';
-          ai.stateTimer = 0;
-          break;
-        case 'free':
-          // Free time does not forcibly cancel an active job yet; it simply stops
-          // scheduling new work-state transitions. Needs still interrupt naturally.
-          if (ai.state === 'sleeping') {
-            ai.state = 'idle';
-            ai.stateTimer = 0;
-          }
-          break;
+    for (const id of world.query([FollowerAI, Schedule])) {
+      const ai = world.getComponent(id, FollowerAI)!;
+      const schedule = world.getComponent(id, Schedule)!;
+      schedule.activity = getScheduledActivity(schedule.shift, this.currentHour);
+      if (world.hasComponent(id, OnMission) || ai.needTarget) continue;
+      const needs = world.getComponent(id, Needs);
+      const target =
+        schedule.activity === 'sleeping'
+          ? 'energy'
+          : schedule.activity === 'eating'
+            ? 'hunger'
+            : null;
+      if (target && needs && needs[target] < 70) {
+        ai.needTarget = target;
+        ai.needTargetTile = null;
+        ai.needFacilityId = null;
+        ai.path = [];
+        ai.pathIndex = 0;
+        ai.state = 'needs';
+        ai.stateTimer = 0;
       }
     }
   }

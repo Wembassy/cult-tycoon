@@ -16,6 +16,7 @@ export class FogOfWar {
   private explored: Set<string> = new Set();
   private visible: Set<string> = new Set();
   private previouslyVisible: Set<string> = new Set();
+  private permanent = new Set<string>();
 
   readonly visibilityRadius: number;
 
@@ -34,7 +35,7 @@ export class FogOfWar {
   update(positions: { x: number; y: number }[]): void {
     // Swap: previous visible becomes previouslyVisible
     this.previouslyVisible = this.visible;
-    this.visible = new Set();
+    this.visible = new Set(this.permanent);
 
     for (const pos of positions) {
       const r = this.visibilityRadius;
@@ -113,6 +114,7 @@ export class FogOfWar {
   reveal(x: number, y: number): void {
     this.explored.add(this.key(x, y));
     this.visible.add(this.key(x, y));
+    this.permanent.add(this.key(x, y));
   }
 
   /**
@@ -128,6 +130,19 @@ export class FogOfWar {
     }
   }
 
-  get exploredCount(): number { return this.explored.size; }
-  get visibleCount(): number { return this.visible.size; }
+  snapshot(): { explored: string[]; permanent: string[] } {
+    return { explored: [...this.explored], permanent: [...this.permanent] };
+  }
+  restore(data?: { explored: string[]; permanent: string[] }): void {
+    this.explored = new Set(data?.explored ?? []);
+    this.permanent = new Set(data?.permanent ?? []);
+    this.visible = new Set(this.permanent);
+    this.previouslyVisible = new Set();
+  }
+  get exploredCount(): number {
+    return this.explored.size;
+  }
+  get visibleCount(): number {
+    return this.visible.size;
+  }
 }
