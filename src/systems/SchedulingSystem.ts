@@ -142,25 +142,36 @@ export class SchedulingSystem implements System {
 
       switch (activity) {
         case 'working':
-          if (ai.state !== 'working') {
-            ai.state = 'working';
+          // Availability window only. JobSystem decides which actual job to perform.
+          if (ai.state === 'sleeping') {
+            ai.state = 'idle';
             ai.stateTimer = 0;
           }
           break;
         case 'eating':
+          if (ai.needTarget === null) {
+            ai.needTarget = 'hunger';
+            ai.needTargetTile = null;
+          }
           if (ai.state !== 'needs') {
             ai.state = 'needs';
             ai.stateTimer = 0;
           }
           break;
         case 'sleeping':
-          if (ai.state !== 'sleeping') {
-            ai.state = 'sleeping';
+          if (ai.needTarget === null) {
+            ai.needTarget = 'energy';
+            ai.needTargetTile = null;
+          }
+          if (ai.state !== 'needs') {
+            ai.state = 'needs';
             ai.stateTimer = 0;
           }
           break;
         case 'free':
-          if (ai.state === 'working' || ai.state === 'sleeping' || ai.state === 'needs') {
+          // Free time does not forcibly cancel an active job yet; it simply stops
+          // scheduling new work-state transitions. Needs still interrupt naturally.
+          if (ai.state === 'sleeping') {
             ai.state = 'idle';
             ai.stateTimer = 0;
           }
