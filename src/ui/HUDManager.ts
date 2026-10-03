@@ -56,6 +56,12 @@ export interface InspectorData {
   needs: { hunger: number; faith: number; fun: number; sanity: number; energy: number; bladder: number; hygiene: number };
   job: string;
   traits: string[];
+  tier?: string;
+  aiState?: string;
+  schedule?: string;
+  skills?: Record<string, number>;
+  priorities?: Record<string, number>;
+  inventory?: { id: string; quantity: number }[];
 }
 
 export interface EventLogEntry {
@@ -672,17 +678,35 @@ export class HUDManager {
         </div>
       `;
     }).join('');
+    const skillHtml = data.skills
+      ? Object.entries(data.skills)
+          .map(([name, value]) => `<span class="hud-pawn-chip">${name}: <b>${value}</b></span>`)
+          .join('')
+      : '';
+    const priorityHtml = data.priorities
+      ? Object.entries(data.priorities)
+          .map(([name, value]) => `<span class="hud-pawn-chip">${name}: <b>${value === 0 ? '×' : value}</b></span>`)
+          .join('')
+      : '';
+    const inventoryHtml = data.inventory?.length
+      ? data.inventory.map(item => `${item.id} ×${item.quantity}`).join(', ')
+      : 'Empty';
+
     this.inspector.innerHTML = `
       <div class="hud-inspector-name">${data.name}</div>
-      <div class="hud-inspector-role">${data.role}</div>
+      <div class="hud-inspector-role">${data.role}${data.tier ? ` · ${data.tier.replaceAll('_', ' ')}` : ''}</div>
+      <div class="hud-pawn-state">${data.aiState ? `State: ${data.aiState}` : ''}${data.schedule ? ` · Shift: ${data.schedule}` : ''}</div>
       <div class="hud-inspector-health">
         ${this.iconHtml('scifi_icon_health', '❤️', 'hud-need-icon')}
         <span>HP: ${data.health}/100</span>
         <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${data.health}%;background:#ef4444;"></div></div>
       </div>
       <div class="hud-inspector-needs">${needsHtml}</div>
-      <div class="hud-inspector-job">Job: ${data.job}</div>
-      <div class="hud-inspector-traits">${data.traits.join(', ')}</div>
+      <div class="hud-pawn-section"><b>Current job</b><div>${data.job}</div></div>
+      ${skillHtml ? `<div class="hud-pawn-section"><b>Skills</b><div class="hud-pawn-chip-grid">${skillHtml}</div></div>` : ''}
+      ${priorityHtml ? `<div class="hud-pawn-section"><b>Work priorities</b><div class="hud-pawn-chip-grid">${priorityHtml}</div></div>` : ''}
+      <div class="hud-pawn-section"><b>Inventory</b><div>${inventoryHtml}</div></div>
+      <div class="hud-pawn-section"><b>Traits</b><div class="hud-inspector-traits">${data.traits.length ? data.traits.join(', ') : 'None'}</div></div>
     `;
   }
 
