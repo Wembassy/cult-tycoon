@@ -16,6 +16,7 @@ import { Inventory } from '../components/Inventory';
 import { Schedule } from '../components/Schedule';
 import { WorkPreferences } from '../components/WorkPreferences';
 import type { TileMap } from '../world/TileMap';
+import type { BuildingSnapshot } from './BuildingSystem';
 
 export interface SaveData {
   version: string;
@@ -25,6 +26,7 @@ export interface SaveData {
   cult: SerializedCult;
   time: { hour: number; day: number };
   settings: GameSettings;
+  building?: BuildingSnapshot;
 }
 
 export interface SerializedWorld {
@@ -63,7 +65,7 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.3.0';
+const SAVE_VERSION = '0.4.0';
 const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
 const AUTOSAVE_KEY = 'cult_tycoon_autosave';
 const MAX_SLOTS = 6;
@@ -84,7 +86,7 @@ export class SaveSystem {
   /**
    * Serialize the entire game state
    */
-  serialize(world: World, tileMap: TileMap, cult: SerializedCult, time: { hour: number; day: number }): SaveData {
+  serialize(world: World, tileMap: TileMap, cult: SerializedCult, time: { hour: number; day: number }, building?: BuildingSnapshot): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
 
@@ -165,6 +167,7 @@ export class SaveSystem {
       cult,
       time,
       settings: this.settings,
+      building,
     };
   }
 
