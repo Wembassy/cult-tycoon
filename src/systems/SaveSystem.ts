@@ -27,6 +27,16 @@ export interface SaveData {
   time: { hour: number; day: number };
   settings: GameSettings;
   building?: BuildingSnapshot;
+  construction?: SerializedConstructionBlueprint[];
+}
+
+export interface SerializedConstructionBlueprint {
+  id: string;
+  kind: 'wall' | 'floor' | 'door' | 'object';
+  x: number;
+  y: number;
+  objectId?: string;
+  cost: number;
 }
 
 export interface SerializedWorld {
@@ -65,7 +75,7 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.4.0';
+const SAVE_VERSION = '0.5.0';
 const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
 const AUTOSAVE_KEY = 'cult_tycoon_autosave';
 const MAX_SLOTS = 6;
@@ -86,7 +96,14 @@ export class SaveSystem {
   /**
    * Serialize the entire game state
    */
-  serialize(world: World, tileMap: TileMap, cult: SerializedCult, time: { hour: number; day: number }, building?: BuildingSnapshot): SaveData {
+  serialize(
+    world: World,
+    tileMap: TileMap,
+    cult: SerializedCult,
+    time: { hour: number; day: number },
+    building?: BuildingSnapshot,
+    construction: SerializedConstructionBlueprint[] = [],
+  ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
 
@@ -168,6 +185,7 @@ export class SaveSystem {
       time,
       settings: this.settings,
       building,
+      construction: construction.map(blueprint => ({ ...blueprint })),
     };
   }
 
