@@ -21,6 +21,13 @@ describe('HUDManager — Resource Bar', () => {
     expect(container.children.length).toBeGreaterThan(0);
   });
 
+  it('should create the Alpha HUD chrome', () => {
+    expect(container.querySelector('.hud-menu-toggle')).not.toBeNull();
+    expect(container.querySelector('.hud-management-menu')).not.toBeNull();
+    expect(container.querySelector('.hud-minimap')).not.toBeNull();
+    expect(container.querySelector('.hud-build-version')?.textContent).toContain('ALPHA 4');
+  });
+
   it('should update resource bar with stats', () => {
     const data: ResourceBarData = {
       influence: 100, wealth: 250, notoriety: 15,
