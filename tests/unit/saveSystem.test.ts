@@ -79,6 +79,25 @@ describe('SaveSystem — Serialization', () => {
     expect(waterTile.terrain).toBe('water');
   });
 
+
+  it('should persist finite natural resources and harvest orders', () => {
+    map.setDecor(2, 2, 'tree');
+    map.setDecor(3, 3, 'rock');
+    const harvestOrders = [
+      { id: 'harvest:tree:2:2', kind: 'tree' as const, x: 2, y: 2 },
+      { id: 'harvest:rock:3:3', kind: 'rock' as const, x: 3, y: 3 },
+    ];
+    const cult = { ...TEST_CULT, materials: 42, food: 17 };
+
+    const data = save.serialize(world, map, cult, { hour: 8, day: 2 }, undefined, [], harvestOrders);
+
+    expect(data.tileMap.tiles[2 * 8 + 2].decor).toBe('tree');
+    expect(data.tileMap.tiles[3 * 8 + 3].decor).toBe('rock');
+    expect(data.harvestOrders).toEqual(harvestOrders);
+    expect(data.cult.materials).toBe(42);
+    expect(data.cult.food).toBe(17);
+  });
+
   it('should serialize cult stats', () => {
     const data = save.serialize(world, map, TEST_CULT, { hour: 14, day: 3 });
     expect(data.cult.influence).toBe(150);
