@@ -100,17 +100,14 @@ export class TechTreePanel {
         max-width: 1200px;
         height: 85vh;
         max-height: 800px;
-        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
-        border: 1px solid rgba(100, 100, 160, 0.5);
+        background: rgba(12,18,30,0.94);
+                        border: 1px solid rgba(100, 100, 160, 0.5);
         border-radius: 8px;
         box-shadow: 0 4px 30px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(168,85,247,0.1);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        image-rendering: pixelated;
-      }
+              }
 
       .tech-tree-header {
         display: flex;
