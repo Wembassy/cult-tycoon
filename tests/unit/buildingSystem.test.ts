@@ -248,6 +248,19 @@ describe('BuildingSystem — Room Designation', () => {
     expect(bs.getRoom(room.id)?.area).toBe(9);
   });
 
+  it('should clear room designations without demolishing furniture', () => {
+    const room = bs.designateRoomArea(2, 2, 4, 4, 'bedroom', 'dormitory')!;
+    bs.placeObject(3, 3, 'bed');
+
+    const cleared = bs.clearRoomArea(2, 2, 3, 3);
+
+    expect(cleared).toBe(4);
+    expect(map.getTile(3, 3)?.roomId).toBeNull();
+    expect(map.isOccupied(3, 3)).toBe(true);
+    expect(bs.getAllObjects()).toHaveLength(1);
+    expect(bs.getRoom(room.id)?.area).toBe(5);
+  });
+
   it('should persist room definition IDs in building snapshots', () => {
     const room = bs.designateRoomArea(2, 2, 4, 4, 'bedroom', 'dormitory')!;
     const snapshot = bs.getSnapshot();
