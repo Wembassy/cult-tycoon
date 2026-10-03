@@ -25,6 +25,16 @@ export interface ResourceBarData {
   maxPopulation: number;
 }
 
+export interface MinimapData {
+  width: number;
+  height: number;
+  tiles: { x: number; y: number; terrain: 'grass' | 'dirt' | 'stone' | 'water'; explored: boolean }[];
+  followers: { x: number; y: number }[];
+  objects: { x: number; y: number }[];
+  rooms: { tiles: { x: number; y: number }[] }[];
+}
+
+
 export interface BuildPanelEntry {
   id: string;
   label: string;
@@ -68,6 +78,8 @@ export class HUDManager {
   private timeControls: HTMLElement | null = null;
   private topBar: HTMLElement | null = null;
   private objectiveStrip: HTMLElement | null = null;
+  private minimap: HTMLCanvasElement | null = null;
+  private managementMenuOpen = false;
   private techTreePanel: TechTreePanel | null = null;
   private missionPanel: MissionPanel | null = null;
   private schedulePanel: SchedulePanel | null = null;
@@ -113,10 +125,15 @@ export class HUDManager {
     this.timeControls = this.createElement('div', 'hud-time-controls');
     this.topBar = this.createElement('div', 'hud-top-bar');
     this.objectiveStrip = this.createElement('div', 'hud-objective-strip');
+    this.minimap = document.createElement('canvas');
+    this.minimap.className = 'hud-minimap';
+    this.minimap.width = 180;
+    this.minimap.height = 180;
 
     this.container.appendChild(this.resourceBar);
     this.container.appendChild(this.topBar);
     this.container.appendChild(this.objectiveStrip);
+    this.container.appendChild(this.minimap);
     this.container.appendChild(this.buildItems);
     this.container.appendChild(this.buildBar);
     this.container.appendChild(this.buildPanel);
@@ -173,12 +190,22 @@ export class HUDManager {
   private setupTopBar(): void {
     if (!this.topBar) return;
     this.topBar.innerHTML = `
-      <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
-      <button class="hud-top-btn" data-panel="missions" title="Missions">🎯 Missions</button>
-      <button class="hud-top-btn" data-panel="work" title="Roles & Work (J)">👥 Work</button>
-      <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
-      <button class="hud-top-btn" data-panel="rituals" title="Rituals (R)">🔮 Rituals</button>
+      <button class="hud-menu-toggle" type="button" title="Management menu">☰</button>
+      <div class="hud-management-menu">
+        <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
+        <button class="hud-top-btn" data-panel="missions" title="Missions (M)">🎯 Missions</button>
+        <button class="hud-top-btn" data-panel="work" title="Roles & Work (J)">👥 Work</button>
+        <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
+        <button class="hud-top-btn" data-panel="rituals" title="Rituals (R)">🔮 Rituals</button>
+      </div>
     `;
+
+    const toggle = this.topBar.querySelector('.hud-menu-toggle');
+    toggle?.addEventListener('click', () => {
+      this.managementMenuOpen = !this.managementMenuOpen;
+      this.topBar?.classList.toggle('menu-open', this.managementMenuOpen);
+    });
+
     this.topBar.querySelectorAll('.hud-top-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const panel = (e.currentTarget as HTMLElement).dataset.panel;
@@ -189,6 +216,8 @@ export class HUDManager {
           case 'schedule': if (this.onOpenSchedule) this.onOpenSchedule(); else this.toggleSchedulePanel(); break;
           case 'rituals': if (this.onOpenRituals) this.onOpenRituals(); break;
         }
+        this.managementMenuOpen = false;
+        this.topBar?.classList.remove('menu-open');
       });
     });
   }
@@ -203,8 +232,10 @@ export class HUDManager {
         top: 8px;
         left: 8px;
         display: flex;
-        gap: 4px;
-        padding: 6px 8px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 6px;
         background: rgba(12, 18, 30, 0.88);
         border: 1px solid rgba(80, 120, 180, 0.5);
         border-radius: 6px;
@@ -212,6 +243,29 @@ export class HUDManager {
         backdrop-filter: blur(10px);
         box-shadow: 0 2px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(120,160,220,0.15);
         z-index: 10;
+      }
+      .hud-menu-toggle {
+        width: 38px;
+        height: 34px;
+        border: 1px solid rgba(100,150,220,0.35);
+        border-radius: 5px;
+        background: rgba(0,0,0,0.25);
+        color: #dbeafe;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .hud-menu-toggle:hover {
+        background: rgba(50,80,130,0.5);
+      }
+      .hud-management-menu {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 150px;
+      }
+      .hud-top-bar.menu-open .hud-management-menu {
+        display: flex;
       }
       .hud-top-btn {
         display: flex;
@@ -239,6 +293,21 @@ export class HUDManager {
         border-color: rgba(168, 85, 247, 0.5);
         color: #fff;
         box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+      }
+
+      .hud-minimap {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 180px;
+        height: 180px;
+        background: rgba(8,12,20,0.92);
+        border: 1px solid rgba(100,150,220,0.42);
+        border-radius: 6px;
+        box-shadow: 0 2px 14px rgba(0,0,0,0.55);
+        pointer-events: none;
+        image-rendering: pixelated;
+        z-index: 9;
       }
 
       .hud-objective-strip {
@@ -274,8 +343,6 @@ export class HUDManager {
       @media (max-width: 1100px) {
         .hud-top-bar {
           max-width: calc(100vw - 16px);
-          overflow-x: auto;
-          scrollbar-width: thin;
         }
         .hud-top-btn {
           flex: 0 0 auto;
@@ -292,11 +359,12 @@ export class HUDManager {
 
       @media (max-width: 760px) {
         .hud-top-btn {
-          padding: 5px 7px;
-          font-size: 0;
+          padding: 6px 9px;
+          font-size: 10px;
         }
-        .hud-top-btn::first-letter {
-          font-size: 14px;
+        .hud-minimap {
+          width: 132px;
+          height: 132px;
         }
         .hud-objective-strip {
           top: 52px;
@@ -654,6 +722,54 @@ export class HUDManager {
       ).join('');
   }
 
+  updateMinimap(data: MinimapData): void {
+    if (!this.minimap) return;
+    const ctx = this.minimap.getContext('2d');
+    if (!ctx || data.width <= 0 || data.height <= 0) return;
+
+    const w = this.minimap.width;
+    const h = this.minimap.height;
+    const sx = w / data.width;
+    const sy = h / data.height;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#070b12';
+    ctx.fillRect(0, 0, w, h);
+
+    const terrainColors: Record<string, string> = {
+      grass: '#385c35',
+      dirt: '#6d573a',
+      stone: '#62666c',
+      water: '#284d69',
+    };
+
+    for (const tile of data.tiles) {
+      ctx.fillStyle = tile.explored
+        ? (terrainColors[tile.terrain] ?? '#385c35')
+        : '#111722';
+      ctx.fillRect(tile.x * sx, tile.y * sy, Math.ceil(sx), Math.ceil(sy));
+    }
+
+    ctx.fillStyle = 'rgba(92, 146, 220, 0.32)';
+    for (const room of data.rooms) {
+      for (const tile of room.tiles) {
+        ctx.fillRect(tile.x * sx, tile.y * sy, Math.ceil(sx), Math.ceil(sy));
+      }
+    }
+
+    ctx.fillStyle = '#d6a84a';
+    for (const obj of data.objects) {
+      ctx.fillRect(obj.x * sx, obj.y * sy, Math.max(2, sx), Math.max(2, sy));
+    }
+
+    ctx.fillStyle = '#f8fafc';
+    for (const follower of data.followers) {
+      ctx.beginPath();
+      ctx.arc((follower.x + 0.5) * sx, (follower.y + 0.5) * sy, Math.max(1.5, sx * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   setObjective(title: string, detail: string): void {
     if (!this.objectiveStrip) return;
     this.objectiveStrip.style.display = 'block';
@@ -705,6 +821,7 @@ export class HUDManager {
     this.timeControls = null;
     this.topBar = null;
     this.objectiveStrip = null;
+    this.minimap = null;
     this.eventLogEntries = [];
   }
 }
