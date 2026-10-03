@@ -4,7 +4,7 @@
 
 import type { WorkPriority, WorkRole } from '../components/WorkPreferences';
 
-export type WorkJobKey = 'cook' | 'research' | 'pray' | 'build' | 'clean' | 'haul';
+export type WorkJobKey = 'cook' | 'research' | 'pray' | 'build' | 'clean' | 'haul' | 'harvest';
 
 export interface WorkCultistInfo {
   id: number;
@@ -33,6 +33,7 @@ const JOBS: { key: WorkJobKey; label: string; icon: string }[] = [
   { key: 'build', label: 'Build', icon: '🔨' },
   { key: 'clean', label: 'Clean', icon: '🧹' },
   { key: 'haul', label: 'Haul', icon: '📦' },
+  { key: 'harvest', label: 'Harvest', icon: '🪓' },
 ];
 
 const ROLES: { key: WorkRole; label: string }[] = [
@@ -92,8 +93,8 @@ export class WorkPanel {
       .work-body { overflow:auto; padding:10px 12px 14px; }
       .work-grid {
         display:grid;
-        grid-template-columns: minmax(150px,1.6fr) minmax(125px,1.2fr) repeat(6, minmax(74px,.8fr));
-        min-width: 860px; gap:4px; align-items:center;
+        grid-template-columns: minmax(150px,1.6fr) minmax(125px,1.2fr) repeat(7, minmax(74px,.8fr));
+        min-width: 935px; gap:4px; align-items:center;
       }
       .work-head {
         font-size:10px; color:#93a4bd; text-align:center; text-transform:uppercase;
