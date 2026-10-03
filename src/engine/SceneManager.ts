@@ -11,6 +11,7 @@ import type { TileMap } from '../world/TileMap';
 import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
 import { FollowerAI } from '../components/FollowerAI';
+import { Job } from '../components/Job';
 import type { AssetLoader } from './AssetLoader';
 import { FogOfWar } from '../world/FogOfWar';
 import type { BuildingSystem } from '../systems/BuildingSystem';
@@ -47,6 +48,9 @@ const ROOM_TYPE_NAMES: Record<string, string> = {
   generic: 'Room',
 };
 
+type FollowerAnimationState = 'idle' | 'walk' | 'work' | 'pray' | 'eat' | 'sleep';
+
+
 export class SceneManager {
   private scene: THREE.Scene;
   private tileGroup: THREE.Group;
@@ -57,6 +61,9 @@ export class SceneManager {
   private entityMeshes: Map<number, THREE.Object3D> = new Map();
   private entityMeshIsPlaceholder: Map<number, boolean> = new Map();
   private mixers: Map<number, THREE.AnimationMixer> = new Map();
+  private animationActions: Map<number, Map<FollowerAnimationState, THREE.AnimationAction>> = new Map();
+  private activeAnimationState: Map<number, FollowerAnimationState> = new Map();
+  private lastFollowerPositions: Map<number, THREE.Vector2> = new Map();
   private entityLights: Map<number, THREE.PointLight> = new Map();
   private world: World;
   private map: TileMap;
@@ -633,6 +640,10 @@ export class SceneManager {
   }
 
   syncEntities(): void {
+    const now = performance.now();
+    const dt = this.lastAnimTime > 0 ? Math.min((now - this.lastAnimTime) / 1000, 0.1) : 0;
+    this.lastAnimTime = now;
+
     const entities = this.world.query([Transform, Renderable]);
     const seen = new Set<number>();
 
@@ -697,25 +708,17 @@ export class SceneManager {
             this.entityMeshes.set(entity, obj);
             this.entityMeshIsPlaceholder.set(entity, false);
 
-            // Animation: Polygon Minis models often have T-pose/worship animations
-            // that make characters stand with arms outstretched. If the rest pose
-            // looks better, we skip animations. For now, use rest pose (no mixer)
-            // since the available animations all appear to be worship/ritual poses.
+            // Build a semantic animation controller only from clips whose names
+            // actually identify their purpose. The current Synty exports use generic
+            // Take/BaseLayer names, so they intentionally remain in a safe rest pose
+            // instead of playing an arbitrary clip that may be a ritual/combat pose.
             const asset = this.assets!.get(assetPath);
             if (asset && asset.animations.length > 0) {
-              // Check if any animation has "idle" or "walk" in its name
-              const idleAnim = asset.animations.find(a =>
-                a.name.toLowerCase().includes('idle') ||
-                a.name.toLowerCase().includes('walk') ||
-                a.name.toLowerCase().includes('stand')
-              );
-              if (idleAnim) {
-                const mixer = new THREE.AnimationMixer(cloned);
-                const action = mixer.clipAction(idleAnim);
-                action.play();
-                this.mixers.set(entity, mixer);
+              const controller = this.createFollowerAnimationController(cloned, asset.animations);
+              if (controller) {
+                this.mixers.set(entity, controller.mixer);
+                this.animationActions.set(entity, controller.actions);
               }
-              // Otherwise, use rest pose — no animation mixer needed.
             }
 
             // No point light — was creating visible beams in the scene.
@@ -752,24 +755,45 @@ export class SceneManager {
       // The wrapper contains the model shifted up so feet are at y=0 in the wrapper.
       let baseY = transform.z + 0.5;
 
-      // Rotate followers to face outward from center, with per-entity variation.
-      // Non-followers use transform.rotation directly.
       if (renderable.meshId.startsWith('follower')) {
-        // Face toward camera-ish direction with slight per-entity variation
-        const mapCenterX = this.map.width / 2;
-        const mapCenterY = this.map.height / 2;
-        const dx = transform.x - mapCenterX;
-        const dy = transform.y - mapCenterY;
-        const angleToCenter = Math.atan2(dx, -dy);
-        // Add per-entity offset so they don't all face exactly the same way
-        const variation = ((entity * 73) % 360) * (Math.PI / 180) * 0.3;
-        const targetRot = angleToCenter + Math.PI + variation;
-        // Smooth rotation
-        let rotDiff = targetRot - obj.rotation.y;
-        // Normalize to [-PI, PI]
-        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-        obj.rotation.y += rotDiff * 0.1;
+        const ai = this.world.getComponent(entity, FollowerAI);
+        const job = this.world.getComponent(entity, Job);
+        const animState = this.getFollowerAnimationState(ai, job);
+
+        // Cross-fade semantic clips when available. Current generic Synty exports
+        // fall back to rest pose plus subtle wrapper motion below.
+        this.setFollowerAnimationState(entity, animState);
+
+        const previous = this.lastFollowerPositions.get(entity);
+        if (previous) {
+          const dx = transform.x - previous.x;
+          const dy = transform.y - previous.y;
+          if (dx * dx + dy * dy > 0.00001) {
+            const targetRot = Math.atan2(dx, dy);
+            let rotDiff = targetRot - obj.rotation.y;
+            while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+            while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+            obj.rotation.y += rotDiff * Math.min(1, dt * 12);
+          }
+        }
+        this.lastFollowerPositions.set(entity, new THREE.Vector2(transform.x, transform.y));
+
+        // Conservative procedural fallback when no semantic skeletal clip exists.
+        const hasSemanticAction = this.animationActions.get(entity)?.has(animState) ?? false;
+        if (!hasSemanticAction) {
+          const phase = now * 0.008 + entity;
+          if (animState === 'walk') {
+            baseY += Math.sin(phase) * 0.035;
+            obj.rotation.z = Math.sin(phase * 0.5) * 0.025;
+          } else if (animState === 'work' || animState === 'pray') {
+            baseY += Math.sin(phase * 0.5) * 0.012;
+            obj.rotation.z = Math.sin(phase * 0.35) * 0.015;
+          } else if (animState === 'sleep') {
+            obj.rotation.z += (0.10 - obj.rotation.z) * 0.08;
+          } else {
+            obj.rotation.z += (0 - obj.rotation.z) * 0.08;
+          }
+        }
       } else {
         obj.rotation.y = transform.rotation;
       }
@@ -778,9 +802,6 @@ export class SceneManager {
     }
 
     // Update animation mixers
-    const now = performance.now();
-    const dt = this.lastAnimTime > 0 ? (now - this.lastAnimTime) / 1000 : 0;
-    this.lastAnimTime = now;
     for (const mixer of this.mixers.values()) {
       mixer.update(dt);
     }
@@ -793,9 +814,90 @@ export class SceneManager {
         this.entityMeshes.delete(entityId);
         this.entityMeshIsPlaceholder.delete(entityId);
         this.mixers.delete(entityId);
+        this.animationActions.delete(entityId);
+        this.activeAnimationState.delete(entityId);
+        this.lastFollowerPositions.delete(entityId);
         this.entityLights.delete(entityId);
       }
     }
+  }
+
+  private createFollowerAnimationController(
+    root: THREE.Object3D,
+    clips: THREE.AnimationClip[],
+  ): { mixer: THREE.AnimationMixer; actions: Map<FollowerAnimationState, THREE.AnimationAction> } | null {
+    const keywords: Record<FollowerAnimationState, string[]> = {
+      idle: ['idle', 'stand', 'rest', 'breath'],
+      walk: ['walk', 'locomotion', 'move'],
+      work: ['work', 'hammer', 'build', 'clean', 'research', 'cook', 'craft'],
+      pray: ['pray', 'worship', 'ritual', 'kneel'],
+      eat: ['eat', 'drink'],
+      sleep: ['sleep', 'lie', 'rest_sleep'],
+    };
+
+    const mixer = new THREE.AnimationMixer(root);
+    const actions = new Map<FollowerAnimationState, THREE.AnimationAction>();
+
+    for (const state of Object.keys(keywords) as FollowerAnimationState[]) {
+      const clip = clips.find(candidate => {
+        const name = candidate.name.toLowerCase();
+        return keywords[state].some(keyword => name.includes(keyword));
+      });
+      if (!clip) continue;
+      const action = mixer.clipAction(clip);
+      action.enabled = true;
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      actions.set(state, action);
+    }
+
+    if (actions.size === 0) return null;
+    return { mixer, actions };
+  }
+
+  private getFollowerAnimationState(ai: FollowerAI | null, job: Job | null): FollowerAnimationState {
+    if (!ai) return 'idle';
+    if (ai.state === 'moving') return 'walk';
+
+    if (ai.state === 'needs') {
+      if (ai.needTarget === 'energy') return 'sleep';
+      if (ai.needTarget === 'hunger') return 'eat';
+      if (ai.needTarget === 'faith') return 'pray';
+      return 'idle';
+    }
+
+    if (ai.state === 'working') {
+      if (job?.type === 'pray') return 'pray';
+      if (job?.type === 'cook') return 'work';
+      if (job?.type === 'research') return 'work';
+      if (job?.type === 'build' || job?.type === 'clean' || job?.type === 'haul') return 'work';
+    }
+
+    if (ai.state === 'sleeping') return 'sleep';
+    return 'idle';
+  }
+
+  private setFollowerAnimationState(entity: number, state: FollowerAnimationState): void {
+    const actions = this.animationActions.get(entity);
+    if (!actions || actions.size === 0) return;
+
+    const resolved = actions.has(state)
+      ? state
+      : actions.has('idle')
+        ? 'idle'
+        : null;
+    if (!resolved) return;
+
+    if (this.activeAnimationState.get(entity) === resolved) return;
+
+    const next = actions.get(resolved)!;
+    const previousState = this.activeAnimationState.get(entity);
+    if (previousState) {
+      const previous = actions.get(previousState);
+      if (previous && previous !== next) previous.fadeOut(0.18);
+    }
+
+    next.reset().fadeIn(0.18).play();
+    this.activeAnimationState.set(entity, resolved);
   }
 
   private getAssetPath(meshId: string, entityId: number = 0): string | null {
