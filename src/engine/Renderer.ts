@@ -64,13 +64,13 @@ export class Renderer {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.4;
 
     // Lighting — brighter for visibility
-    this.ambientLight = new THREE.AmbientLight(0x8899bb, 0.6);
+    this.ambientLight = new THREE.AmbientLight(0xaabbd8, 0.9);
     this.scene.add(this.ambientLight);
 
-    this.dirLight = new THREE.DirectionalLight(0xfff4dd, 1.0);
+    this.dirLight = new THREE.DirectionalLight(0xfff4dd, 1.15);
     this.dirLight.position.set(15, 25, 10);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 2048;
@@ -85,7 +85,7 @@ export class Renderer {
     this.scene.add(this.dirLight);
 
     // Hemisphere light for natural ambient — brighter
-    const hemiLight = new THREE.HemisphereLight(0xaabbdd, 0x443322, 0.5);
+    const hemiLight = new THREE.HemisphereLight(0xc7d8f0, 0x554433, 0.8);
     this.scene.add(hemiLight);
 
     this.isoCamera = new IsoCamera(canvas);
@@ -109,7 +109,7 @@ export class Renderer {
     // Vignette — cinematic darkened edges
     this.vignettePass = new ShaderPass(VignetteShader);
     this.vignettePass.uniforms.offset.value = 1.1;
-    this.vignettePass.uniforms.darkness.value = 1.1;
+    this.vignettePass.uniforms.darkness.value = 0.35;
     this.composer.addPass(this.vignettePass);
 
     // Output — applies tone mapping and color space
