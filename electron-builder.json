@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.wembassy.culttycoon",
-  "productName": "Cult Tycoon",
+  "appId": "com.wembassy.culttycoon.alpha5",
+  "productName": "Cult Tycoon Alpha 5",
   "directories": {
     "output": "release"
   },
@@ -17,7 +17,8 @@
   },
   "win": {
     "target": [
-      "nsis"
+      "nsis",
+      "portable"
     ]
   },
   "linux": {
@@ -31,5 +32,6 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
-  }
+  },
+  "artifactName": "${productName}-${version}-${arch}.${ext}"
 }
