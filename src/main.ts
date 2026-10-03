@@ -472,7 +472,7 @@ class CultTycoonGame {
       .hud-resource-bar {
         position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
         display: flex; gap: 12px; padding: 10px 24px;
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         background-position: center;
@@ -511,7 +511,7 @@ class CultTycoonGame {
       .hud-build-bar {
         position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
         display: flex; gap: 4px; padding: 6px 8px;
-        background-image: url('/assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
+        background-image: url('./assets/ui/scifi_panel_slanted.png'), linear-gradient(180deg, rgba(20,28,45,0.95), rgba(15,22,38,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(80, 120, 180, 0.5);
@@ -551,7 +551,7 @@ class CultTycoonGame {
         position: absolute; bottom: 72px; left: 50%; transform: translateX(-50%);
         display: flex; flex-wrap: nowrap; gap: 6px; padding: 10px 12px;
         overflow-x: auto; overflow-y: hidden;
-        background-image: url('/assets/ui/scifi_box_shadowed.png'), linear-gradient(180deg, rgba(18,26,42,0.96), rgba(14,20,35,0.98));
+        background-image: url('./assets/ui/scifi_box_shadowed.png'), linear-gradient(180deg, rgba(18,26,42,0.96), rgba(14,20,35,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(80, 120, 180, 0.4);
@@ -620,7 +620,7 @@ class CultTycoonGame {
       .hud-inspector {
         position: absolute; top: 60px; right: 8px;
         width: 240px; padding: 14px;
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.92), rgba(10,10,25,0.94));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.92), rgba(10,10,25,0.94));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(100, 100, 160, 0.4);
@@ -662,7 +662,7 @@ class CultTycoonGame {
         position: absolute; bottom: 50px; right: 8px;
         width: 320px; max-height: 180px; overflow-y: auto;
         padding: 10px;
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(100, 100, 160, 0.4);
@@ -684,7 +684,7 @@ class CultTycoonGame {
       .hud-time-controls {
         position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
         display: flex; gap: 8px; align-items: center; padding: 8px 20px;
-        background-image: url('/assets/ui/scifi_banner.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
+        background-image: url('./assets/ui/scifi_banner.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(100, 100, 160, 0.4);
@@ -722,7 +722,7 @@ class CultTycoonGame {
 
       /* SciFi cursor — apply to game canvas and HUD */
       #game-canvas, #hud {
-        cursor: url('/assets/ui/scifi_cursor.png') 4 4, auto;
+        cursor: url('./assets/ui/scifi_cursor.png') 4 4, auto;
       }
     `;
     document.head.appendChild(style);
@@ -1613,26 +1613,26 @@ class CultTycoonGame {
 
     const assetUrls = [
       // Real fantasy character models
-      '/assets/models/followers/fantasy_wizard_01.glb',
-      '/assets/models/followers/fantasy_sorcerer_01.glb',
-      '/assets/models/followers/fantasy_witch_01.glb',
-      '/assets/models/followers/fantasy_druid_01.glb',
-      '/assets/models/followers/fantasy_bard_01.glb',
-      '/assets/models/followers/fantasy_gypsy_01.glb',
-      '/assets/models/followers/fantasy_rougemale_01.glb',
-      '/assets/models/followers/fantasy_malepeasant_01.glb',
-      '/assets/models/followers/fantasy_femalepeasant_01.glb',
-      '/assets/models/followers/dungeon_goblinshaman_01.glb',
-      '/assets/models/followers/adventure_viking_01.glb',
-      '/assets/models/followers/adventure_warrior_01.glb',
+      './assets/models/followers/fantasy_wizard_01.glb',
+      './assets/models/followers/fantasy_sorcerer_01.glb',
+      './assets/models/followers/fantasy_witch_01.glb',
+      './assets/models/followers/fantasy_druid_01.glb',
+      './assets/models/followers/fantasy_bard_01.glb',
+      './assets/models/followers/fantasy_gypsy_01.glb',
+      './assets/models/followers/fantasy_rougemale_01.glb',
+      './assets/models/followers/fantasy_malepeasant_01.glb',
+      './assets/models/followers/fantasy_femalepeasant_01.glb',
+      './assets/models/followers/dungeon_goblinshaman_01.glb',
+      './assets/models/followers/adventure_viking_01.glb',
+      './assets/models/followers/adventure_warrior_01.glb',
       // Building models (old Blender-generated)
-      '/assets/models/buildings/wall_straight.glb',
-      '/assets/models/buildings/door.glb',
-      '/assets/models/buildings/bed.glb',
-      '/assets/models/buildings/prayer_mat.glb',
-      '/assets/models/buildings/research_desk.glb',
-      '/assets/models/buildings/cooking_pot.glb',
-      '/assets/models/buildings/ritual_circle.glb',
+      './assets/models/buildings/wall_straight.glb',
+      './assets/models/buildings/door.glb',
+      './assets/models/buildings/bed.glb',
+      './assets/models/buildings/prayer_mat.glb',
+      './assets/models/buildings/research_desk.glb',
+      './assets/models/buildings/cooking_pot.glb',
+      './assets/models/buildings/ritual_circle.glb',
     ];
     await this.assets.loadAll(assetUrls);
     debugEl.textContent = `Assets cached: ${this.assets.cachedCount}/${assetUrls.length}`;
@@ -1973,7 +1973,7 @@ class CultTycoonGame {
       style.id = 'overlay-styles';
       style.textContent = `
         .ov-card {
-          background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+          background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
           background-size: 100% 100%, 100% 100%;
           background-repeat: no-repeat;
           border: 2px solid rgba(168,85,247,0.4);
