@@ -1619,7 +1619,6 @@ class CultTycoonGame {
       return;
     }
 
-    this.cultWealth -= blueprint.cost;
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
     this.particles.spawnBuildDust(blueprint.x + offset.x + 0.5, blueprint.y + offset.z + 0.5);
     this.audio.play('ui-build');
@@ -1757,6 +1756,7 @@ class CultTycoonGame {
     if (this.input.getMode() === 'build' && this.selectedBuildItem) {
       this.handleBuild(x, y);
     } else if (this.input.getMode() === 'demolish') {
+      if (this.cancelConstructionBlueprintAt(x, y)) return;
       const result = this.buildingSystem.demolish(x, y);
       if (result.success) {
         this.jobSystem.cancelJob(`station:${x}:${y}`);
@@ -1879,6 +1879,13 @@ class CultTycoonGame {
 
   private onTileHover(x: number, y: number): void {
     this.sceneMgr.highlightTile(x, y);
+    const state = this.input.getState();
+    if (state.mode === 'build' && this.selectedBuildItem && !state.isDragging) {
+      this.updateBuildPreview(x, y, x, y);
+    } else if (state.mode !== 'build') {
+      this.sceneMgr.clearBuildPreview();
+      this.hud.clearBuildStatus();
+    }
   }
 
   /**
@@ -1996,7 +2003,7 @@ class CultTycoonGame {
 
     const data: ResourceBarData = {
       influence: Math.floor(this.cultInfluence),
-      wealth: Math.floor(this.cultWealth),
+      wealth: Math.floor(this.getSpendableWealth()),
       notoriety: Math.floor(this.cultNotoriety),
       faith: pop > 0 ? totalFaith / pop : 100,
       morale: pop > 0 ? (totalFun + totalSanity) / (2 * pop) : 100,
@@ -2302,7 +2309,9 @@ class CultTycoonGame {
   private simulate(dt: number): void {
     // ResourceSystem owns the continuous economy. Seed it from player-facing state
     // before simulation, then read its results back immediately afterward.
-    this.gameInstanceState.resources.funds = this.cultWealth;
+    // Construction blueprints reserve money without immediately consuming it.
+    // Economy simulation only sees currently spendable funds.
+    this.gameInstanceState.resources.funds = this.getSpendableWealth();
     this.gameInstanceState.resources.influence = this.cultInfluence;
     this.gameInstanceState.resources.notoriety = this.cultNotoriety;
 
@@ -2310,7 +2319,9 @@ class CultTycoonGame {
       system.update(this.world, dt);
     }
 
-    this.cultWealth = this.gameInstanceState.resources.funds;
+    // Recombine spendable funds with construction reservations that are still open.
+    // A completed blueprint disappears from the reservation pool, consuming its cost.
+    this.cultWealth = this.gameInstanceState.resources.funds + this.getReservedConstructionCost();
     this.cultInfluence = this.gameInstanceState.resources.influence;
     this.cultNotoriety = this.gameInstanceState.resources.notoriety;
 
