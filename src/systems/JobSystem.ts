@@ -9,6 +9,7 @@ import { Skills } from '../components/Skills';
 import { FollowerAI } from '../components/FollowerAI';
 import { Transform } from '../components/Transform';
 import { Traits } from '../components/Traits';
+import { WorkPreferences } from '../components/WorkPreferences';
 
 export interface JobPosting {
   id: string;
@@ -89,14 +90,22 @@ export class JobSystem {
     let bestIdx = -1;
     let bestScore = -Infinity;
 
+    const preferences = world.getComponent(entity, WorkPreferences);
+
     for (let i = 0; i < this.queue.length; i++) {
       const posting = this.queue[i];
       const skillMatch = this.checkSkill(posting, skills);
       if (!skillMatch) continue;
 
+      const playerPriority = preferences?.getPriority(posting.type) ?? 3;
+      if (playerPriority === 0) continue;
+
       const dist = Math.abs(posting.targetTile.x - transform.x) +
                    Math.abs(posting.targetTile.y - transform.y);
-      const score = posting.priority * 10 - dist;
+      const skillLevel = posting.requiredSkill ? Number(skills[posting.requiredSkill]) : 1;
+      // Player priority dominates, then station priority/skill, then distance.
+      const priorityScore = (5 - playerPriority) * 100;
+      const score = priorityScore + posting.priority * 10 + skillLevel * 2 - dist;
       if (score > bestScore) {
         bestScore = score;
         bestIdx = i;
