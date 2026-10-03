@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { Renderer } from './engine/Renderer';
 import { AudioManager } from './engine/AudioManager';
 import { ParticleSystem } from './engine/ParticleSystem';
-import { SceneManager } from './engine/SceneManager';
+import { SceneManager, type BuildPreviewTile, type ConstructionVisualKind } from './engine/SceneManager';
 import { InputManager } from './engine/InputManager';
 import { AssetLoader } from './engine/AssetLoader';
 import { TileMap } from './world/TileMap';
@@ -60,6 +60,18 @@ import { SaveSystem, type SaveData, type SerializedCult } from './systems/SaveSy
 
 /** Top-level game state. */
 type GameState = 'menu' | 'loading' | 'playing' | 'paused';
+
+type ConstructionKind = 'wall' | 'floor' | 'door' | 'object';
+
+interface ConstructionBlueprint {
+  id: string;
+  kind: ConstructionKind;
+  x: number;
+  y: number;
+  objectId?: string;
+  cost: number;
+}
+
 
 class CultTycoonGame {
   private renderer: Renderer;
@@ -116,6 +128,8 @@ class CultTycoonGame {
   private activeBuildCategory: string | null = null;
   private followerNames: Map<number, string> = new Map();
   private floatingTexts: { el: HTMLDivElement; life: number }[] = [];
+  private constructionBlueprints: Map<string, ConstructionBlueprint> = new Map();
+  private nextConstructionBlueprintId = 1;
 
   /** Average faith across all followers — used for tech tree unlocks. */
   private get cultFaith(): number {
@@ -187,6 +201,7 @@ class CultTycoonGame {
     // Systems
     this.needsSystem = new NeedsSystem();
     this.jobSystem = new JobSystem();
+    this.jobSystem.setCompletionHandler((posting, entity) => this.onJobCompleted(posting, entity));
     this.aiSystem = new AISystem(this.map, this.pathfinder);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
@@ -431,7 +446,13 @@ class CultTycoonGame {
     // Input callbacks
     this.input.onTileClick = (tile) => this.onTileClick(tile.x, tile.y);
     this.input.onTileHover = (tile) => this.onTileHover(tile.x, tile.y);
-    this.input.onDragEnd = (start, end) => this.onBuildDragEnd(start.x, start.y, end.x, end.y);
+    this.input.onDragStart = (tile) => this.updateBuildPreview(tile.x, tile.y, tile.x, tile.y);
+    this.input.onDragUpdate = (start, end) => this.updateBuildPreview(start.x, start.y, end.x, end.y);
+    this.input.onDragEnd = (start, end) => {
+      this.sceneMgr.clearBuildPreview();
+      this.hud.clearBuildStatus();
+      this.onBuildDragEnd(start.x, start.y, end.x, end.y);
+    };
 
     // Setup keyboard shortcuts
     this.setupKeyboardShortcuts();
@@ -1058,6 +1079,8 @@ class CultTycoonGame {
     this.hud.hideBuildItems();
     this.hud.hideInspector();
     this.hud.highlightBuildItem(null);
+    this.hud.clearBuildStatus();
+    this.sceneMgr.clearBuildPreview();
   }
 
   private setTimeMode(mode: TimeControlMode): void {
