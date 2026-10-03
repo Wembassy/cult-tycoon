@@ -1921,7 +1921,7 @@ class CultTycoonGame {
 
   private async preloadFollowerAnimationLibrary(): Promise<void> {
     try {
-      const response = await fetch('./assets/animations/followers/manifest.json', { cache: 'no-store' });
+      const response = await window.fetch('./assets/animations/followers/manifest.json', { cache: 'no-store' });
       if (!response.ok) return;
 
       const manifest = await response.json() as { enabled?: boolean; source?: string };
