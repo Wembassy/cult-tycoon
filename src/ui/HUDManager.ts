@@ -165,7 +165,7 @@ export class HUDManager {
     this.topBar.innerHTML = `
       <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
       <button class="hud-top-btn" data-panel="missions" title="Missions">🎯 Missions</button>
-      <button class="hud-top-btn" data-panel="work" title="Roles & Work (W)">👥 Work</button>
+      <button class="hud-top-btn" data-panel="work" title="Roles & Work (J)">👥 Work</button>
       <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
       <button class="hud-top-btn" data-panel="rituals" title="Rituals (R)">🔮 Rituals</button>
     `;
