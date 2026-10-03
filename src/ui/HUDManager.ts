@@ -125,6 +125,9 @@ export class HUDManager {
     this.timeControls = this.createElement('div', 'hud-time-controls');
     this.topBar = this.createElement('div', 'hud-top-bar');
     this.objectiveStrip = this.createElement('div', 'hud-objective-strip');
+    const buildBadge = this.createElement('div', 'hud-build-version');
+    buildBadge.textContent = 'ALPHA 4';
+
     this.minimap = document.createElement('canvas');
     this.minimap.className = 'hud-minimap';
     this.minimap.width = 180;
@@ -134,6 +137,7 @@ export class HUDManager {
     this.container.appendChild(this.topBar);
     this.container.appendChild(this.objectiveStrip);
     this.container.appendChild(this.minimap);
+    this.container.appendChild(buildBadge);
     this.container.appendChild(this.buildItems);
     this.container.appendChild(this.buildBar);
     this.container.appendChild(this.buildPanel);
@@ -295,6 +299,22 @@ export class HUDManager {
         box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
       }
 
+      .hud-build-version {
+        position: absolute;
+        top: 194px;
+        right: 10px;
+        padding: 3px 7px;
+        border-radius: 4px;
+        background: rgba(8,12,20,0.84);
+        border: 1px solid rgba(100,150,220,0.3);
+        color: #94a3b8;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        pointer-events: none;
+        z-index: 9;
+      }
+
       .hud-minimap {
         position: absolute;
         top: 8px;
@@ -365,6 +385,9 @@ export class HUDManager {
         .hud-minimap {
           width: 132px;
           height: 132px;
+        }
+        .hud-build-version {
+          top: 146px;
         }
         .hud-objective-strip {
           top: 52px;
