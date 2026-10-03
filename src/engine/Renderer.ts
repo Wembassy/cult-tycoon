@@ -51,20 +51,23 @@ export class Renderer {
   private composer: EffectComposer;
   private bloomPass: BloomPass;
   private vignettePass: ShaderPass;
-  private postProcessingEnabled = true;
+  private postProcessingEnabled = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x1a1a2e);
-    this.scene.fog = new THREE.Fog(0x1a1a2e, 50, 150);
+    this.scene.background = new THREE.Color(0x2a3342);
+    // Gameplay fog-of-war is handled per tile. Atmospheric distance fog is disabled
+    // for Alpha readability so the colony board stays crisp at every zoom level.
+    this.scene.fog = null;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.4;
+    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // Lighting — brighter for visibility
     this.ambientLight = new THREE.AmbientLight(0xaabbd8, 0.9);
