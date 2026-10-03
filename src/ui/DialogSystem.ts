@@ -53,7 +53,7 @@ export class DialogSystem {
         to { opacity: 1; }
       }
       .ds-card {
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 2px solid rgba(168,85,247,0.4);
