@@ -1484,7 +1484,19 @@ class CultTycoonGame {
       } else {
         this.selectedEntity = null;
         this.hud.hideInspector();
-        this.hud.logEvent(`Tile (${x}, ${y}): ${tile.terrain}${tile.occupied ? ' [built]' : ''}`, 'info');
+        if (tile.roomId !== null) {
+          const room = this.buildingSystem.getRoom(tile.roomId);
+          const def = room?.roomDefinitionId ? DataManager.getRoom(room.roomDefinitionId) : null;
+          if (room && def) {
+            const status = this.getRoomRequirementStatus(room.id);
+            this.hud.logEvent(
+              `${def.name}: ${status.complete ? 'complete' : `missing ${status.missing.join(', ')}`} · ${room.area} tiles`,
+              status.complete ? 'success' : 'info',
+            );
+          }
+        } else {
+          this.hud.logEvent(`Tile (${x}, ${y}): ${tile.terrain}${tile.occupied ? ' [built]' : ''}`, 'info');
+        }
       }
     }
   }
@@ -1819,36 +1831,67 @@ class CultTycoonGame {
   }
 
   private updateAlphaObjective(): void {
-    const builtObjects = this.buildingSystem.getAllObjects().length;
-    const structureCount = this.buildingSystem.wallTiles.size + this.buildingSystem.floorTiles.size + this.buildingSystem.doorTiles.size;
+    const rooms = this.buildingSystem.getAllRooms();
+    const completeRoomIds = new Set(
+      rooms
+        .filter(room => this.getRoomRequirementStatus(room.id).complete)
+        .map(room => room.roomDefinitionId)
+        .filter((id): id is string => !!id),
+    );
+    const workPrefs = this.world.query([WorkPreferences])
+      .map(entityId => this.world.getComponent(entityId, WorkPreferences)!)
+      .filter(Boolean);
+    const hasSpecializedRole = workPrefs.some(pref => pref.role !== 'generalist');
     const researched = this.techTree.getUnlocked().length;
     const activeMissions = this.missionSystem.getActiveMissions().length;
     const heat = this.heatSystem.getHeat();
 
-    if (builtObjects + structureCount < 4) {
+    if (!rooms.some(room => room.roomDefinitionId === 'dormitory')) {
       this.hud.setObjective(
-        'Establish the compound',
-        'Open Build (B), place a few structural pieces or useful objects, and click followers to inspect their needs.',
+        'Designate a Dormitory',
+        'Open Build → Rooms → Dormitory, then drag a room area of at least 4 tiles near your starting clearing.',
+      );
+    } else if (!completeRoomIds.has('dormitory')) {
+      this.hud.setObjective(
+        'Complete the Dormitory',
+        'Place a Bed inside the designated Dormitory. A room becomes functional when its required objects are inside it.',
+      );
+    } else if (!rooms.some(room => room.roomDefinitionId === 'kitchen')) {
+      this.hud.setObjective(
+        'Designate a Kitchen',
+        'Create a Kitchen of at least 4 tiles so your cult has a dependable food-work area.',
+      );
+    } else if (!completeRoomIds.has('kitchen')) {
+      const kitchen = rooms.find(room => room.roomDefinitionId === 'kitchen');
+      const missing = kitchen ? this.getRoomRequirementStatus(kitchen.id).missing : [];
+      this.hud.setObjective(
+        'Complete the Kitchen',
+        `Place the required objects inside it: ${missing.join(', ') || 'Cookpot and Storage Box'}.`,
+      );
+    } else if (!hasSpecializedRole) {
+      this.hud.setObjective(
+        'Assign follower roles',
+        'Open ☰ → Work (or press J). Use Auto Assign Roles or specialize at least one follower so jobs follow your priorities.',
       );
     } else if (researched === 0) {
       this.hud.setObjective(
         'Choose your first research',
-        'Open the Tech Tree (T). Research should shape what you can build and how the cult develops.',
+        'Open ☰ → Tech Tree (T) and unlock a first upgrade that supports your compound.',
       );
     } else if (activeMissions === 0) {
       this.hud.setObjective(
         'Send your first mission',
-        'Open Missions (M), compare skills and risk, then choose who leaves the compound.',
+        'Open ☰ → Missions (M), compare follower skills and risk, then choose a team.',
       );
     } else if (heat >= 50) {
       this.hud.setObjective(
         'Control the heat',
-        `Heat is ${Math.floor(heat)}. Use lower-risk choices and heat-reduction missions before raids escalate.`,
+        `Heat is ${Math.floor(heat)}. Reduce exposure before protests and raids escalate.`,
       );
     } else {
       this.hud.setObjective(
         'Grow without losing control',
-        'Balance follower needs, research, missions, prestige and heat while working toward the Ascension endgame.',
+        'Expand rooms, keep needs stable, improve work priorities, research, run missions and prepare for rising heat.',
       );
     }
   }
@@ -1878,12 +1921,6 @@ class CultTycoonGame {
 
   async preloadAssets(): Promise<void> {
     console.log('[preloadAssets] Starting asset preload...');
-    const debugEl = document.createElement('div');
-    debugEl.id = 'debug-overlay';
-    debugEl.style.cssText = 'position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:11px;padding:8px;z-index:9999;pointer-events:none;max-width:400px;';
-    debugEl.textContent = 'Loading assets...';
-    document.body.appendChild(debugEl);
-
     const assetUrls = [
       // Real fantasy character models
       './assets/models/followers/fantasy_wizard_01.glb',
@@ -1909,14 +1946,10 @@ class CultTycoonGame {
     ];
     await this.assets.loadAll(assetUrls);
     await this.preloadFollowerAnimationLibrary();
-    debugEl.textContent = `Assets cached: ${this.assets.cachedCount}/${assetUrls.length}`;
     console.log('[preloadAssets] All assets loaded. Cached:', this.assets.cachedCount);
-    // Re-sync entities now that assets are loaded
+    // Re-sync entities now that assets are loaded.
     this.sceneMgr.syncEntities();
-    debugEl.textContent += ' | syncEntities done';
     console.log('[preloadAssets] syncEntities done. Starting game...');
-    // Remove debug overlay after 10 seconds
-    setTimeout(() => debugEl.remove(), 10000);
   }
 
   private async preloadFollowerAnimationLibrary(): Promise<void> {
