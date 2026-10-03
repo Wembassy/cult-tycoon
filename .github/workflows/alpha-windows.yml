@@ -13,6 +13,30 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: alpha/vertical-slice
+          fetch-depth: 0
+          clean: true
+
+      - name: Prove source branch and commit
+        shell: pwsh
+        run: |
+          Write-Host "Branch:"
+          git branch --show-current
+          Write-Host "Commit:"
+          git rev-parse HEAD
+          Write-Host "Recent commits:"
+          git log -5 --oneline
+          if ((git branch --show-current) -ne "alpha/vertical-slice") {
+            throw "Wrong branch checked out."
+          }
+
+      - name: Clean generated output
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
+          Remove-Item -Force cult-tycoon-alpha5-windows.zip -ErrorAction SilentlyContinue
 
       - uses: actions/setup-node@v4
         with:
@@ -28,26 +52,28 @@ jobs:
           npm run test
           npm run build
 
-      - name: Package Windows Alpha
+      - name: Package Windows Alpha 5
         run: npx electron-builder --win --publish never
 
-      - name: Verify packaged Alpha 4 UI
+      - name: Verify packaged Alpha 5 UI and identity
         shell: pwsh
         run: |
-          node -e "const fs=require('fs');const s=fs.readFileSync('release/win-unpacked/resources/app.asar').toString('utf8');for(const needle of ['ALPHA 4','hud-menu-toggle','hud-minimap','Designate a Dormitory']){if(!s.includes(needle)){console.error('Missing packaged marker:',needle);process.exit(1)}}console.log('Packaged Alpha 4 UI markers verified.')"
+          $asar = "release/win-unpacked/resources/app.asar"
+          if (-not (Test-Path $asar)) { throw "Missing packaged app.asar" }
+          node -e "const fs=require('fs');const s=fs.readFileSync('release/win-unpacked/resources/app.asar').toString('utf8');for(const needle of ['ALPHA 5','hud-menu-toggle','hud-minimap','Designate a Dormitory','Cult Tycoon - Alpha 5']){if(!s.includes(needle)){console.error('Missing packaged marker:',needle);process.exit(1)}}console.log('Packaged Alpha 5 UI markers verified.')"
 
       - name: Create release ZIP
         shell: pwsh
         run: |
-          if (Test-Path "cult-tycoon-alpha-windows.zip") {
-            Remove-Item "cult-tycoon-alpha-windows.zip" -Force
-          }
-          Compress-Archive -Path "release/*" -DestinationPath "cult-tycoon-alpha-windows.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "release/*" -DestinationPath "cult-tycoon-alpha5-windows.zip" -CompressionLevel Optimal
 
-      - name: Upload Alpha installer artifact
+      - name: Upload Alpha 5 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cult-tycoon-alpha-windows
-          path: cult-tycoon-alpha-windows.zip
+          name: cult-tycoon-alpha5-windows
+          path: |
+            cult-tycoon-alpha5-windows.zip
+            release/*portable*.exe
+            release/Cult Tycoon Alpha 5*.exe
           if-no-files-found: error
           retention-days: 14
