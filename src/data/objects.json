@@ -7,7 +7,7 @@
       "cost": 8,
       "size": {
         "w": 1,
-        "h": 1
+        "h": 2
       },
       "meshId": "object_bed",
       "effects": {
@@ -21,7 +21,7 @@
       "cost": 14,
       "size": {
         "w": 1,
-        "h": 1
+        "h": 2
       },
       "meshId": "object_bed",
       "effects": {

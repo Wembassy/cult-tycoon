@@ -42,6 +42,7 @@ export interface MinimapData {
 }
 
 export interface BuildPanelEntry {
+  lockedReason?: string;
   id: string;
   label: string;
   icon: string;
@@ -125,6 +126,7 @@ export class HUDManager {
   onOpenSchedule?: () => void;
   onOpenRituals?: () => void;
   onOpenWork?: () => void;
+  onRecruit?: () => void;
   onSetWorkRole?: (entityId: number, role: WorkRole) => void;
   onSetWorkPriority?: (entityId: number, job: WorkJobKey, priority: WorkPriority) => void;
   onAutoAssignWorkRoles?: () => void;
@@ -240,6 +242,7 @@ export class HUDManager {
     this.topBar.innerHTML = `
       <button class="hud-menu-toggle" type="button" title="Management menu" aria-label="Open management menu" aria-expanded="false">☰</button>
       <div class="hud-management-menu">
+        <button class="hud-top-btn" data-panel="recruit">Invite follower</button>
         <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
         <button class="hud-top-btn" data-panel="missions" title="Missions (M)">🎯 Missions</button>
         <button class="hud-top-btn" data-panel="work" title="Roles & Work (J)">👥 Work</button>
@@ -260,6 +263,9 @@ export class HUDManager {
       btn.addEventListener('click', (e) => {
         const panel = (e.currentTarget as HTMLElement).dataset.panel;
         switch (panel) {
+          case 'recruit':
+            this.onRecruit?.();
+            break;
           case 'settings':
             this.onOpenSettings?.();
             break;
@@ -741,10 +747,10 @@ export class HUDManager {
     this.buildItems.innerHTML = entries
       .map(
         (e) =>
-          `<button type="button" class="hud-build-item" data-id="${e.id}" data-cost="${e.cost}" title="${e.label} (${e.cost}g)">
+          `<button type="button" class="hud-build-item" data-id="${e.id}" data-cost="${e.cost}" ${e.lockedReason ? 'disabled' : ''} title="${e.lockedReason ?? e.label} (${e.cost}g)">
         <span class="hud-build-item-icon">${e.icon}</span>
         <span class="hud-build-item-label">${e.label}</span>
-        <span class="hud-build-item-cost">${e.cost === 0 ? 'Designate' : e.cost + ' coins'}</span>
+        <span class="hud-build-item-cost">${e.lockedReason ? 'Research needed' : e.cost === 0 ? 'Designate' : e.cost + ' coins'}</span>
       </button>`,
       )
       .join('');

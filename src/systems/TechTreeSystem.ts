@@ -163,7 +163,18 @@ export class TechTreeSystem {
   /**
    * Get cumulative flat bonus for a given effect key.
    */
-  getEffectBonus(key: 'maxPopulationPlus' | 'recruitmentBonus' | 'heatReductionRate'): number {
+  getEffectBonus(
+    key:
+      | 'maxPopulationPlus'
+      | 'recruitmentBonus'
+      | 'heatReductionRate'
+      | 'foodBonus'
+      | 'donationBonus'
+      | 'influenceBonus'
+      | 'recoveryBonus'
+      | 'missionSuccessBonus'
+      | 'missionRewardBonus',
+  ): number {
     let bonus = 0;
     for (const node of this.getUnlocked()) {
       const val = node.effects[key];

@@ -32,7 +32,7 @@
       "influenceGain": 30,
       "faithGain": 35,
       "notorietyGain": 5,
-      "requirements": ["ritual_room", "advanced_rituals"],
+      "requirements": ["ritual_room", "divine_inspiration"],
       "description": "A powerful nighttime ritual under the moon"
     },
     {
@@ -54,20 +54,20 @@
       "influenceGain": 100,
       "faithGain": 50,
       "notorietyGain": 10,
-      "requirements": ["ritual_room", "divine_intervention"],
+      "requirements": ["ritual_room", "divine_inspiration"],
       "description": "Ultimate ritual to commune with the divine"
     },
     {
       "id": "ascension",
       "name": "Ascension",
-      "duration": 300,
-      "minFollowers": 10,
-      "faithCost": 100,
-      "influenceGain": 500,
+      "duration": 120,
+      "minFollowers": 8,
+      "faithCost": 65,
+      "influenceGain": 200,
       "faithGain": 100,
       "notorietyGain": 20,
-      "requirements": ["ritual_room", "divine_intervention", "advanced_rituals"],
-      "description": "The ultimate ritual — transcend mortality and achieve godhood. Requires 20 followers to win."
+      "requirements": ["ritual_room", "divine_inspiration"],
+      "description": "Complete the campaign: gather eight followers in a Ritual Room after three missions and the Divine Inspiration discovery. Keep everyone fed and rested during the rite."
     },
     {
       "id": "group_meditation",
@@ -77,7 +77,7 @@
       "faithCost": 15,
       "influenceGain": 20,
       "faithGain": 30,
-      "requirements": ["ritual_room", "ritual_mastery"],
+      "requirements": ["ritual_room", "recreation"],
       "description": "Collective meditation aligns follower faith and boosts morale"
     },
     {
@@ -89,7 +89,7 @@
       "influenceGain": 80,
       "faithGain": 60,
       "notorietyGain": 15,
-      "requirements": ["ritual_room", "dark_rituals"],
+      "requirements": ["ritual_room", "eldritch_path"],
       "description": "A forbidden rite that channels suffering into raw divine power"
     },
     {
@@ -100,7 +100,7 @@
       "faithCost": 35,
       "influenceGain": 60,
       "faithGain": 40,
-      "requirements": ["ritual_room", "indoctrination"],
+      "requirements": ["ritual_room", "follower_education"],
       "description": "Systematic psychological programming cements follower devotion"
     }
   ]

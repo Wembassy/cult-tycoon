@@ -1,3 +1,4 @@
+import { OnRitual } from '../components/OnRitual';
 /** Persistent workstations lease jobs to eligible, available followers. */
 import type { World } from '../ecs/World';
 import { Job, JobType } from '../components/Job';
@@ -84,6 +85,7 @@ export class JobSystem {
         ai.needTarget ||
         ai.state === 'stuck' ||
         world.hasComponent(a.entity, OnMission) ||
+        world.hasComponent(a.entity, OnRitual) ||
         (schedule && schedule.activity !== 'working') ||
         preferences?.getPriority(a.posting.type) === 0
       ) {
@@ -99,6 +101,7 @@ export class JobSystem {
       if (
         ai.needTarget ||
         world.hasComponent(entity, OnMission) ||
+        world.hasComponent(entity, OnRitual) ||
         (schedule && schedule.activity !== 'working')
       )
         continue;

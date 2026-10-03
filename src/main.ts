@@ -1,3 +1,6 @@
+import { requiredTechForObject } from './data/TechTreeData';
+import type { MissionEvent, MissionChoice } from './data/MissionTemplates';
+import { OnRitual } from './components/OnRitual';
 import './ui/quality.css';
 import animationManifest from '../public/assets/animations/followers/manifest.json';
 import { OnMission } from './components/OnMission';
@@ -115,10 +118,13 @@ class CultTycoonGame {
   private selectedRoom: number | null = null;
   private readonly stationIds = new Set<string>();
   private autosaveElapsed = 0;
+  private missionDecisions: { id: string; event: MissionEvent; choices: MissionChoice[] }[] = [];
+  private decisionTimeMode: 'pause' | 'play' | 'fast' | null = null;
+  private decisionActive = false;
   private raidWarning = 0;
 
   // Game state
-  private cultWealth = 500;
+  private cultWealth = 900;
   private cultInfluence = 50;
   private cultNotoriety = 5;
   private currentHour = 8;
@@ -215,6 +221,7 @@ class CultTycoonGame {
       (need, from, entity) => this.findNeedFacility(need, from, entity),
       (_entity, need, target) => this.facilityValid(need, target),
       (_entity, need, amount) => {
+        amount *= 1 + this.techTree.getEffectBonus('recoveryBonus');
         if (need !== 'hunger') return amount;
         const usable = Math.min(amount, this.gameInstanceState.resources.food * 40);
         this.gameInstanceState.resources.food -= usable / 40;
@@ -258,6 +265,13 @@ class CultTycoonGame {
         );
       },
       (result) => {
+        if (!result.success) {
+          this.hud.logEvent(
+            `Ritual interrupted: ${result.name}. Keep participants fed, rested and safe.`,
+            'warning',
+          );
+          return;
+        }
         this.cultInfluence += result.influenceGain;
         this.cultNotoriety += result.notorietyGain;
         this.hud.logEvent(
@@ -331,43 +345,28 @@ class CultTycoonGame {
     // Mission system — sends cultists on external missions for rewards
     this.missionSystem = new MissionSystem(
       (missionId, event, choices) => {
-        this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
-
-        // Mission events are player decisions. Pause simulation while the modal is open
-        // so the mission cannot advance or resolve behind the player's choice.
-        const previousTimeMode = this.timeMode;
+        if (!this.missionDecisions.some((d) => d.id === missionId))
+          this.missionDecisions.push({ id: missionId, event, choices });
+        if (this.decisionTimeMode === null) this.decisionTimeMode = this.timeMode;
         this.setTimeMode('pause');
-
-        this.dialog.show({
-          title: 'Mission Decision',
-          icon: '🎯',
-          body: `<p>${event.text}</p><p style="color:#888;font-size:12px;">Choose how your cultists should respond.</p>`,
-          modal: true,
-          buttons: choices.map((choice, choiceIndex) => ({
-            label: choice.skillCheck
-              ? `${choice.label} [${choice.skillCheck.skill} ${choice.skillCheck.difficulty}]`
-              : choice.label,
-            onClick: () => {
-              const result = this.missionSystem.resolveEventChoice(
-                missionId,
-                choiceIndex,
-                this.world,
-              );
-              if (result) {
-                this.hud.logEvent(
-                  `Mission outcome: ${result.text}`,
-                  result.success ? 'success' : 'danger',
-                );
-              }
-              this.setTimeMode(previousTimeMode);
-            },
-          })),
-        });
+        this.presentMissionDecision();
       },
       (_missionId, templateId, success, rewards) => {
         // Apply mission rewards to cult resources
-        if (rewards.money) this.cultWealth += rewards.money;
-        if (rewards.influence) this.cultInfluence += rewards.influence;
+        if (rewards.money)
+          this.cultWealth +=
+            rewards.money * (1 + this.techTree.getEffectBonus('missionRewardBonus'));
+        if (rewards.influence)
+          this.cultInfluence +=
+            rewards.influence * (1 + this.techTree.getEffectBonus('missionRewardBonus'));
+        if (rewards.prGain) this.heatSystem.reduceHeat(rewards.prGain * 0.25);
+        for (const id of rewards.injuredCultistIds) {
+          const health = this.world.getComponent(id, Health);
+          if (health) {
+            health.hp = Math.max(1, health.hp - 25);
+            if (!health.statusEffects.includes('injured')) health.statusEffects.push('injured');
+          }
+        }
         if (rewards.heatReduction) this.heatSystem.reduceHeat(rewards.heatReduction);
         if (rewards.heatGain) this.heatSystem.addHeat(rewards.heatGain, 'mission');
         const parts: string[] = [];
@@ -412,7 +411,6 @@ class CultTycoonGame {
       this.pathfindSystem,
       this.resourceSystem,
       this.eventSystem,
-      this.ritualSystem,
       this.investigatorSystem,
       this.combatSystem,
       this.fogSystem,
@@ -456,6 +454,7 @@ class CultTycoonGame {
     this.hud.onOpenSchedule = () => this.openSchedulePanel();
     this.hud.onOpenRituals = () => this.showRitualMenu();
     this.hud.onOpenWork = () => this.openWorkPanel();
+    this.hud.onRecruit = () => this.showRecruitMenu();
     this.hud.onSetWorkRole = (entityId, role) => this.setWorkRole(entityId, role);
     this.hud.onSetWorkPriority = (entityId, job, priority) =>
       this.setWorkPriority(entityId, job, priority);
@@ -1146,14 +1145,24 @@ class CultTycoonGame {
     }
 
     // Filter items by category
-    const items = this.buildEntries.filter((e) => e.category === categoryId);
+    const items = this.buildEntries
+      .filter((e) => e.category === categoryId)
+      .map((e) => {
+        const tech = requiredTechForObject(e.id);
+        return {
+          ...e,
+          lockedReason:
+            tech && !this.techTree.isUnlocked(tech.id) ? `Research ${tech.name}` : undefined,
+        };
+      });
     this.hud.setBuildItems(items, categoryId);
     this.input.setMode('build');
 
     // Auto-select first item
-    if (items.length > 0) {
-      this.selectedBuildItem = items[0].id;
-      this.hud.highlightBuildItem(items[0].id);
+    const first = items.find((e) => !e.lockedReason);
+    if (first) {
+      this.selectedBuildItem = first.id;
+      this.hud.highlightBuildItem(first.id);
     }
   }
 
@@ -1173,6 +1182,7 @@ class CultTycoonGame {
   }
 
   private setTimeMode(mode: 'pause' | 'play' | 'fast'): void {
+    if (this.decisionTimeMode !== null && mode !== 'pause') return;
     this.accumulator = 0;
     this.timeMode = mode;
     this.timeScale = mode === 'pause' ? 0 : mode === 'fast' ? 3 : 1;
@@ -1364,86 +1374,217 @@ class CultTycoonGame {
     });
   }
 
-  private showRitualMenu(): void {
-    const available = this.ritualSystem.getAvailableRituals();
-    const entities = this.world
-      .query([Needs, FollowerAI])
-      .filter((id) => !this.world.hasComponent(id, OnMission));
-    const active = this.ritualSystem.getActiveRituals();
-
-    if (active.length > 0) {
-      this.dialog.alert(
-        'Ritual in Progress',
-        'Your cult is already performing a ritual. Let it finish before beginning another.',
-        '🔮',
-      );
-      return;
-    }
-
-    if (available.length === 0) {
-      this.dialog.alert(
-        'No Rituals Available',
-        'Research and progress will unlock additional rituals.',
-        '🔒',
-      );
-      return;
-    }
-
-    this.dialog.show({
-      title: 'Choose a Ritual',
-      icon: '🔮',
-      body: '<p>Rituals trade resources and follower time for powerful effects. Choose deliberately.</p>',
-      modal: true,
-      buttons: available.map((ritual) => {
-        const check = this.ritualSystem.canStartRitual(
-          ritual.id,
-          entities,
-          this.cultFaith,
-          this.cultWealth,
+  private prepareRitual(id: string) {
+    const def = DataManager.getRitual(id);
+    const empty = {
+      ok: false,
+      reason: 'Unknown ritual',
+      participants: [] as number[],
+      targets: [] as { x: number; y: number }[],
+    };
+    if (!def) return empty;
+    const candidates = this.world
+      .query([Needs, FollowerAI, Transform])
+      .filter((entity) => {
+        const n = this.world.getComponent(entity, Needs)!;
+        return (
+          !this.world.hasComponent(entity, OnMission) &&
+          !this.world.hasComponent(entity, OnRitual) &&
+          n.hunger > 45 &&
+          n.energy > 45
         );
-        return {
-          label: `${check.ok ? '' : '🔒 '}${ritual.name}`,
-          style: check.ok ? ('primary' as const) : ('default' as const),
-          onClick: () => {
-            const roomsReady = ritual.requirements
-              .filter((id) => !!DataManager.getRoom(id))
-              .every((id) =>
-                this.buildingSystem
-                  .getAllRooms()
-                  .some(
-                    (room) =>
-                      room.roomDefinitionId === id &&
-                      this.buildingSystem.getRoomStatus(room.id).complete,
-                  ),
-              );
-            if (!roomsReady) {
-              this.hud.logEvent('Complete the required Ritual / Prayer room first.', 'warning');
-              return;
-            }
-            if (!check.ok) {
-              this.hud.logEvent(
-                `${ritual.name}: ${check.reason ?? 'requirements not met'}`,
-                'warning',
-              );
-              return;
-            }
-            const participants = entities.slice(0, ritual.minFollowers);
-            const started = this.ritualSystem.startRitual(ritual.id, participants);
-            if (started) {
-              if (ritual.faithCost > 0 && participants.length > 0) {
-                const faithPerParticipant = ritual.faithCost / participants.length;
-                for (const entityId of participants) {
-                  const needs = this.world.getComponent(entityId, Needs);
-                  if (needs) needs.faith = Math.max(0, needs.faith - faithPerParticipant);
-                }
-              }
-              if (ritual.wealthCost) this.cultWealth -= ritual.wealthCost;
-              this.hud.logEvent(`Ritual begun: ${ritual.name}`, 'success');
-              this.updateHUD();
-            }
+      })
+      .sort(
+        (a, b) =>
+          this.world.getComponent(b, Needs)!.faith - this.world.getComponent(a, Needs)!.faith,
+      );
+    const check = this.ritualSystem.canStartRitual(id, candidates, this.cultFaith, this.cultWealth);
+    if (!check.ok) return { ...empty, reason: check.reason ?? 'Not ready' };
+    if (id === 'ascension' && this.missionSystem.completedCount < 3)
+      return {
+        ...empty,
+        reason: `Complete three missions first (${this.missionSystem.completedCount}/3)`,
+      };
+    const requiredRoom = def.requirements.find((req) => !!DataManager.getRoom(req));
+    const rooms = this.buildingSystem
+      .getAllRooms()
+      .filter(
+        (room) =>
+          room.roomDefinitionId === requiredRoom &&
+          this.buildingSystem.getRoomStatus(room.id).complete,
+      );
+    for (const room of rooms) {
+      const free = room.tiles.filter((tile) => this.map.isBuildable(tile.x, tile.y));
+      const participants: number[] = [],
+        targets: { x: number; y: number }[] = [];
+      for (const entity of candidates) {
+        const pos = this.world.getComponent(entity, Transform)!;
+        const index = free.findIndex(
+          (tile) =>
+            this.pathfinder.findPath(Math.round(pos.x), Math.round(pos.y), tile.x, tile.y).success,
+        );
+        if (index >= 0) {
+          participants.push(entity);
+          targets.push(free.splice(index, 1)[0]);
+        }
+        if (participants.length === def.minFollowers)
+          return { ok: true, reason: 'Ready', participants, targets };
+      }
+    }
+    return {
+      ...empty,
+      reason: `Need a functional ${DataManager.getRoom(requiredRoom ?? '')?.name ?? 'ritual room'} with ${def.minFollowers} reachable clear tiles. Participants must be fed and rested.`,
+    };
+  }
+
+  private showRitualMenu(): void {
+    const active = this.ritualSystem.getActiveRituals()[0];
+    if (active) {
+      const percent = Math.floor((active.progress / active.def.duration) * 100);
+      this.dialog.show({
+        title: active.name,
+        icon: 'Ritual',
+        body: `<p>${percent}% complete. Followers gather at their reserved positions before the rite progresses.</p><p>Keep food and rest above critical levels. Cancellation spends the initial offering but releases everyone.</p>`,
+        buttons: [
+          { label: 'Close' },
+          {
+            label: 'Cancel ritual',
+            onClick: () => this.ritualSystem.cancelRitual(this.world, active.id),
           },
-        };
+        ],
+      });
+      return;
+    }
+    const cards = DataManager.getRituals()
+      .map((def) => {
+        const check = this.prepareRitual(def.id);
+        return `<article class="choice-card"><h3>${def.name}</h3><p>${def.description}</p><p class="choice-cost">${def.minFollowers} followers / ${def.duration}s / ${def.wealthCost ?? 0} coins / ${def.faithCost} faith</p><p>${check.ok ? `Reward: ${def.influenceGain} influence, ${def.faithGain ?? 0} faith; +${def.notorietyGain ?? 0} heat.` : check.reason}</p><button data-ritual="${def.id}" ${check.ok ? '' : 'disabled'}>${check.ok ? 'Gather followers' : 'Not ready'}</button></article>`;
+      })
+      .join('');
+    this.dialog.show({
+      title: 'Rituals',
+      icon: 'Ritual',
+      body: `<div class="choice-grid">${cards}</div>`,
+      buttons: [{ label: 'Close' }],
+    });
+    document.querySelectorAll<HTMLButtonElement>('[data-ritual]').forEach((button) =>
+      button.addEventListener('click', () => {
+        const id = button.dataset.ritual!,
+          def = DataManager.getRitual(id)!,
+          check = this.prepareRitual(id);
+        if (!check.ok) {
+          this.hud.logEvent(check.reason, 'warning');
+          return;
+        }
+        const started = this.ritualSystem.startRitual(
+          id,
+          check.participants,
+          this.world,
+          check.targets,
+        );
+        if (!started) return;
+        for (const entity of check.participants) {
+          const n = this.world.getComponent(entity, Needs)!;
+          n.faith = Math.max(0, n.faith - def.faithCost / check.participants.length);
+        }
+        this.cultWealth -= def.wealthCost ?? 0;
+        this.dialog.close();
+        this.updateHUD();
       }),
+    );
+  }
+
+  private showRecruitMenu(): void {
+    const pop = this.world.query([FollowerAI]).length;
+    const capacity = 8 + this.techTree.getEffectBonus('maxPopulationPlus');
+    const beds = this.buildingSystem
+      .getAllObjects()
+      .filter(
+        (o) =>
+          ['bed', 'bunk_bed'].includes(o.objectId) &&
+          (() => {
+            const roomId = this.map.getTile(o.x, o.y)?.roomId;
+            return (
+              roomId != null &&
+              this.buildingSystem.getRoom(roomId)?.roomDefinitionId === 'dormitory' &&
+              this.buildingSystem.getRoomStatus(roomId).complete
+            );
+          })(),
+      )
+      .reduce((sum, o) => sum + (o.objectId === 'bunk_bed' ? 2 : 1), 0);
+    const reason =
+      pop >= capacity
+        ? 'Research Recruitment Network to raise the population limit.'
+        : beds <= pop
+          ? `Create another bed in a functional Dormitory (${beds} beds for ${pop} followers).`
+          : this.cultWealth < 50 || this.cultInfluence < 15
+            ? 'Need 50 coins and 15 influence.'
+            : this.gameInstanceState.resources.food < 10
+              ? 'Stock at least 10 food first.'
+              : '';
+    this.dialog.show({
+      title: 'Invite a Follower',
+      icon: 'Recruit',
+      body: `<p>Population ${pop}/${capacity}. Beds ${beds}. New recruits need a safe place to sleep and a dependable food supply.</p><p>Cost: <b>50 coins and 15 influence</b>. +4 heat.</p><p>${reason || 'A follower is ready to join your community.'}</p>`,
+      buttons: [
+        { label: 'Close' },
+        ...(reason
+          ? []
+          : [
+              {
+                label: 'Welcome follower',
+                style: 'primary' as const,
+                onClick: () => {
+                  // Recheck after the dialog: the world may have changed while it was open.
+                  if (
+                    this.cultWealth < 50 ||
+                    this.cultInfluence < 15 ||
+                    this.world.query([FollowerAI]).length >= capacity
+                  )
+                    return;
+                  this.cultWealth -= 50;
+                  this.cultInfluence -= 15;
+                  this.heatSystem.addHeat(4, 'recruitment');
+                  this.spawnFollowers(1);
+                  this.hud.logEvent(
+                    'A new follower has joined. Assign their role in Work.',
+                    'success',
+                  );
+                  this.updateHUD();
+                },
+              },
+            ]),
+      ],
+    });
+  }
+
+  private presentMissionDecision(): void {
+    if (this.decisionActive || this.dialog.isVisible || !this.missionDecisions.length) return;
+    const decision = this.missionDecisions[0];
+    this.decisionActive = true;
+    this.setTimeMode('pause');
+    this.dialog.show({
+      title: 'Mission Decision',
+      icon: 'Mission',
+      modal: true,
+      body: `<p>${decision.event.text}</p><p>Choose how your team responds. The simulation is paused.</p>`,
+      buttons: decision.choices.map((choice, index) => ({
+        label: choice.skillCheck
+          ? `${choice.label} (${choice.skillCheck.skill} ${choice.skillCheck.difficulty})`
+          : choice.label,
+        onClick: () => {
+          const result = this.missionSystem.resolveEventChoice(decision.id, index, this.world);
+          if (result) this.hud.logEvent(result.text, result.success ? 'success' : 'danger');
+          this.missionDecisions.shift();
+          this.decisionActive = false;
+          if (this.missionDecisions.length) this.presentMissionDecision();
+          else {
+            const mode = this.decisionTimeMode ?? 'play';
+            this.decisionTimeMode = null;
+            this.setTimeMode(mode);
+          }
+        },
+      })),
     });
   }
 
@@ -1704,6 +1845,11 @@ class CultTycoonGame {
       return;
     }
 
+    const requirement = requiredTechForObject(item);
+    if (requirement && !this.techTree.isUnlocked(requirement.id)) {
+      this.hud.logEvent(`Research ${requirement.name} before building this object.`, 'warning');
+      return;
+    }
     const objDef = DataManager.getObject(item);
 
     // Determine cost
@@ -2132,6 +2278,28 @@ class CultTycoonGame {
         tiles: room.tiles.map((tile) => ({ ...tile })),
       })),
     });
+    this.hud.updateMissionPanel({
+      cultists: this.world.query([FollowerAI, Skills]).map((id) => {
+        const skills = this.world.getComponent(id, Skills)!,
+          ai = this.world.getComponent(id, FollowerAI)!;
+        return {
+          id,
+          name: this.followerNames.get(id) ?? 'Follower',
+          tier: ai.tier,
+          skills: {
+            cooking: skills.cooking,
+            research: skills.research,
+            construction: skills.construction,
+            faith: skills.faith,
+            combat: skills.combat,
+            social: skills.social,
+          },
+          onMission:
+            this.world.hasComponent(id, OnMission) || this.world.hasComponent(id, OnRitual),
+        };
+      }),
+      activeMissions: this.missionSystem.getActiveMissions(),
+    });
     this.updateAlphaObjective();
 
     // Keep open management panels current while the simulation runs.
@@ -2244,10 +2412,38 @@ class CultTycoonGame {
         'Control the heat',
         `Heat is ${Math.floor(heat)}. Reduce exposure before protests and raids escalate.`,
       );
+    } else if (
+      !this.buildingSystem.getAllObjects().some((o) => o.objectId === 'toilet') ||
+      !this.buildingSystem.getAllObjects().some((o) => o.objectId === 'shower')
+    ) {
+      this.hud.setObjective(
+        'Provide everyday essentials',
+        'Add a toilet and a shower from Objects. Keep paths clear so followers can reach them.',
+      );
+    } else if (!completeRoomIds.has('research_room')) {
+      this.hud.setObjective(
+        'Establish a Research Room',
+        'Designate and furnish a Research Room. A skilled researcher produces influence for discoveries.',
+      );
+    } else if (this.world.query([FollowerAI]).length < 8) {
+      this.hud.setObjective(
+        'Grow to eight followers',
+        'Add beds inside functional Dormitories, then use Menu > Invite follower. New people cost 50 coins and 15 influence.',
+      );
+    } else if (this.missionSystem.completedCount < 3) {
+      this.hud.setObjective(
+        'Establish your influence',
+        `Complete three missions (${this.missionSystem.completedCount}/3). Choose teams without leaving essential jobs unstaffed.`,
+      );
+    } else if (!this.techTree.isUnlocked('divine_inspiration')) {
+      this.hud.setObjective(
+        'Discover Divine Inspiration',
+        'Complete any three discoveries, then unlock Divine Inspiration in the Tech Tree.',
+      );
     } else {
       this.hud.setObjective(
-        'Grow without losing control',
-        'Expand rooms, keep needs stable, improve work priorities, research, run missions and prepare for rising heat.',
+        'Prepare the Ascension',
+        'Build a Ritual Room with an altar, offering bowl and eight clear gathering tiles. Feed and rest eight followers, then choose Ascension in Rituals.',
       );
     }
   }
@@ -2348,6 +2544,7 @@ class CultTycoonGame {
       }
     }
 
+    this.presentMissionDecision();
     // Always render (even when paused, so the scene is visible behind pause overlay)
     const blocked =
       this.gameState !== 'playing' || this.hud.hasManagementPanel() || this.dialog.isVisible;
@@ -2435,17 +2632,27 @@ class CultTycoonGame {
   private simulate(dt: number): void {
     // ResourceSystem owns the continuous economy. Seed it from player-facing state
     // before simulation, then read its results back immediately afterward.
+    this.missionSystem.successBonus = this.techTree.getEffectBonus('missionSuccessBonus');
     this.gameInstanceState.resources.funds = this.cultWealth;
     this.gameInstanceState.resources.influence = this.cultInfluence;
     this.gameInstanceState.resources.notoriety = this.cultNotoriety;
 
+    const priorFood = this.gameInstanceState.resources.food;
+    const priorInfluence = this.gameInstanceState.resources.influence;
     for (const system of this.systems) {
       system.update(this.world, dt);
     }
+    this.gameInstanceState.resources.food +=
+      Math.max(0, this.gameInstanceState.resources.food - priorFood) *
+      this.techTree.getEffectBonus('foodBonus');
+    this.gameInstanceState.resources.influence +=
+      Math.max(0, this.gameInstanceState.resources.influence - priorInfluence) *
+      this.techTree.getEffectBonus('influenceBonus');
 
     this.cultWealth = this.gameInstanceState.resources.funds;
     this.cultInfluence = this.gameInstanceState.resources.influence;
     this.cultNotoriety = this.gameInstanceState.resources.notoriety;
+    this.ritualSystem.update(this.world, dt);
 
     // Update PrestigeSystem (doesn't extend System, called manually)
     // Runs after ResourceSystem in the loop (position 7)
@@ -2495,11 +2702,14 @@ class CultTycoonGame {
     const elapsedHours = this.startingHour + (this.tickCount * 24) / this.secondsPerDay;
     this.currentHour = elapsedHours % 24;
     this.schedulingSystem.setHour(this.currentHour);
-    this.currentDay = 1 + Math.floor(elapsedHours / 24);
+    const nextDay = 1 + Math.floor(elapsedHours / 24);
+    if (nextDay !== this.currentDay) this.heatSystem.advanceDay();
+    this.currentDay = nextDay;
     this.eventSystem.setDay(this.currentDay);
     this.autosaveElapsed += dt;
     if (this.autosaveElapsed >= 300) {
-      this.autosaveElapsed = 0; /* Manual save remains authoritative during Alpha. */
+      this.autosaveElapsed = 0;
+      this.saveGame(true);
     }
     // Supporter donations scale with follower faith; critical needs lower income.
     const local = this.world
@@ -2509,8 +2719,24 @@ class CultTycoonGame {
     for (const id of local) {
       const needs = this.world.getComponent(id, Needs)!;
       donations += (0.03 * needs.faith) / 100;
+      const health = this.world.getComponent(id, Health);
+      if (health) {
+        const starving = needs.hunger <= 1,
+          exhausted = needs.energy <= 1;
+        if (starving || exhausted)
+          health.hp = Math.max(0, health.hp - (starving ? 0.2 : 0.08) * dt);
+        else if (needs.hunger > 60 && needs.energy > 60)
+          health.hp = Math.min(health.maxHp, health.hp + 0.15 * dt);
+        if (health.hp >= 90)
+          health.statusEffects = health.statusEffects.filter((status) => status !== 'injured');
+        if (health.hp <= 0) {
+          this.world.destroyEntity(id);
+          this.followerNames.delete(id);
+          this.hud.logEvent('A follower died from untreated critical needs.', 'danger');
+        }
+      }
     }
-    this.cultWealth += donations * dt;
+    this.cultWealth += donations * dt * (1 + this.techTree.getEffectBonus('donationBonus'));
     const reduction = this.techTree.getEffectBonus('heatReductionRate');
     if (reduction > 0) this.heatSystem.reduceHeat(reduction * dt);
     // Update particle effects
@@ -2533,11 +2759,11 @@ class CultTycoonGame {
   private checkWinCondition(): void {
     if (this.gameEnded) return;
     const entities = this.world.query([Needs, FollowerAI]);
-    if (entities.length >= 6) {
+    if (entities.length >= 8) {
       this.showWinOverlay();
     } else {
       this.hud.logEvent(
-        `Ascension ritual complete! Need 6 followers to win (have ${entities.length}).`,
+        `Ascension ritual complete! Need 8 followers to win (have ${entities.length}).`,
         'success',
       );
     }
@@ -2740,11 +2966,14 @@ class CultTycoonGame {
     this._popZeroTimer = 0;
     this.raidWarning = 0;
     this.autosaveElapsed = 0;
+    this.missionDecisions = [];
+    this.decisionTimeMode = null;
+    this.decisionActive = false;
     this.tickCount = 0;
     this.currentDay = 1;
     this.currentHour = this.startingHour;
     this.accumulator = 0;
-    this.cultWealth = 500;
+    this.cultWealth = 900;
     this.cultInfluence = 50;
     this.cultNotoriety = 5;
     this.selectedEntity = null;
@@ -2849,7 +3078,7 @@ class CultTycoonGame {
     this.startMenu.show();
 
     // Enable Continue button only if a save exists
-    this.startMenu.setCanContinue(this.saveSystem.hasSave());
+    this.startMenu.setCanContinue(!!this.saveSystem.latestSave());
 
     // Settings menu (shared, created on demand)
     this.settingsMenu = new SettingsMenu(
@@ -2895,7 +3124,7 @@ class CultTycoonGame {
    */
   private continueGame(): void {
     if (this.gameState === 'loading') return;
-    const data = this.saveSystem.load();
+    const data = this.saveSystem.latestSave();
     if (!data) {
       this.dialog.alert('No valid save', 'No valid manual save is available. Start a new game.');
       return;
@@ -3098,7 +3327,7 @@ class CultTycoonGame {
   /**
    * Save the game to localStorage.
    */
-  private saveGame(): void {
+  private saveGame(automatic = false): void {
     const cult: SerializedCult = {
       influence: this.cultInfluence,
       wealth: this.cultWealth,
@@ -3138,9 +3367,12 @@ class CultTycoonGame {
       fog: this.fogOfWar.snapshot(),
       camera: { x: target.x, y: target.z, zoom: this.renderer.camera.getZoom() },
     };
-    const success = this.saveSystem.save(data);
+    const success = automatic ? this.saveSystem.autosave(data) : this.saveSystem.save(data);
     if (success) {
-      this.hud.logEvent('Game saved successfully!', 'success');
+      this.hud.logEvent(
+        automatic ? 'Autosaved to the recovery slot.' : 'Game saved successfully!',
+        'success',
+      );
       console.log('[Menu] Game saved to localStorage');
     } else {
       this.hud.logEvent('Save failed!', 'danger');
@@ -3159,7 +3391,7 @@ class CultTycoonGame {
     // Keep the single render loop alive; menu state disables simulation.
     this.hud.closeManagementPanels();
     this.closeBuildMenu();
-    this.startMenu?.setCanContinue(this.saveSystem.hasSave());
+    this.startMenu?.setCanContinue(!!this.saveSystem.latestSave());
 
     // Show start menu again
     this.startMenu?.show();

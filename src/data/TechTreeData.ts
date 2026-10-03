@@ -24,6 +24,12 @@ export interface TechNode {
     recruitmentBonus?: number;
     heatReductionRate?: number;
     unlockIdeology?: IdeologyPath;
+    foodBonus?: number;
+    donationBonus?: number;
+    influenceBonus?: number;
+    recoveryBonus?: number;
+    missionSuccessBonus?: number;
+    missionRewardBonus?: number;
   };
 }
 
@@ -31,107 +37,107 @@ export const TECH_TREE_NODES: TechNode[] = [
   // ─── Living Conditions ───
   {
     id: 'beds_ii',
-    name: 'Beds II',
+    name: 'Bunk Beds',
     branch: 'living',
     cost: { influence: 50 },
     prerequisites: [],
     unlocked: false,
-    description: 'Better beds improve rest quality and follower morale.',
-    effects: { unlocksObject: 'better_bed' },
+    description: 'Unlock two-person bunk beds and improve recovery by 10%.',
+    effects: { unlocksObject: 'bunk_bed', recoveryBonus: 0.1 },
   },
   {
     id: 'kitchen',
-    name: 'Kitchen',
+    name: 'Efficient Kitchens',
     branch: 'living',
     cost: { influence: 80 },
     prerequisites: [],
     unlocked: false,
-    description: 'Unlock the kitchen room for improved follower meals.',
-    effects: { unlocksRoom: 'kitchen' },
+    description: 'Unlock the large cauldron. Cooks produce 25% more food.',
+    effects: { unlocksObject: 'cauldron', foodBonus: 0.25 },
   },
   {
     id: 'bathroom_upgrades',
-    name: 'Bathroom Upgrades',
+    name: 'Comfort & Care',
     branch: 'living',
     cost: { influence: 60 },
     prerequisites: [],
     unlocked: false,
-    description: 'Better toilets and showers improve hygiene and comfort.',
-    effects: { unlocksObject: 'upgraded_toilet' },
+    description: 'Improve recovery at all facilities by another 15%.',
+    effects: { recoveryBonus: 0.15 },
   },
   {
     id: 'recreation',
-    name: 'Recreation Room',
+    name: 'Peaceful Gardens',
     branch: 'living',
     cost: { influence: 100 },
     prerequisites: ['beds_ii'],
     unlocked: false,
-    description: 'Unlock the recreation room to keep followers entertained.',
-    effects: { unlocksRoom: 'recreation' },
+    description: 'Unlock the Zen Garden; improve recovery by another 15%.',
+    effects: { unlocksObject: 'zen_garden', recoveryBonus: 0.15 },
   },
 
   // ─── Exploitation ───
   {
     id: 'treatment_ii',
-    name: 'Treatment II',
+    name: 'Supporter Outreach',
     branch: 'exploitation',
     cost: { influence: 70 },
     prerequisites: [],
     unlocked: false,
-    description: 'Improved follower treatments yield more income.',
-    effects: { recruitmentBonus: 5 },
+    description: 'Supporter donations increase by 25%.',
+    effects: { donationBonus: 0.25 },
   },
   {
     id: 'distillery',
-    name: 'Distillery',
+    name: 'Communal Harvest',
     branch: 'exploitation',
     cost: { influence: 120 },
     prerequisites: ['treatment_ii'],
     unlocked: false,
-    description: 'Unlock the distillery room for spirit production.',
-    effects: { unlocksRoom: 'distillery' },
+    description: 'Unlock the farm plot; cooks produce another 25% more food.',
+    effects: { unlocksObject: 'farm_plot', foodBonus: 0.25 },
   },
   {
     id: 'propaganda_ministry',
-    name: 'Ministry of Truth',
+    name: 'Public Relations',
     branch: 'exploitation',
     cost: { influence: 100 },
     prerequisites: ['treatment_ii'],
     unlocked: false,
-    description: 'Unlock the Ministry of Truth for propaganda generation.',
-    effects: { unlocksRoom: 'ministry_of_truth' },
+    description: 'Mission rewards increase by 20%.',
+    effects: { missionRewardBonus: 0.2 },
   },
 
   // ─── Cult Management ───
   {
     id: 'recruitment_ii',
-    name: 'Recruitment II',
+    name: 'Recruitment Network',
     branch: 'management',
     cost: { influence: 100 },
     prerequisites: [],
     unlocked: false,
-    description: 'Increase max population by 10.',
+    description: 'Increase population capacity by 10. Applicants still need beds.',
     effects: { maxPopulationPlus: 10 },
   },
   {
     id: 'follower_education',
-    name: 'Follower Education',
+    name: 'Shared Learning',
     branch: 'management',
     cost: { influence: 150 },
     prerequisites: ['recruitment_ii'],
     unlocked: false,
-    description: 'Followers gain skills faster through education.',
-    effects: { recruitmentBonus: 10 },
+    description: 'Unlock the library shelf. Researchers produce 30% more influence.',
+    effects: { unlocksObject: 'library_shelf', influenceBonus: 0.3 },
   },
   {
     id: 'ministry_alteration',
-    name: 'Ministry of Alteration',
+    name: 'Community Endowment',
     branch: 'management',
     cost: { influence: 200 },
     prerequisites: ['recruitment_ii'],
     unlocked: false,
-    description: 'Unlock trait removal to shape your followers.',
-    effects: { unlocksRoom: 'alteration_chamber' },
+    description: 'Supporter donations increase by a further 50%.',
+    effects: { donationBonus: 0.5 },
   },
 
   // ─── Divine / Leader ───
@@ -139,43 +145,46 @@ export const TECH_TREE_NODES: TechNode[] = [
     id: 'divine_inspiration',
     name: 'Divine Inspiration',
     branch: 'divine',
-    cost: { influence: 300 },
+    cost: { influence: 180 },
     prerequisites: [], // special: any 3 other nodes — handled in getAvailableTechs
     unlocked: false,
-    description: 'Choose your ideology path and shape the endgame.',
+    description:
+      'After three discoveries, unlock the Ascension ritual. It requires eight followers, three completed missions, and a functional Ritual Room.',
     effects: {},
   },
   {
     id: 'eldritch_path',
-    name: 'Eldritch Horror Path',
+    name: 'Forbidden Knowledge',
     branch: 'divine',
-    cost: { influence: 500, faith: 100 },
+    cost: { influence: 250, faith: 70 },
     prerequisites: ['divine_inspiration'],
     unlocked: false,
-    description: 'Unlock the Eldritch Horror endgame path.',
-    effects: { unlockIdeology: 'eldritch' },
+    description:
+      'Choose a doctrine: researchers produce 50% more influence. Excludes Peace & Love.',
+    effects: { unlockIdeology: 'eldritch', influenceBonus: 0.5 },
   },
   {
     id: 'peace_love_path',
-    name: 'Peace & Love Path',
+    name: 'Peace & Love',
     branch: 'divine',
-    cost: { influence: 500, faith: 100 },
+    cost: { influence: 250, faith: 70 },
     prerequisites: ['divine_inspiration'],
     unlocked: false,
-    description: 'Unlock the Peace & Love endgame path.',
-    effects: { unlockIdeology: 'peace_love' },
+    description:
+      'Choose a doctrine: improve need recovery by 35%, and reduce heat slowly. Excludes Forbidden Knowledge.',
+    effects: { unlockIdeology: 'peace_love', recoveryBonus: 0.35, heatReductionRate: 0.006 },
   },
 
   // ─── Security / PR ───
   {
     id: 'propaganda_basics',
-    name: 'Propaganda Basics',
+    name: 'Good Neighbors',
     branch: 'security',
     cost: { influence: 80 },
     prerequisites: [],
     unlocked: false,
-    description: 'Reduce heat generation through basic propaganda.',
-    effects: { heatReductionRate: 0.1 },
+    description: 'Community outreach removes 0.6 heat per minute.',
+    effects: { heatReductionRate: 0.01 },
   },
   {
     id: 'mission_specialists',
@@ -184,18 +193,18 @@ export const TECH_TREE_NODES: TechNode[] = [
     cost: { influence: 120 },
     prerequisites: ['propaganda_basics'],
     unlocked: false,
-    description: 'Better mission success rates.',
-    effects: { recruitmentBonus: 5 },
+    description: 'Improve mission success probability by 15 percentage points.',
+    effects: { missionSuccessBonus: 0.15 },
   },
   {
     id: 'counter_intelligence',
-    name: 'Counter Intelligence',
+    name: 'Discretion',
     branch: 'security',
     cost: { influence: 150 },
     prerequisites: ['propaganda_basics'],
     unlocked: false,
-    description: 'Slower notoriety growth through counter-intelligence.',
-    effects: { heatReductionRate: 0.2 },
+    description: 'Remove another 0.9 heat per minute.',
+    effects: { heatReductionRate: 0.015 },
   },
 ];
 
@@ -205,7 +214,7 @@ export const TECH_TREE_NODES: TechNode[] = [
  * Get a tech node by id.
  */
 export function getTechNode(id: string): TechNode | undefined {
-  return TECH_TREE_NODES.find(n => n.id === id);
+  return TECH_TREE_NODES.find((n) => n.id === id);
 }
 
 /**
@@ -215,17 +224,19 @@ export function getTechNode(id: string): TechNode | undefined {
 export function getAvailableTechs(unlockedIds: string[]): TechNode[] {
   const unlockedSet = new Set(unlockedIds);
 
-  return TECH_TREE_NODES.filter(node => {
+  return TECH_TREE_NODES.filter((node) => {
     if (unlockedSet.has(node.id)) return false;
+    if (node.id === 'eldritch_path' && unlockedSet.has('peace_love_path')) return false;
+    if (node.id === 'peace_love_path' && unlockedSet.has('eldritch_path')) return false;
 
     if (node.id === 'divine_inspiration') {
       // Special: requires any 3 other nodes unlocked (excluding divine branch siblings)
-      const otherUnlocked = unlockedIds.filter(id => id !== 'divine_inspiration');
+      const otherUnlocked = unlockedIds.filter((id) => id !== 'divine_inspiration');
       return otherUnlocked.length >= 3;
     }
 
     if (node.prerequisites.length === 0) return true;
-    return node.prerequisites.every(prereq => unlockedSet.has(prereq));
+    return node.prerequisites.every((prereq) => unlockedSet.has(prereq));
   });
 }
 
@@ -246,4 +257,8 @@ export function getTechBranches(): Record<TechBranch, TechNode[]> {
   }
 
   return branches;
+}
+/** Premium furniture is unlocked through discoveries, not just hidden in the UI. */
+export function requiredTechForObject(id: string): TechNode | undefined {
+  return TECH_TREE_NODES.find((node) => node.effects.unlocksObject === id);
 }

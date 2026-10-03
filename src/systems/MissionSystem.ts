@@ -1,3 +1,4 @@
+import { OnRitual } from '../components/OnRitual';
 /**
  * MissionSystem — Manages external missions for cultists.
  *
@@ -87,6 +88,7 @@ let missionIdCounter = 0;
 
 export class MissionSystem {
   completedCount = 0;
+  successBonus = 0;
   private activeMissions = new Map<string, ActiveMission>();
   private rng: () => number;
   private onEvent?: MissionEventCallback;
@@ -140,7 +142,7 @@ export class MissionSystem {
       if (!world.hasEntity(id)) {
         return { success: false, reason: `Entity ${id} does not exist` };
       }
-      if (world.hasComponent(id, OnMission)) {
+      if (world.hasComponent(id, OnMission) || world.hasComponent(id, OnRitual)) {
         return { success: false, reason: `Cultist ${id} is already on a mission` };
       }
     }
@@ -241,7 +243,10 @@ export class MissionSystem {
 
     // Success chance: team skill vs difficulty
     // successChance = teamSkill / (teamSkill + difficulty * 2)
-    const successChance = teamSkill / (teamSkill + template.difficulty * 2);
+    const successChance = Math.min(
+      0.95,
+      teamSkill / (teamSkill + template.difficulty * 2) + this.successBonus,
+    );
     const isSuccess = this.rng() < successChance;
 
     // Combine template rewards with accumulated event rewards

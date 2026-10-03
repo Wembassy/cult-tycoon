@@ -5,6 +5,10 @@
  */
 
 import type { World } from '../ecs/World';
+import { OnRitual } from '../components/OnRitual';
+import { OnMission } from '../components/OnMission';
+import { FollowerAI } from '../components/FollowerAI';
+import { Transform } from '../components/Transform';
 import { Needs } from '../components/Needs';
 import { DataManager, RitualDef } from '../data/DataManager';
 
@@ -15,6 +19,7 @@ export interface ActiveRitual {
   progress: number; // 0 to def.duration
   participants: number[]; // entity IDs
   tick: number; // start tick
+  gatheringSeconds?: number;
 }
 
 export interface RitualResult {
@@ -118,9 +123,31 @@ export class RitualSystem {
    * Start a ritual. Deducts costs upfront.
    * Returns the ActiveRitual or null if it can't start.
    */
-  startRitual(ritualId: string, participants: number[]): ActiveRitual | null {
+  startRitual(
+    ritualId: string,
+    participants: number[],
+    world?: World,
+    targets: { x: number; y: number }[] = [],
+  ): ActiveRitual | null {
     const def = DataManager.getRitual(ritualId);
-    if (!def) return null;
+    if (
+      !def ||
+      this.activeRituals.length ||
+      new Set(participants).size !== participants.length ||
+      participants.length < def.minFollowers
+    )
+      return null;
+    if (
+      world &&
+      (targets.length < participants.length ||
+        participants.some(
+          (id) =>
+            !world.hasComponent(id, Needs) ||
+            world.hasComponent(id, OnMission) ||
+            world.hasComponent(id, OnRitual),
+        ))
+    )
+      return null;
 
     const ritual: ActiveRitual = {
       id: `${ritualId}_${this.tickCount}`,
@@ -131,6 +158,21 @@ export class RitualSystem {
       tick: this.tickCount,
     };
 
+    if (world)
+      participants.forEach((id, index) => {
+        const marker = new OnRitual(id);
+        marker.ritualId = ritual.id;
+        marker.target = { ...targets[index] };
+        world.addComponent(id, marker);
+        const ai = world.getComponent(id, FollowerAI);
+        if (ai) {
+          ai.path = [];
+          ai.pathIndex = 0;
+          ai.state = 'moving';
+          ai.needTarget = null;
+          ai.needTargetTile = null;
+        }
+      });
     this.activeRituals.push(ritual);
     this.onRitualStart?.(ritual);
     return ritual;
@@ -145,7 +187,28 @@ export class RitualSystem {
 
     const completed: ActiveRitual[] = [];
 
-    for (const ritual of this.activeRituals) {
+    for (const ritual of [...this.activeRituals]) {
+      if (
+        ritual.participants.some((id) => {
+          const needs = world.getComponent(id, Needs);
+          return !needs || needs.hunger < 12 || needs.energy < 8;
+        })
+      ) {
+        this.cancelRitual(world, ritual.id);
+        continue;
+      }
+      const gathering = ritual.participants.some((id) => {
+        const marker = world.getComponent(id, OnRitual),
+          pos = world.getComponent(id, Transform);
+        return (
+          marker && (!pos || Math.hypot(marker.target.x - pos.x, marker.target.y - pos.y) > 0.1)
+        );
+      });
+      if (gathering) {
+        ritual.gatheringSeconds = (ritual.gatheringSeconds ?? 0) + dt;
+        if (ritual.gatheringSeconds > 45) this.cancelRitual(world, ritual.id);
+        continue;
+      }
       ritual.progress += dt;
 
       // Boost participant faith during ritual
@@ -165,6 +228,36 @@ export class RitualSystem {
     // Process completed rituals
     for (const ritual of completed) {
       this.completeRitual(world, ritual);
+    }
+  }
+
+  cancelRitual(world: World, id: string): boolean {
+    const ritual = this.activeRituals.find((r) => r.id === id);
+    if (!ritual) return false;
+    this.releaseParticipants(world, ritual);
+    this.activeRituals = this.activeRituals.filter((r) => r.id !== id);
+    this.onRitualComplete?.({
+      id: ritual.id,
+      name: ritual.name,
+      success: false,
+      influenceGain: 0,
+      faithGain: 0,
+      notorietyGain: 0,
+      participants: ritual.participants.length,
+    });
+    return true;
+  }
+  private releaseParticipants(world: World, ritual: ActiveRitual): void {
+    for (const id of ritual.participants) {
+      world.removeComponent(id, OnRitual);
+      const ai = world.getComponent(id, FollowerAI);
+      if (ai) {
+        ai.path = [];
+        ai.pathIndex = 0;
+        ai.state = 'idle';
+        ai.stateTimer = 0;
+        ai.activityReason = 'Available';
+      }
     }
   }
 
@@ -188,6 +281,7 @@ export class RitualSystem {
       }
     }
 
+    this.releaseParticipants(world, ritual);
     // Remove from active
     this.activeRituals = this.activeRituals.filter((r) => r.id !== ritual.id);
     this.completedRituals.push(result);

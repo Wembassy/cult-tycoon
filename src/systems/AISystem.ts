@@ -1,3 +1,4 @@
+import { OnRitual } from '../components/OnRitual';
 /** Follower navigation and self-care. All durations are simulation seconds. */
 import type { World } from '../ecs/World';
 import { FollowerAI } from '../components/FollowerAI';
@@ -82,9 +83,38 @@ export class AISystem {
       if (world.hasComponent(entity, OnMission)) continue;
       const ai = world.getComponent(entity, FollowerAI)!;
       const pos = world.getComponent(entity, Transform)!;
+      const ceremony = world.getComponent(entity, OnRitual);
+      if (ceremony) {
+        ai.needTarget = null;
+        ai.needTargetTile = null;
+        ai.needFacilityId = null;
+        if (Math.hypot(ceremony.target.x - pos.x, ceremony.target.y - pos.y) > 0.08) {
+          ai.state = 'moving';
+          ai.activityReason = 'Gathering for a ritual';
+          this.move(world, entity, ai, pos, dt);
+        } else {
+          pos.x = ceremony.target.x;
+          pos.y = ceremony.target.y;
+          ai.state = 'working';
+          ai.activityReason = 'Performing a ritual';
+        }
+        continue;
+      }
       const before = ai.state;
       ai.stateTimer += dt;
       const needs = world.getComponent(entity, Needs);
+      // A missing shower must not prevent life-saving food/rest forever.
+      if (needs && ai.needTarget && !['hunger', 'energy'].includes(ai.needTarget)) {
+        const emergency = needs.hunger < 12 ? 'hunger' : needs.energy < 8 ? 'energy' : null;
+        if (emergency) {
+          ai.needTarget = emergency;
+          ai.needTargetTile = null;
+          ai.needFacilityId = null;
+          ai.path = [];
+          ai.pathIndex = 0;
+          ai.state = 'needs';
+        }
+      }
       // Never interrupt an existing self-care journey with the same critical need.
       if (!ai.needTarget && needs) {
         const urgent = NEEDS.filter((n) => needs[n] < (n === 'hunger' ? 30 : 25)).sort(
@@ -177,7 +207,8 @@ export class AISystem {
   }
   private move(world: World, entity: number, ai: FollowerAI, pos: Transform, dt: number): void {
     const job = world.getComponent(entity, Job);
-    const goal = ai.needTargetTile ?? job?.targetTile;
+    const goal =
+      world.getComponent(entity, OnRitual)?.target ?? ai.needTargetTile ?? job?.targetTile;
     if (!goal) {
       ai.state = 'idle';
       ai.path = [];

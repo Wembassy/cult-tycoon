@@ -1,3 +1,4 @@
+import { OnRitual } from '../components/OnRitual';
 /**
  * ResourceSystem — Handles resource generation and consumption during gameplay.
  *
@@ -137,7 +138,7 @@ export class ResourceSystem extends System {
     let totalMaterialsGen = 0;
 
     for (const entity of followers) {
-      if (world.hasComponent(entity, OnMission)) continue;
+      if (world.hasComponent(entity, OnMission) || world.hasComponent(entity, OnRitual)) continue;
       const job = world.getComponent(entity, Job)!;
       const ai = world.getComponent(entity, FollowerAI)!;
       const skills = world.getComponent(entity, Skills);

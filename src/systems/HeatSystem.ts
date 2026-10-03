@@ -130,11 +130,13 @@ export class HeatSystem {
    * Reduce heat (from propaganda, missions, etc.).
    */
   reduceHeat(amount: number): void {
+    if (!Number.isFinite(amount) || amount <= 0) return;
     const actualReduction = Math.min(amount, this.heat);
     this.heat = Math.max(0, this.heat - amount);
 
     // Emit heat_reduced event
-    this.emitEvent('heat_reduced', { amount: Math.floor(actualReduction) });
+    if (actualReduction >= 1)
+      this.emitEvent('heat_reduced', { amount: Math.floor(actualReduction) });
 
     // Reset protest flag if heat drops below threshold
     if (this.heat < HEAT_CONFIG.PROTEST_THRESHOLD) {

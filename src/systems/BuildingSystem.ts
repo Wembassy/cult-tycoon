@@ -504,7 +504,16 @@ export class BuildingSystem {
     for (const id of def.requiredObjects) {
       const met = this.getAllObjects().some(
         (obj) =>
-          obj.objectId === id &&
+          (obj.objectId === id ||
+            (
+              {
+                bed: ['bunk_bed'],
+                cookpot: ['cauldron'],
+                research_desk: ['library_shelf'],
+                altar: ['sacrificial_altar'],
+                storage_box: ['warehouse'],
+              } as Record<string, string[]>
+            )[id]?.includes(obj.objectId)) &&
           this.getFootprint(obj.x, obj.y, obj.objectId, obj.rotation).every((t) =>
             keys.has(`${t.x},${t.y}`),
           ),

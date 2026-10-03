@@ -1,3 +1,4 @@
+import { OnRitual } from '../components/OnRitual';
 /**
  * SceneManager — Three.js scene graph for Cult Tycoon.
  * Dramatic 3D terrain, detailed follower models, environmental decor.
@@ -12,6 +13,7 @@ import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
 import { FollowerAI } from '../components/FollowerAI';
 import { Job } from '../components/Job';
+import { createBuildingVisual } from './BuildingVisuals';
 import { OnMission } from '../components/OnMission';
 import { DataManager } from '../data/DataManager';
 import type { AssetLoader } from './AssetLoader';
@@ -22,10 +24,10 @@ import { findFollowerAnimationClip, type FollowerAnimationState } from '../data/
 
 // Richer terrain colors
 const TERRAIN_COLORS: Record<string, number> = {
-  grass: 0x4a8c3a,
-  water: 0x2a6aaa,
-  stone: 0x9a9a92,
-  dirt: 0x8a6a4a,
+  grass: 0x75936a,
+  water: 0x537f91,
+  stone: 0xadb1a0,
+  dirt: 0x978667,
 };
 
 // Dramatic height differences — stone is cliffs, water is low
@@ -578,9 +580,7 @@ export class SceneManager {
    * Create a work station mesh for a room type.
    */
   private createObjectMesh(objType: string): THREE.Object3D | null {
-    const mesh = this.createPlaceholderMesh(objType, 0);
-    if (!mesh) return null;
-    return mesh;
+    return createBuildingVisual(objType);
   }
 
   syncEntities(dt = this.animationDelta): void {
@@ -620,19 +620,15 @@ export class SceneManager {
         if (assetPath && this.assets) {
           const cloned = this.assets.clone(assetPath);
           if (cloned) {
-            // Polygon Minis: root Armature node has translation ~[0, 1.0, -0.47].
-            // Scale to ~0.06 so they're ~0.12 units tall — small relative to trees/rocks.
-            const modelScale = 0.06;
+            // Normalize to a readable world height instead of the old 0.06 scale.
+            // Evaluate bind-pose bounds before any animation is applied.
+            cloned.updateMatrixWorld(true);
+            const sourceBounds = new THREE.Box3().setFromObject(cloned);
+            const modelScale = 1.35 / Math.max(sourceBounds.max.y - sourceBounds.min.y, 0.01);
             cloned.scale.setScalar(modelScale);
             cloned.updateMatrixWorld(true);
-
-            // Compute bounding box to find the actual feet position.
-            // This ensures the model stands on the ground regardless of
-            // how the Armature node is offset.
             const bbox = new THREE.Box3().setFromObject(cloned);
-            const feetY = bbox.min.y; // lowest point of the model in local space
-            // Shift model up so the lowest point (feet) sits at y=0 in the wrapper
-            cloned.position.y = -feetY;
+            cloned.position.y -= bbox.min.y;
 
             cloned.traverse((child) => {
               if (child instanceof THREE.Mesh) {
@@ -710,7 +706,10 @@ export class SceneManager {
       if (renderable.meshId.startsWith('follower')) {
         const ai = this.world.getComponent(entity, FollowerAI);
         const job = this.world.getComponent(entity, Job);
-        const animState = this.getFollowerAnimationState(ai, job);
+        const animState =
+          this.world.hasComponent(entity, OnRitual) && ai?.state === 'working'
+            ? 'pray'
+            : this.getFollowerAnimationState(ai, job);
 
         // Cross-fade semantic clips when available. Current generic Synty exports
         // fall back to rest pose plus subtle wrapper motion below.
@@ -721,7 +720,7 @@ export class SceneManager {
           const dx = transform.x - previous.x;
           const dy = transform.y - previous.y;
           if (dx * dx + dy * dy > 0.00001) {
-            const targetRot = Math.atan2(dx, dy);
+            const targetRot = Math.atan2(dx, dy) + Math.PI;
             let rotDiff = targetRot - obj.rotation.y;
             while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
             while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
@@ -729,6 +728,23 @@ export class SceneManager {
           }
         }
         this.lastFollowerPositions.set(entity, new THREE.Vector2(transform.x, transform.y));
+
+        if (animState === 'sleep' && ai?.needFacilityId && this.buildingSystem) {
+          const bed = this.buildingSystem.getAllObjects().find((o) => o.id === ai.needFacilityId);
+          if (bed) {
+            const cells = this.buildingSystem.getFootprint(
+              bed.x,
+              bed.y,
+              bed.objectId,
+              bed.rotation,
+            );
+            obj.position.x =
+              offset.x + cells.reduce((v, cell) => v + cell.x + 0.5, 0) / cells.length;
+            obj.position.z =
+              offset.z + cells.reduce((v, cell) => v + cell.y + 0.5, 0) / cells.length;
+            obj.rotation.y = bed.rotation;
+          }
+        }
 
         // Conservative procedural fallback when no semantic skeletal clip exists.
         const hasSemanticAction = this.animationActions.get(entity)?.has(animState) ?? false;
@@ -750,7 +766,7 @@ export class SceneManager {
         obj.rotation.y = transform.rotation;
       }
 
-      obj.position.y += (baseY - obj.position.y) * 0.15;
+      obj.position.y = baseY;
     }
 
     // Update animation mixers
@@ -1012,7 +1028,7 @@ export class SceneManager {
       color = 0x6a5a3a;
     } else if (meshId.includes('box') || meshId.includes('storage')) {
       geom = new THREE.BoxGeometry(0.55, 0.45, 0.55);
-      color = 0x8a6a4a;
+      color = 0x978667;
     } else if (meshId.includes('torch')) {
       geom = new THREE.CylinderGeometry(0.08, 0.06, 0.6, 6);
       color = 0x5a3a1a;

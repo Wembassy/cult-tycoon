@@ -1,3 +1,4 @@
+import { OnRitual } from '../components/OnRitual';
 /** Schedules express availability; AI owns movement and self-care. */
 import type { World } from '../ecs/World';
 import { System } from '../ecs/System';
@@ -51,7 +52,8 @@ export class SchedulingSystem implements System {
       const ai = world.getComponent(id, FollowerAI)!;
       const schedule = world.getComponent(id, Schedule)!;
       schedule.activity = getScheduledActivity(schedule.shift, this.currentHour);
-      if (world.hasComponent(id, OnMission) || ai.needTarget) continue;
+      if (world.hasComponent(id, OnMission) || world.hasComponent(id, OnRitual) || ai.needTarget)
+        continue;
       const needs = world.getComponent(id, Needs);
       const target =
         schedule.activity === 'sleeping'

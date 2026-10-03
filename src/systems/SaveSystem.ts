@@ -1,3 +1,4 @@
+import { OnRitual } from '../components/OnRitual';
 /**
  * SaveSystem — localStorage + JSON serialization for game state.
  * Saves: world entities/components, cult stats, tile map, time, settings.
@@ -204,6 +205,9 @@ export class SaveSystem {
           priorities: { ...workPreferences.priorities },
         };
 
+      const ceremony = world.getComponent(entityId, OnRitual);
+      if (ceremony)
+        components.OnRitual = { ritualId: ceremony.ritualId, target: { ...ceremony.target } };
       const mission = world.getComponent(entityId, OnMission);
       if (mission) components.OnMission = { missionId: mission.missionId };
 
@@ -375,6 +379,17 @@ export class SaveSystem {
   /**
    * Load autosave.
    */
+  latestSave(): SaveData | null {
+    const manual = this.load(),
+      recovery = this.load(-1);
+    return !manual
+      ? recovery
+      : !recovery
+        ? manual
+        : manual.timestamp >= recovery.timestamp
+          ? manual
+          : recovery;
+  }
   loadAutosave(): SaveData | null {
     return this.load(-1);
   }
@@ -452,6 +467,11 @@ export class SaveSystem {
         world.addComponent(entity, prefs);
       }
 
+      if (serialized.components.OnRitual) {
+        const ceremony = new OnRitual(entity);
+        Object.assign(ceremony, serialized.components.OnRitual);
+        world.addComponent(entity, ceremony);
+      }
       if (serialized.components.OnMission) {
         const mission = new OnMission(entity);
         Object.assign(mission, serialized.components.OnMission);

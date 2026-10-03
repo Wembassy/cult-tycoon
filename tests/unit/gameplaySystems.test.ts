@@ -114,7 +114,7 @@ describe('RitualSystem', () => {
   it('should get available rituals based on tech', () => {
     // With basic_rituals unlocked, morning_prayer and offerings should be available
     const available = system.getAvailableRituals();
-    const ids = available.map(r => r.id);
+    const ids = available.map((r) => r.id);
     expect(ids).toContain('morning_prayer');
     expect(ids).toContain('offerings');
     // moonlit_ritual requires advanced_rituals which is NOT unlocked
@@ -122,9 +122,9 @@ describe('RitualSystem', () => {
   });
 
   it('should unlock new rituals when tech is unlocked', () => {
-    system.unlockTech('advanced_rituals');
+    system.unlockTech('divine_inspiration');
     const available = system.getAvailableRituals();
-    const ids = available.map(r => r.id);
+    const ids = available.map((r) => r.id);
     expect(ids).toContain('moonlit_ritual');
   });
 
@@ -161,7 +161,7 @@ describe('TechTreeSystem', () => {
   it('should not have dependent nodes available without prerequisites', () => {
     const available = system.getAvailable();
     // recreation requires beds_ii — should not be available yet
-    const dep = available.find(n => n.id === 'recreation');
+    const dep = available.find((n) => n.id === 'recreation');
     expect(dep).toBeUndefined();
   });
 
@@ -188,19 +188,19 @@ describe('TechTreeSystem', () => {
   it('should make dependent nodes available after unlocking prerequisite', () => {
     // recreation requires beds_ii
     expect(system.isUnlocked('recreation')).toBe(false);
-    const beforeAvailable = system.getAvailable().find(n => n.id === 'recreation');
+    const beforeAvailable = system.getAvailable().find((n) => n.id === 'recreation');
     expect(beforeAvailable).toBeUndefined();
     system.unlock('beds_ii', 100, 0);
-    const afterAvailable = system.getAvailable().find(n => n.id === 'recreation');
+    const afterAvailable = system.getAvailable().find((n) => n.id === 'recreation');
     expect(afterAvailable).toBeDefined();
   });
 
   it('should get unlocked content ids', () => {
     system.unlock('beds_ii', 100, 0);
     const content = system.getUnlockedContent();
-    // beds_ii unlocks 'better_bed' object
+    // beds_ii unlocks 'bunk_bed' object
     expect(content.length).toBeGreaterThan(0);
-    expect(content).toContain('better_bed');
+    expect(content).toContain('bunk_bed');
   });
 
   it('should calculate effect bonuses', () => {
