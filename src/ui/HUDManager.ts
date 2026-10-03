@@ -8,6 +8,8 @@
 import { TechTreePanel, TechTreePanelData } from './TechTreePanel';
 import { MissionPanel, MissionPanelData } from './MissionPanel';
 import { SchedulePanel, SchedulePanelData } from './SchedulePanel';
+import { WorkPanel, WorkPanelData, type WorkJobKey } from './WorkPanel';
+import type { WorkPriority, WorkRole } from '../components/WorkPreferences';
 
 export interface HUDConfig {
   container: HTMLElement;
@@ -69,6 +71,7 @@ export class HUDManager {
   private techTreePanel: TechTreePanel | null = null;
   private missionPanel: MissionPanel | null = null;
   private schedulePanel: SchedulePanel | null = null;
+  private workPanel: WorkPanel | null = null;
   private eventLogEntries: EventLogEntry[] = [];
   private nextEventId = 1;
   private maxLogEntries = 20;
@@ -86,6 +89,10 @@ export class HUDManager {
   onOpenMissions?: () => void;
   onOpenSchedule?: () => void;
   onOpenRituals?: () => void;
+  onOpenWork?: () => void;
+  onSetWorkRole?: (entityId: number, role: WorkRole) => void;
+  onSetWorkPriority?: (entityId: number, job: WorkJobKey, priority: WorkPriority) => void;
+  onAutoAssignWorkRoles?: () => void;
 
   constructor(config: HUDConfig) {
     this.container = config.container;
@@ -139,6 +146,14 @@ export class HUDManager {
     });
     this.schedulePanel.mount();
 
+    this.workPanel = new WorkPanel({
+      onSetRole: (entityId, role) => this.onSetWorkRole?.(entityId, role),
+      onSetPriority: (entityId, job, priority) => this.onSetWorkPriority?.(entityId, job, priority),
+      onAutoAssign: () => this.onAutoAssignWorkRoles?.(),
+      onClose: () => this.hideWorkPanel(),
+    });
+    this.workPanel.mount();
+
     this.setupTopBar();
     this.injectTopBarStyles();
     this.setObjective('Establish the compound', 'Build basic shelter, inspect your followers, then choose your first research or mission.');
@@ -150,6 +165,7 @@ export class HUDManager {
     this.topBar.innerHTML = `
       <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
       <button class="hud-top-btn" data-panel="missions" title="Missions">🎯 Missions</button>
+      <button class="hud-top-btn" data-panel="work" title="Roles & Work (W)">👥 Work</button>
       <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
       <button class="hud-top-btn" data-panel="rituals" title="Rituals (R)">🔮 Rituals</button>
     `;
@@ -159,6 +175,7 @@ export class HUDManager {
         switch (panel) {
           case 'techtree': this.onOpenTechTree ? this.onOpenTechTree() : this.toggleTechTreePanel(); break;
           case 'missions': this.onOpenMissions ? this.onOpenMissions() : this.toggleMissionPanel(); break;
+          case 'work': this.onOpenWork?.(); break;
           case 'schedule': this.onOpenSchedule ? this.onOpenSchedule() : this.toggleSchedulePanel(); break;
           case 'rituals': this.onOpenRituals?.(); break;
         }
@@ -331,6 +348,20 @@ export class HUDManager {
     this.schedulePanel?.update(data);
   }
 
+  showWorkPanel(data: WorkPanelData): void {
+    this.workPanel?.show(data);
+    this.updateTopBarActive();
+  }
+
+  updateWorkPanel(data: WorkPanelData): void {
+    this.workPanel?.update(data);
+  }
+
+  hideWorkPanel(): void {
+    this.workPanel?.hide();
+    this.updateTopBarActive();
+  }
+
   private updateTopBarActive(): void {
     if (!this.topBar) return;
     this.topBar.querySelectorAll('.hud-top-btn').forEach(btn => {
@@ -339,6 +370,7 @@ export class HUDManager {
       switch (panel) {
         case 'techtree': isActive = this.techTreePanel?.isVisible ?? false; break;
         case 'missions': isActive = this.missionPanel?.isVisible ?? false; break;
+        case 'work': isActive = this.workPanel?.isVisible ?? false; break;
         case 'schedule': isActive = this.schedulePanel?.isVisible ?? false; break;
       }
       btn.classList.toggle('active', isActive);
@@ -606,6 +638,7 @@ export class HUDManager {
     this.techTreePanel?.destroy();
     this.missionPanel?.destroy();
     this.schedulePanel?.destroy();
+    this.workPanel?.destroy();
     this.container.innerHTML = '';
     this.resourceBar = null;
     this.buildBar = null;
