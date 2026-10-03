@@ -95,7 +95,7 @@ export class InputManager {
 
     // Left click
     this.state.selectedTile = tile;
-    if (this.state.mode === 'build') {
+    if (this.state.mode === 'build' || this.state.mode === 'demolish') {
       this.state.isDragging = true;
       this.state.dragStart = tile;
       this.state.dragEnd = tile;
