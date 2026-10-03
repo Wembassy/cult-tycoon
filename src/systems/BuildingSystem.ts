@@ -149,7 +149,14 @@ export class BuildingSystem {
     if (!tile) {
       return { success: false, message: 'Out of bounds', tilesAffected: [], cost: 0 };
     }
-    if (!tile.occupied) {
+    const key = `${x},${y}`;
+    const hasBuiltElement =
+      tile.occupied ||
+      this._wallTiles.has(key) ||
+      this._doorTiles.has(key) ||
+      this._floorTiles.has(key) ||
+      Array.from(this.objects.values()).some(obj => obj.x === x && obj.y === y);
+    if (!hasBuiltElement) {
       return { success: false, message: 'Nothing to demolish', tilesAffected: [], cost: 0 };
     }
 
