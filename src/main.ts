@@ -1726,6 +1726,94 @@ class CultTycoonGame {
     return true;
   }
 
+  private harvestOrderId(kind: SerializedHarvestOrder['kind'], x: number, y: number): string {
+    return `harvest:${kind}:${x}:${y}`;
+  }
+
+  private postHarvestJob(order: SerializedHarvestOrder): void {
+    const duration = order.kind === 'rock' ? 4 : order.kind === 'tree' ? 3 : 2;
+    this.jobSystem.postJob({
+      id: order.id,
+      type: 'harvest',
+      targetTile: { x: order.x, y: order.y },
+      priority: 8,
+      duration,
+      requiredSkill: 'construction',
+      minSkillLevel: 1,
+    });
+  }
+
+  private designateHarvestArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    kind: SerializedHarvestOrder['kind'],
+  ): void {
+    const expectedDecor = kind === 'tree' ? 'tree' : kind === 'rock' ? 'rock' : 'bush';
+    let queued = 0;
+
+    for (const pos of this.getRectangleTiles(startX, startY, endX, endY)) {
+      const tile = this.map.getTile(pos.x, pos.y);
+      if (!tile || tile.decor !== expectedDecor) continue;
+
+      const id = this.harvestOrderId(kind, pos.x, pos.y);
+      if (this.harvestOrders.has(id)) continue;
+
+      const order: SerializedHarvestOrder = { id, kind, x: pos.x, y: pos.y };
+      this.harvestOrders.set(id, order);
+      this.postHarvestJob(order);
+      queued++;
+    }
+
+    if (queued === 0) {
+      const label = kind === 'tree' ? 'trees' : kind === 'rock' ? 'rocks' : 'food bushes';
+      this.hud.logEvent(`No undesignated ${label} were found in that area.`, 'info');
+      return;
+    }
+
+    const output = kind === 'food' ? 'Food' : 'Materials';
+    this.hud.logEvent(
+      `Designated ${queued} resource${queued === 1 ? '' : 's'} for harvesting → ${output}.`,
+      'success',
+    );
+    this.updateHUD();
+  }
+
+  private completeHarvestOrder(id: string): void {
+    const order = this.harvestOrders.get(id);
+    if (!order) return;
+
+    const tile = this.map.getTile(order.x, order.y);
+    const expectedDecor = order.kind === 'tree' ? 'tree' : order.kind === 'rock' ? 'rock' : 'bush';
+    this.harvestOrders.delete(id);
+
+    if (!tile || tile.decor !== expectedDecor) {
+      this.hud.logEvent(`Harvest order at (${order.x}, ${order.y}) was cancelled because the resource is gone.`, 'info');
+      return;
+    }
+
+    this.map.setDecor(order.x, order.y, 'none');
+
+    if (order.kind === 'food') {
+      const yieldAmount = 8;
+      this.gameInstanceState.resources.food += yieldAmount;
+      this.showFloatingText(`+${yieldAmount} Food`, order.x, order.y, '#84cc16');
+      this.hud.logEvent(`Gathered ${yieldAmount} Food from (${order.x}, ${order.y}).`, 'success');
+    } else {
+      const yieldAmount = order.kind === 'rock' ? 14 : 10;
+      this.gameInstanceState.resources.materials += yieldAmount;
+      this.showFloatingText(`+${yieldAmount} Materials`, order.x, order.y, '#cbd5e1');
+      this.hud.logEvent(
+        `${order.kind === 'rock' ? 'Mined rock' : 'Chopped tree'}: +${yieldAmount} Materials.`,
+        'success',
+      );
+    }
+
+    this.sceneMgr.buildTiles();
+    this.updateHUD();
+  }
+
   private onJobCompleted(posting: { id: string }, _entity: number): void {
     if (posting.id.startsWith('harvest:')) {
       this.completeHarvestOrder(posting.id);
