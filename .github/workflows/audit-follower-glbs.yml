@@ -3,6 +3,12 @@ name: Audit Follower GLBs
 on:
   push:
     branches: [alpha/vertical-slice]
+    paths:
+      - 'public/assets/models/followers/**'
+      - 'src/engine/AssetLoader.ts'
+      - 'src/engine/SceneManager.ts'
+      - '.github/workflows/audit-follower-glbs.yml'
+  workflow_dispatch:
 
 jobs:
   audit:
