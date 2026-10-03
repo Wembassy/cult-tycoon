@@ -277,7 +277,6 @@ export class CultManagementSystem {
     let totalMorale = 0;
     let workingCount = 0;
     let prayingCount = 0;
-    let needsCriticalCount = 0;
 
     for (const entityId of this.roster) {
       const needs = world.getComponent(entityId, Needs);
@@ -289,7 +288,6 @@ export class CultManagementSystem {
         totalMorale += (needs.fun + needs.sanity) / 2;
       }
 
-      if (ai?.state === 'needs') needsCriticalCount++;
       if (job?.type === 'pray') prayingCount++;
       if (job?.type !== 'idle' && ai?.state === 'working') workingCount++;
     }
@@ -520,13 +518,14 @@ export class CultManagementSystem {
         case 'free':
           // Free time — no forced jobs
           break;
-        case 'sleep':
+        case 'sleep': {
           // Sleep — restore sanity
           const needs = world.getComponent(entityId, Needs);
           if (needs) {
             needs.sanity = Math.min(100, needs.sanity + 0.1);
           }
           break;
+        }
       }
     }
   }
