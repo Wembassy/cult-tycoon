@@ -56,7 +56,7 @@ import { DialogSystem } from './ui/DialogSystem';
 import { StartMenu } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { SettingsMenu, SettingsData, GraphicsQuality } from './ui/SettingsMenu';
-import { SaveSystem, type SaveData, type SerializedCult, type SerializedConstructionBlueprint } from './systems/SaveSystem';
+import { SaveSystem, type SaveData, type SerializedCult, type SerializedConstructionBlueprint, type SerializedHarvestOrder } from './systems/SaveSystem';
 // WinLoseEvent type used for overlay logic
 
 /** Top-level game state. */
@@ -126,6 +126,7 @@ class CultTycoonGame {
   private floatingTexts: { el: HTMLDivElement; life: number }[] = [];
   private constructionBlueprints: Map<string, ConstructionBlueprint> = new Map();
   private nextConstructionBlueprintId = 1;
+  private harvestOrders: Map<string, SerializedHarvestOrder> = new Map();
 
   /** Average faith across all followers — used for tech tree unlocks. */
   private get cultFaith(): number {
@@ -896,6 +897,7 @@ class CultTycoonGame {
       { id: 'ritual', label: 'Ritual', icon: '🔮' },
       { id: 'rooms', label: 'Rooms', icon: '🏠' },
       { id: 'decor', label: 'Decor', icon: '🎨' },
+      { id: 'harvest', label: 'Harvest', icon: '🪓' },
       { id: 'demolish', label: 'Demolish', icon: '❌' },
     ];
     this.hud.setBuildCategories(categories);
@@ -906,6 +908,9 @@ class CultTycoonGame {
       { id: 'wall', label: 'Wall', icon: '🧱', cost: 5, category: 'structure' },
       { id: 'floor', label: 'Floor', icon: '⬜', cost: 2, category: 'structure' },
       { id: 'door', label: 'Door', icon: '🚪', cost: 8, category: 'structure' },
+      { id: 'harvest:tree', label: 'Chop Trees', icon: '🌲', cost: 0, category: 'harvest' },
+      { id: 'harvest:rock', label: 'Mine Rock', icon: '🪨', cost: 0, category: 'harvest' },
+      { id: 'harvest:food', label: 'Gather Food', icon: '🫐', cost: 0, category: 'harvest' },
       ...DataManager.getRooms().map(room => ({
         id: `room:${room.id}`,
         label: room.name,
@@ -1044,6 +1049,13 @@ class CultTycoonGame {
           if (id === 'room:clear') {
             this.hud.logEvent('Clear Room: drag over designated room tiles to remove the designation.', 'info');
             this.hud.setBuildStatus('Drag over designated room tiles to clear the room zone.', 'info');
+          } else if (id.startsWith('harvest:')) {
+            const harvestLabel =
+              id === 'harvest:tree' ? 'trees for Materials' :
+              id === 'harvest:rock' ? 'rocks for Materials' :
+              'bushes for Food';
+            this.hud.logEvent(`Harvest order: drag over ${harvestLabel}.`, 'info');
+            this.hud.setBuildStatus(`Drag a rectangle over ${harvestLabel} to designate work.`, 'info');
           } else if (id.startsWith('room:')) {
             const roomDef = DataManager.getRoom(id.slice(5));
             this.hud.logEvent(
@@ -1425,14 +1437,32 @@ class CultTycoonGame {
     return DataManager.getObject(item)?.cost ?? 0;
   }
 
+  private getBuildMaterialCost(item: string): number {
+    if (item === 'wall') return 3;
+    if (item === 'floor') return 1;
+    if (item === 'door') return 4;
+    const moneyCost = this.getBuildItemCost(item);
+    return moneyCost > 0 ? Math.max(1, Math.ceil(moneyCost / 5)) : 0;
+  }
+
   private getReservedConstructionCost(): number {
     let total = 0;
     for (const blueprint of this.constructionBlueprints.values()) total += blueprint.cost;
     return total;
   }
 
+  private getReservedConstructionMaterials(): number {
+    let total = 0;
+    for (const blueprint of this.constructionBlueprints.values()) total += blueprint.materialCost ?? 0;
+    return total;
+  }
+
   private getSpendableWealth(): number {
     return this.cultWealth - this.getReservedConstructionCost();
+  }
+
+  private getAvailableMaterials(): number {
+    return this.gameInstanceState.resources.materials - this.getReservedConstructionMaterials();
   }
 
   private getConstructionBlueprintAt(x: number, y: number): ConstructionBlueprint | null {
@@ -1473,7 +1503,7 @@ class CultTycoonGame {
       return tiles;
     }
 
-    if (item === 'floor' || item.startsWith('room:')) {
+    if (item === 'floor' || item.startsWith('room:') || item.startsWith('harvest:')) {
       const minX = Math.min(startX, endX);
       const maxX = Math.max(startX, endX);
       const minY = Math.min(startY, endY);
@@ -1494,6 +1524,14 @@ class CultTycoonGame {
 
     if (item === 'room:clear') return tile.roomId !== null;
     if (item.startsWith('room:')) return tile.buildable;
+    if (item.startsWith('harvest:')) {
+      const orderId = `harvest:${item.slice(8)}:${x}:${y}`;
+      if (this.harvestOrders.has(orderId)) return false;
+      if (item === 'harvest:tree') return tile.decor === 'tree';
+      if (item === 'harvest:rock') return tile.decor === 'rock';
+      if (item === 'harvest:food') return tile.decor === 'bush';
+      return false;
+    }
 
     if (this.getConstructionBlueprintAt(x, y)) return false;
 
@@ -1518,6 +1556,7 @@ class CultTycoonGame {
 
   private getPreviewKind(item: string): ConstructionVisualKind | 'room' {
     if (item.startsWith('room:')) return 'room';
+    if (item.startsWith('harvest:')) return 'floor';
     if (item === 'wall' || item === 'floor' || item === 'door') return item;
     return 'object';
   }
@@ -1539,12 +1578,18 @@ class CultTycoonGame {
 
     const validCount = preview.filter(tile => tile.valid).length;
     const invalidCount = preview.length - validCount;
-    const unitCost = item.startsWith('room:') ? 0 : this.getBuildItemCost(item);
+    const isHarvest = item.startsWith('harvest:');
+    const unitCost = item.startsWith('room:') || isHarvest ? 0 : this.getBuildItemCost(item);
+    const unitMaterials = item.startsWith('room:') || isHarvest ? 0 : this.getBuildMaterialCost(item);
     const totalCost = validCount * unitCost;
-    const affordable = totalCost <= this.getSpendableWealth();
+    const totalMaterials = validCount * unitMaterials;
+    const affordable = totalCost <= this.getSpendableWealth() && totalMaterials <= this.getAvailableMaterials();
     const label =
       item === 'room:clear' ? 'Clear Room' :
       item.startsWith('room:') ? DataManager.getRoom(item.slice(5))?.name ?? 'Room' :
+      item === 'harvest:tree' ? 'Chop Trees' :
+      item === 'harvest:rock' ? 'Mine Rock' :
+      item === 'harvest:food' ? 'Gather Food' :
       item === 'wall' ? 'Wall' :
       item === 'floor' ? 'Floor' :
       item === 'door' ? 'Door' :
@@ -1552,8 +1597,10 @@ class CultTycoonGame {
 
     const parts = [label, `${validCount} tile${validCount === 1 ? '' : 's'}`];
     if (unitCost > 0) parts.push(`${totalCost}g reserved`);
+    if (unitMaterials > 0) parts.push(`${totalMaterials} Materials reserved`);
     if (invalidCount > 0) parts.push(`${invalidCount} blocked`);
-    if (!affordable) parts.push('not enough wealth');
+    if (totalCost > this.getSpendableWealth()) parts.push('not enough wealth');
+    if (totalMaterials > this.getAvailableMaterials()) parts.push('not enough Materials');
 
     this.hud.setBuildStatus(
       parts.join(' · '),
@@ -1605,7 +1652,8 @@ class CultTycoonGame {
     if (this.getConstructionBlueprintAt(x, y)) return false;
 
     const id = `construct:${this.nextConstructionBlueprintId++}`;
-    const blueprint: ConstructionBlueprint = { id, kind, x, y, objectId, rotation, cost };
+    const materialCost = this.getBuildMaterialCost(objectId ?? kind);
+    const blueprint: ConstructionBlueprint = { id, kind, x, y, objectId, rotation, cost, materialCost };
     this.constructionBlueprints.set(id, blueprint);
     this.postConstructionJob(blueprint);
     return true;
@@ -1619,10 +1667,19 @@ class CultTycoonGame {
     }
 
     const cost = this.getBuildItemCost(item);
+    const materialCost = this.getBuildMaterialCost(item);
     const totalCost = cost * validTiles.length;
+    const totalMaterials = materialCost * validTiles.length;
     if (totalCost > this.getSpendableWealth()) {
       this.hud.logEvent(
         `Not enough available wealth. Need ${totalCost}g, have ${Math.floor(this.getSpendableWealth())}g after reservations.`,
+        'warning',
+      );
+      return;
+    }
+    if (totalMaterials > this.getAvailableMaterials()) {
+      this.hud.logEvent(
+        `Not enough Materials. Need ${totalMaterials}, have ${Math.floor(this.getAvailableMaterials())} after reservations. Designate trees/rocks in Harvest.`,
         'warning',
       );
       return;
@@ -1650,7 +1707,7 @@ class CultTycoonGame {
     if (queued > 0) {
       const label = item === 'wall' ? 'wall' : item === 'floor' ? 'floor' : item === 'door' ? 'door' : DataManager.getObject(item)?.name ?? item;
       this.hud.logEvent(
-        `Queued ${queued} ${label}${queued === 1 ? '' : 's'} for construction (${queued * cost}g reserved).`,
+        `Queued ${queued} ${label}${queued === 1 ? '' : 's'} for construction (${queued * cost}g + ${queued * materialCost} Materials reserved).`,
         'info',
       );
       this.refreshConstructionBlueprintVisuals();
@@ -1670,6 +1727,10 @@ class CultTycoonGame {
   }
 
   private onJobCompleted(posting: { id: string }, _entity: number): void {
+    if (posting.id.startsWith('harvest:')) {
+      this.completeHarvestOrder(posting.id);
+      return;
+    }
     if (!posting.id.startsWith('construct:')) return;
     const blueprint = this.constructionBlueprints.get(posting.id);
     if (!blueprint) return;
@@ -1715,6 +1776,10 @@ class CultTycoonGame {
 
     this.constructionBlueprints.delete(blueprint.id);
     this.refreshConstructionBlueprintVisuals();
+    this.gameInstanceState.resources.materials = Math.max(
+      0,
+      this.gameInstanceState.resources.materials - (blueprint.materialCost ?? 0),
+    );
 
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
     this.particles.spawnBuildDust(blueprint.x + offset.x + 0.5, blueprint.y + offset.z + 0.5);
@@ -1829,6 +1894,11 @@ class CultTycoonGame {
 
     if (item.startsWith('room:')) {
       this.designateRoom(startX, startY, endX, endY, item.slice(5));
+      return;
+    }
+
+    if (item.startsWith('harvest:')) {
+      this.designateHarvestArea(startX, startY, endX, endY, item.slice(8) as SerializedHarvestOrder['kind']);
       return;
     }
 
@@ -2236,6 +2306,8 @@ class CultTycoonGame {
       notoriety: Math.floor(this.cultNotoriety),
       faith: pop > 0 ? totalFaith / pop : 100,
       morale: pop > 0 ? (totalFun + totalSanity) / (2 * pop) : 100,
+      materials: Math.floor(this.getAvailableMaterials()),
+      food: Math.floor(this.gameInstanceState.resources.food),
       population: pop,
       maxPopulation: 8 + maxPopBonus,
     };
@@ -2285,6 +2357,7 @@ class CultTycoonGame {
             build: skills.construction,
             clean: Math.max(1, Math.round((skills.construction + skills.social) / 2)),
             haul: skills.construction,
+            harvest: skills.construction,
           },
           priorities: { ...prefs.priorities },
         };
@@ -3047,6 +3120,8 @@ class CultTycoonGame {
     this.cultWealth = data.cult.wealth;
     this.cultInfluence = data.cult.influence;
     this.cultNotoriety = data.cult.notoriety;
+    this.gameInstanceState.resources.materials = data.cult.materials ?? this.gameInstanceState.resources.materials;
+    this.gameInstanceState.resources.food = data.cult.food ?? this.gameInstanceState.resources.food;
     this.currentHour = data.time.hour;
     this.currentDay = data.time.day;
 
@@ -3072,6 +3147,7 @@ class CultTycoonGame {
           if (saved.roomId !== null) {
             this.map.setRoomId(x, y, saved.roomId);
           }
+          this.map.setDecor(x, y, (saved.decor ?? 'none') as any);
           // Restore buildable flag explicitly (setTerrain sets a default, but saved value may differ)
           const tile = this.map.getTile(x, y);
           if (tile) tile.buildable = saved.buildable;
@@ -3094,6 +3170,11 @@ class CultTycoonGame {
     this.nextConstructionBlueprintId = highestConstructionId + 1;
     this.refreshConstructionBlueprintVisuals();
 
+    this.harvestOrders.clear();
+    for (const savedOrder of data.harvestOrders ?? []) {
+      this.harvestOrders.set(savedOrder.id, { ...savedOrder });
+    }
+
     // Resume from a clean assignment state, then recreate jobs from restored stations.
     for (const entityId of this.world.query([Job, FollowerAI])) {
       const job = this.world.getComponent(entityId, Job)!;
@@ -3110,6 +3191,9 @@ class CultTycoonGame {
     }
     for (const blueprint of this.constructionBlueprints.values()) {
       this.postConstructionJob(blueprint);
+    }
+    for (const order of this.harvestOrders.values()) {
+      this.postHarvestJob(order);
     }
     for (const obj of this.buildingSystem.getAllObjects()) {
       this.registerWorkstationJob(obj.x, obj.y, obj.objectId);
@@ -3235,6 +3319,8 @@ class CultTycoonGame {
       leaderTitle: 'Cult Leader',
       day: this.currentDay,
       hour: this.currentHour,
+      materials: this.gameInstanceState.resources.materials,
+      food: this.gameInstanceState.resources.food,
     };
 
     const data = this.saveSystem.serialize(
@@ -3244,6 +3330,7 @@ class CultTycoonGame {
       { hour: this.currentHour, day: this.currentDay },
       this.buildingSystem.getSnapshot(),
       Array.from(this.constructionBlueprints.values()),
+      Array.from(this.harvestOrders.values()),
     );
 
     const success = this.saveSystem.save(data);
