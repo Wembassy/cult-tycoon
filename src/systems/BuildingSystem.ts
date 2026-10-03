@@ -41,6 +41,16 @@ export interface Room {
   area: number;
 }
 
+export interface BuildingSnapshot {
+  objects: PlacedObject[];
+  rooms: Room[];
+  wallTiles: string[];
+  doorTiles: string[];
+  floorTiles: string[];
+  nextRoomId: number;
+  nextObjectId: number;
+}
+
 // Cost table
 const COSTS: Record<BuildType, number> = {
   wall: 5,
@@ -355,6 +365,53 @@ export class BuildingSystem {
 
   /** Clear the dirty flag after rendering sync. */
   clearDirty(): void { this._dirty = false; }
+
+  getSnapshot(): BuildingSnapshot {
+    return {
+      objects: this.getAllObjects().map(obj => ({ ...obj })),
+      rooms: this.getAllRooms().map(room => ({
+        ...room,
+        tiles: room.tiles.map(tile => ({ ...tile })),
+      })),
+      wallTiles: [...this._wallTiles],
+      doorTiles: [...this._doorTiles],
+      floorTiles: [...this._floorTiles],
+      nextRoomId: this.nextRoomId,
+      nextObjectId: this.nextObjectId,
+    };
+  }
+
+  restoreSnapshot(snapshot: BuildingSnapshot | undefined): void {
+    this.objects.clear();
+    this.rooms.clear();
+    this._wallTiles.clear();
+    this._doorTiles.clear();
+    this._floorTiles.clear();
+
+    if (!snapshot) {
+      this.nextRoomId = 1;
+      this.nextObjectId = 1;
+      this._dirty = true;
+      return;
+    }
+
+    for (const obj of snapshot.objects ?? []) {
+      this.objects.set(obj.id, { ...obj });
+    }
+    for (const room of snapshot.rooms ?? []) {
+      this.rooms.set(room.id, {
+        ...room,
+        tiles: room.tiles.map(tile => ({ ...tile })),
+      });
+    }
+    for (const tile of snapshot.wallTiles ?? []) this._wallTiles.add(tile);
+    for (const tile of snapshot.doorTiles ?? []) this._doorTiles.add(tile);
+    for (const tile of snapshot.floorTiles ?? []) this._floorTiles.add(tile);
+
+    this.nextRoomId = snapshot.nextRoomId ?? 1;
+    this.nextObjectId = snapshot.nextObjectId ?? 1;
+    this._dirty = true;
+  }
 
   /**
    * Refresh a room after tile changes (re-check enclosure)
