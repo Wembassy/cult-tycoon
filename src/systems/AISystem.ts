@@ -227,9 +227,7 @@ export class AISystem {
 
     const need = ai.needTarget ?? this.getMostUrgentNeed(needs);
     if (!need) {
-      this.clearNeedTarget(ai);
-      ai.state = 'idle';
-      ai.stateTimer = 0;
+      this.finishNeedAndResumeJob(world, entity, ai);
       return 1;
     }
     ai.needTarget = need;
@@ -268,9 +266,7 @@ export class AISystem {
     needs[need] = clamp(needs[need] + recoveryRate, 0, 100);
 
     if (needs[need] >= 80) {
-      this.clearNeedTarget(ai);
-      ai.state = 'idle';
-      ai.stateTimer = 0;
+      this.finishNeedAndResumeJob(world, entity, ai);
       return 1;
     }
 
@@ -369,6 +365,20 @@ export class AISystem {
   private clearNeedTarget(ai: FollowerAI): void {
     ai.needTarget = null;
     ai.needTargetTile = null;
+  }
+
+  private finishNeedAndResumeJob(world: World, entity: number, ai: FollowerAI): void {
+    this.clearNeedTarget(ai);
+    ai.stateTimer = 0;
+    ai.path = [];
+    ai.pathIndex = 0;
+
+    const job = world.getComponent(entity, Job);
+    if (job && job.type !== 'idle' && job.type !== 'wander' && job.targetTile) {
+      ai.state = 'moving';
+    } else {
+      ai.state = 'idle';
+    }
   }
 
   getConfig(): AISystemConfig {
