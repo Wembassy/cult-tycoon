@@ -167,10 +167,14 @@ export class BuildingSystem {
     this.map.setOccupied(x, y, false);
     this._dirty = true;
 
-    // Clear room assignment if tile was part of a room
+    // Player-designated rooms persist when furniture/structures are demolished.
+    // They become incomplete until their required objects are replaced.
     if (tile.roomId !== null) {
-      this.map.setRoomId(x, y, null);
-      this.refreshRoom(tile.roomId);
+      const room = this.rooms.get(tile.roomId);
+      if (!room?.roomDefinitionId) {
+        this.map.setRoomId(x, y, null);
+        this.refreshRoom(tile.roomId);
+      }
     }
 
     return { success: true, message: 'Demolished', tilesAffected: [{ x, y }], cost: 1 };
