@@ -2139,6 +2139,10 @@ class CultTycoonGame {
     if (!this.selectedBuildItem) return;
     const item = this.selectedBuildItem;
     if (item.startsWith('room:')) return;
+    if (item.startsWith('harvest:')) {
+      this.designateHarvestArea(x, y, x, y, item.slice(8) as SerializedHarvestOrder['kind']);
+      return;
+    }
     this.queueConstructionSelection(item, [{ x, y }]);
   }
 
