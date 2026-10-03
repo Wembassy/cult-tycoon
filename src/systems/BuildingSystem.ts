@@ -70,22 +70,67 @@ export class BuildingSystem {
   private _doorTiles: Set<string> = new Set();
   private _floorTiles: Set<string> = new Set();
   private _dirty = false;
+  private readonly constructionSubdivisions: number;
 
-  constructor(map: TileMap) {
+  constructor(map: TileMap, constructionSubdivisions: number = 1) {
     this.map = map;
+    this.constructionSubdivisions = Math.max(1, Math.floor(constructionSubdivisions));
+  }
+
+  get subdivisions(): number { return this.constructionSubdivisions; }
+  get cellSize(): number { return 1 / this.constructionSubdivisions; }
+
+  toTerrainTile(x: number, y: number): { x: number; y: number } {
+    return {
+      x: Math.floor(x / this.constructionSubdivisions),
+      y: Math.floor(y / this.constructionSubdivisions),
+    };
+  }
+
+  getTerrainTileForBuild(x: number, y: number) {
+    const terrain = this.toTerrainTile(x, y);
+    return this.map.getTile(terrain.x, terrain.y);
+  }
+
+  private hasBlockingElementAt(x: number, y: number): boolean {
+    const key = `${x},${y}`;
+    return this._wallTiles.has(key) ||
+      this._doorTiles.has(key) ||
+      Array.from(this.objects.values()).some(obj => obj.x === x && obj.y === y);
+  }
+
+  private refreshTerrainOccupancyForBuildCell(x: number, y: number): void {
+    const terrain = this.toTerrainTile(x, y);
+    const occupied =
+      Array.from(this._wallTiles).some(key => {
+        const [gx, gy] = key.split(',').map(Number);
+        const t = this.toTerrainTile(gx, gy);
+        return t.x === terrain.x && t.y === terrain.y;
+      }) ||
+      Array.from(this._doorTiles).some(key => {
+        const [gx, gy] = key.split(',').map(Number);
+        const t = this.toTerrainTile(gx, gy);
+        return t.x === terrain.x && t.y === terrain.y;
+      }) ||
+      Array.from(this.objects.values()).some(obj => {
+        const t = this.toTerrainTile(obj.x, obj.y);
+        return t.x === terrain.x && t.y === terrain.y;
+      });
+    this.map.setOccupied(terrain.x, terrain.y, occupied);
   }
 
   /**
    * Place a wall on a tile
    */
   placeWall(x: number, y: number, _variant: WallVariant = 'straight'): BuildResult {
-    if (!this.map.isBuildable(x, y)) {
-      return { success: false, message: 'Tile not buildable', tilesAffected: [], cost: 0 };
+    const tile = this.getTerrainTileForBuild(x, y);
+    if (!tile || !tile.buildable || this.hasBlockingElementAt(x, y)) {
+      return { success: false, message: 'Cell not buildable', tilesAffected: [], cost: 0 };
     }
-    this.map.setOccupied(x, y, true);
     this._wallTiles.add(`${x},${y}`);
     this._floorTiles.delete(`${x},${y}`);
     this._doorTiles.delete(`${x},${y}`);
+    this.refreshTerrainOccupancyForBuildCell(x, y);
     this._dirty = true;
     return { success: true, message: 'Wall placed', tilesAffected: [{ x, y }], cost: COSTS.wall };
   }
@@ -94,12 +139,12 @@ export class BuildingSystem {
    * Place a floor on a tile
    */
   placeFloor(x: number, y: number, _variant: FloorVariant = 'stone'): BuildResult {
-    const tile = this.map.getTile(x, y);
+    const tile = this.getTerrainTileForBuild(x, y);
     if (!tile) {
       return { success: false, message: 'Out of bounds', tilesAffected: [], cost: 0 };
     }
-    if (tile.occupied) {
-      return { success: false, message: 'Tile occupied', tilesAffected: [], cost: 0 };
+    if (!tile.buildable || this._wallTiles.has(`${x},${y}`) || this._doorTiles.has(`${x},${y}`)) {
+      return { success: false, message: 'Cell occupied', tilesAffected: [], cost: 0 };
     }
     this._floorTiles.add(`${x},${y}`);
     this._dirty = true;
@@ -110,18 +155,19 @@ export class BuildingSystem {
    * Place a door on a tile (requires adjacent walls)
    */
   placeDoor(x: number, y: number): BuildResult {
-    if (!this.map.isBuildable(x, y)) {
-      return { success: false, message: 'Tile not buildable', tilesAffected: [], cost: 0 };
+    const tile = this.getTerrainTileForBuild(x, y);
+    if (!tile || !tile.buildable || this.hasBlockingElementAt(x, y)) {
+      return { success: false, message: 'Cell not buildable', tilesAffected: [], cost: 0 };
     }
-    // Check for at least one adjacent wall
-    const hasAdjacentWall = this.map.isOccupied(x + 1, y) || this.map.isOccupied(x - 1, y) ||
-                            this.map.isOccupied(x, y + 1) || this.map.isOccupied(x, y - 1);
+    const hasAdjacentWall =
+      this._wallTiles.has(`${x + 1},${y}`) || this._wallTiles.has(`${x - 1},${y}`) ||
+      this._wallTiles.has(`${x},${y + 1}`) || this._wallTiles.has(`${x},${y - 1}`);
     if (!hasAdjacentWall) {
       return { success: false, message: 'Door requires adjacent wall', tilesAffected: [], cost: 0 };
     }
-    this.map.setOccupied(x, y, true);
     this._doorTiles.add(`${x},${y}`);
     this._wallTiles.delete(`${x},${y}`);
+    this.refreshTerrainOccupancyForBuildCell(x, y);
     this._dirty = true;
     return { success: true, message: 'Door placed', tilesAffected: [{ x, y }], cost: COSTS.door };
   }
@@ -130,13 +176,14 @@ export class BuildingSystem {
    * Place an object on a tile
    */
   placeObject(x: number, y: number, objectId: string, rotation: number = 0): BuildResult {
-    if (!this.map.isBuildable(x, y)) {
-      return { success: false, message: 'Tile not buildable', tilesAffected: [], cost: 0 };
+    const tile = this.getTerrainTileForBuild(x, y);
+    if (!tile || !tile.buildable || this.hasBlockingElementAt(x, y)) {
+      return { success: false, message: 'Cell not buildable', tilesAffected: [], cost: 0 };
     }
     const id = `obj_${this.nextObjectId++}`;
     const obj: PlacedObject = { id, objectId, x, y, rotation };
     this.objects.set(id, obj);
-    this.map.setOccupied(x, y, true);
+    this.refreshTerrainOccupancyForBuildCell(x, y);
     this._dirty = true;
     return { success: true, message: 'Object placed', tilesAffected: [{ x, y }], cost: COSTS.object };
   }
@@ -145,13 +192,12 @@ export class BuildingSystem {
    * Demolish whatever is on a tile
    */
   demolish(x: number, y: number): BuildResult {
-    const tile = this.map.getTile(x, y);
+    const tile = this.getTerrainTileForBuild(x, y);
     if (!tile) {
       return { success: false, message: 'Out of bounds', tilesAffected: [], cost: 0 };
     }
     const key = `${x},${y}`;
     const hasBuiltElement =
-      tile.occupied ||
       this._wallTiles.has(key) ||
       this._doorTiles.has(key) ||
       this._floorTiles.has(key) ||
@@ -160,23 +206,19 @@ export class BuildingSystem {
       return { success: false, message: 'Nothing to demolish', tilesAffected: [], cost: 0 };
     }
 
-    // Remove any objects on this tile
     for (const [id, obj] of this.objects) {
-      if (obj.x === x && obj.y === y) {
-        this.objects.delete(id);
-        break;
-      }
+      if (obj.x === x && obj.y === y) this.objects.delete(id);
     }
 
-    this._wallTiles.delete(`${x},${y}`);
-    this._doorTiles.delete(`${x},${y}`);
-    this._floorTiles.delete(`${x},${y}`);
-    this.map.setOccupied(x, y, false);
+    this._wallTiles.delete(key);
+    this._doorTiles.delete(key);
+    this._floorTiles.delete(key);
+    this.refreshTerrainOccupancyForBuildCell(x, y);
     this._dirty = true;
 
-    // Player-designated rooms persist when furniture/structures are demolished.
-    // They become incomplete until their required objects are replaced.
-    if (tile.roomId !== null) {
+    // Legacy 1:1 grids used building cells as room tiles. Fine construction grids
+    // keep room zoning on the coarse terrain map, so demolition must not erase it.
+    if (this.constructionSubdivisions === 1 && tile.roomId !== null) {
       const room = this.rooms.get(tile.roomId);
       if (!room?.roomDefinitionId) {
         this.map.setRoomId(x, y, null);
@@ -503,6 +545,15 @@ export class BuildingSystem {
     for (const tile of snapshot.wallTiles ?? []) this._wallTiles.add(tile);
     for (const tile of snapshot.doorTiles ?? []) this._doorTiles.add(tile);
     for (const tile of snapshot.floorTiles ?? []) this._floorTiles.add(tile);
+
+    if (this.constructionSubdivisions > 1) {
+      for (const tile of this.map.getAllTiles()) tile.occupied = false;
+      for (const key of [...this._wallTiles, ...this._doorTiles]) {
+        const [x, y] = key.split(',').map(Number);
+        this.refreshTerrainOccupancyForBuildCell(x, y);
+      }
+      for (const obj of this.objects.values()) this.refreshTerrainOccupancyForBuildCell(obj.x, obj.y);
+    }
 
     this.nextRoomId = snapshot.nextRoomId ?? 1;
     this.nextObjectId = snapshot.nextObjectId ?? 1;
