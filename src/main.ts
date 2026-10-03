@@ -708,6 +708,12 @@ class CultTycoonGame {
       .hud-need-value { min-width: 40px; text-align: right; color: #ccc; font-size: 10px; }
       .hud-inspector-job { font-size: 11px; color: #aaa; margin-bottom: 4px; }
       .hud-inspector-traits { font-size: 11px; color: #fbbf24; font-style: italic; }
+      .hud-pawn-state { font-size: 10px; color: #93c5fd; margin: 0 0 8px; text-transform: capitalize; }
+      .hud-pawn-section { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(100,140,200,0.18); font-size: 10px; color: #cbd5e1; }
+      .hud-pawn-section > b { display: block; margin-bottom: 4px; color: #93a4bd; font-size: 9px; text-transform: uppercase; letter-spacing: .5px; }
+      .hud-pawn-chip-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+      .hud-pawn-chip { padding: 2px 5px; border-radius: 4px; background: rgba(40,55,80,.65); color: #dbeafe; text-transform: capitalize; }
+
 
       /* Event Log — bottom right, sprite panel background */
       .hud-event-log {
