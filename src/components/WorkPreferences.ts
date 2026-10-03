@@ -18,15 +18,16 @@ export const PLAYER_JOB_TYPES: Exclude<JobType, 'idle' | 'wander'>[] = [
   'build',
   'clean',
   'haul',
+  'harvest',
 ];
 
 const ROLE_PRESETS: Record<WorkRole, Record<Exclude<JobType, 'idle' | 'wander'>, WorkPriority>> = {
-  generalist: { cook: 3, research: 3, pray: 3, build: 3, clean: 3, haul: 3 },
-  researcher: { cook: 4, research: 1, pray: 3, build: 4, clean: 4, haul: 3 },
-  cook: { cook: 1, research: 4, pray: 3, build: 4, clean: 2, haul: 3 },
-  devotee: { cook: 4, research: 3, pray: 1, build: 4, clean: 3, haul: 3 },
-  builder: { cook: 4, research: 4, pray: 4, build: 1, clean: 3, haul: 2 },
-  caretaker: { cook: 2, research: 4, pray: 3, build: 4, clean: 1, haul: 2 },
+  generalist: { cook: 3, research: 3, pray: 3, build: 3, clean: 3, haul: 3, harvest: 2 },
+  researcher: { cook: 4, research: 1, pray: 3, build: 4, clean: 4, haul: 3, harvest: 4 },
+  cook: { cook: 1, research: 4, pray: 3, build: 4, clean: 2, haul: 3, harvest: 4 },
+  devotee: { cook: 4, research: 3, pray: 1, build: 4, clean: 3, haul: 3, harvest: 2 },
+  builder: { cook: 4, research: 4, pray: 4, build: 1, clean: 3, haul: 2, harvest: 1 },
+  caretaker: { cook: 2, research: 4, pray: 3, build: 4, clean: 1, haul: 2, harvest: 2 },
 };
 
 export class WorkPreferences implements Component {
@@ -42,6 +43,7 @@ export class WorkPreferences implements Component {
     build: 3,
     clean: 3,
     haul: 3,
+    harvest: 2,
   };
 
   applyRole(role: WorkRole): void {
