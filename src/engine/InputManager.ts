@@ -125,12 +125,6 @@ export class InputManager {
         this.state.selectedTile = null;
         this.state.isDragging = false;
         break;
-      case 'b':
-        this.state.mode = 'build';
-        break;
-      case 'd':
-        this.state.mode = 'demolish';
-        break;
       case ' ':
         e.preventDefault();
         break;
