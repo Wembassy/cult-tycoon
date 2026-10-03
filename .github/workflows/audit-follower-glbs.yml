@@ -54,13 +54,22 @@ jobs:
                   print("  joints=0")
               print(f"  animations={len(anims)}")
 
+              accessors = doc.get("accessors", [])
               for idx, anim in enumerate(anims):
                   name = anim.get("name") or f"animation_{idx}"
                   channels = anim.get("channels", [])
+                  samplers = anim.get("samplers", [])
                   target_nodes = []
                   paths = []
                   invalid = 0
                   joint_targets = 0
+                  max_time = 0.0
+                  for sampler in samplers:
+                      input_idx = sampler.get("input")
+                      if isinstance(input_idx, int) and input_idx < len(accessors):
+                          acc = accessors[input_idx]
+                          if "max" in acc and acc["max"]:
+                              max_time = max(max_time, float(acc["max"][0]))
                   for ch in channels:
                       target = ch.get("target", {})
                       node = target.get("node")
@@ -72,7 +81,7 @@ jobs:
                               invalid += 1
                           if node in all_joints:
                               joint_targets += 1
-                  print(f"    clip={name!r} channels={len(channels)} joint_targets={joint_targets} invalid_targets={invalid} paths={sorted(set(paths))}")
+                  print(f"    clip_index={idx} clip={name!r} duration={max_time:.3f}s channels={len(channels)} joint_targets={joint_targets} invalid_targets={invalid} paths={sorted(set(paths))}")
 
               has_skin = len(skins) > 0 and any(len(s.get("joints", [])) > 0 for s in skins)
               has_anim = len(anims) > 0
