@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Animation authoring v1
 """Generate a shared follower animation library from the canonical Cult Tycoon rig.
 
 The generator reads the canonical follower GLB, preserves the exact joint hierarchy and
