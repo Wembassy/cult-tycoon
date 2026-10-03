@@ -147,6 +147,18 @@ describe('HUDManager — Time Controls', () => {
     expect(hud.timeMode).toBe('speed1');
   });
 
+
+  it('should render pause, 1x, 2x and 3x speed controls with a clock', () => {
+    hud.updateTime(6.5, 2);
+    const controls = container.querySelector('.hud-time-controls')!;
+    expect(controls.textContent).toContain('Day 2');
+    expect(controls.textContent).toContain('06:30');
+    expect(controls.querySelector('[data-mode="pause"]')).not.toBeNull();
+    expect(controls.querySelector('[data-mode="speed1"]')).not.toBeNull();
+    expect(controls.querySelector('[data-mode="speed2"]')).not.toBeNull();
+    expect(controls.querySelector('[data-mode="speed3"]')).not.toBeNull();
+  });
+
   it('should set time mode', () => {
     hud.setTimeMode('pause');
     expect(hud.timeMode).toBe('pause');
