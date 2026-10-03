@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.wembassy.culttycoon.alpha5",
-  "productName": "Cult Tycoon Alpha 5",
+  "appId": "com.wembassy.culttycoon.alpha6",
+  "productName": "Cult Tycoon Alpha 6",
   "directories": {
     "output": "release"
   },
