@@ -1354,11 +1354,296 @@ class CultTycoonGame {
     this.sceneMgr.syncEntities();
   }
 
+  private getBuildItemCost(item: string): number {
+    if (item === 'wall') return 5;
+    if (item === 'floor') return 2;
+    if (item === 'door') return 8;
+    return DataManager.getObject(item)?.cost ?? 0;
+  }
+
+  private getReservedConstructionCost(): number {
+    let total = 0;
+    for (const blueprint of this.constructionBlueprints.values()) total += blueprint.cost;
+    return total;
+  }
+
+  private getSpendableWealth(): number {
+    return this.cultWealth - this.getReservedConstructionCost();
+  }
+
+  private getConstructionBlueprintAt(x: number, y: number): ConstructionBlueprint | null {
+    for (const blueprint of this.constructionBlueprints.values()) {
+      if (blueprint.x === x && blueprint.y === y) return blueprint;
+    }
+    return null;
+  }
+
+  private hasPlannedWall(x: number, y: number): boolean {
+    const planned = this.getConstructionBlueprintAt(x, y);
+    return planned?.kind === 'wall';
+  }
+
+  private getBuildSelectionTiles(
+    item: string,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ): { x: number; y: number }[] {
+    if (item === 'wall') {
+      const horizontal = Math.abs(endX - startX) >= Math.abs(endY - startY);
+      const tiles: { x: number; y: number }[] = [];
+      if (horizontal) {
+        const step = endX >= startX ? 1 : -1;
+        for (let x = startX; ; x += step) {
+          tiles.push({ x, y: startY });
+          if (x === endX) break;
+        }
+      } else {
+        const step = endY >= startY ? 1 : -1;
+        for (let y = startY; ; y += step) {
+          tiles.push({ x: startX, y });
+          if (y === endY) break;
+        }
+      }
+      return tiles;
+    }
+
+    if (item === 'floor' || item.startsWith('room:')) {
+      const minX = Math.min(startX, endX);
+      const maxX = Math.max(startX, endX);
+      const minY = Math.min(startY, endY);
+      const maxY = Math.max(startY, endY);
+      const tiles: { x: number; y: number }[] = [];
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) tiles.push({ x, y });
+      }
+      return tiles;
+    }
+
+    return [{ x: endX, y: endY }];
+  }
+
+  private isBuildTileValid(item: string, x: number, y: number): boolean {
+    const tile = this.map.getTile(x, y);
+    if (!tile) return false;
+
+    if (item === 'room:clear') return tile.roomId !== null;
+    if (item.startsWith('room:')) return tile.buildable;
+
+    if (this.getConstructionBlueprintAt(x, y)) return false;
+
+    if (item === 'floor') {
+      return tile.buildable && !tile.occupied && !this.buildingSystem.floorTiles.has(`${x},${y}`);
+    }
+
+    if (item === 'door') {
+      if (!tile.buildable || tile.occupied) return false;
+      const neighbors = [
+        { x: x + 1, y }, { x: x - 1, y },
+        { x, y: y + 1 }, { x, y: y - 1 },
+      ];
+      return neighbors.some(n =>
+        this.buildingSystem.wallTiles.has(`${n.x},${n.y}`) ||
+        this.hasPlannedWall(n.x, n.y),
+      );
+    }
+
+    return tile.buildable && !tile.occupied;
+  }
+
+  private getPreviewKind(item: string): ConstructionVisualKind | 'room' {
+    if (item.startsWith('room:')) return 'room';
+    if (item === 'wall' || item === 'floor' || item === 'door') return item;
+    return 'object';
+  }
+
+  private updateBuildPreview(startX: number, startY: number, endX: number, endY: number): void {
+    if (this.input.getMode() !== 'build' || !this.selectedBuildItem) {
+      this.sceneMgr.clearBuildPreview();
+      this.hud.clearBuildStatus();
+      return;
+    }
+
+    const item = this.selectedBuildItem;
+    const selected = this.getBuildSelectionTiles(item, startX, startY, endX, endY);
+    const preview: BuildPreviewTile[] = selected.map(tile => ({
+      ...tile,
+      valid: this.isBuildTileValid(item, tile.x, tile.y),
+    }));
+    this.sceneMgr.showBuildPreview(preview, this.getPreviewKind(item));
+
+    const validCount = preview.filter(tile => tile.valid).length;
+    const invalidCount = preview.length - validCount;
+    const unitCost = item.startsWith('room:') ? 0 : this.getBuildItemCost(item);
+    const totalCost = validCount * unitCost;
+    const affordable = totalCost <= this.getSpendableWealth();
+    const label =
+      item === 'room:clear' ? 'Clear Room' :
+      item.startsWith('room:') ? DataManager.getRoom(item.slice(5))?.name ?? 'Room' :
+      item === 'wall' ? 'Wall' :
+      item === 'floor' ? 'Floor' :
+      item === 'door' ? 'Door' :
+      DataManager.getObject(item)?.name ?? item;
+
+    const parts = [label, `${validCount} tile${validCount === 1 ? '' : 's'}`];
+    if (unitCost > 0) parts.push(`${totalCost}g reserved`);
+    if (invalidCount > 0) parts.push(`${invalidCount} blocked`);
+    if (!affordable) parts.push('not enough wealth');
+
+    this.hud.setBuildStatus(
+      parts.join(' · '),
+      validCount > 0 && invalidCount === 0 && affordable ? 'valid' : 'invalid',
+    );
+  }
+
+  private refreshConstructionBlueprintVisuals(): void {
+    this.sceneMgr.setConstructionBlueprints(
+      Array.from(this.constructionBlueprints.values()).map(blueprint => ({
+        id: blueprint.id,
+        kind: blueprint.kind,
+        x: blueprint.x,
+        y: blueprint.y,
+      })),
+    );
+  }
+
+  private queueConstructionBlueprint(
+    kind: ConstructionKind,
+    x: number,
+    y: number,
+    cost: number,
+    objectId?: string,
+  ): boolean {
+    if (this.getConstructionBlueprintAt(x, y)) return false;
+
+    const workTile = kind === 'floor'
+      ? { x, y }
+      : this.findAdjacentWorkTile(x, y) ?? { x, y };
+
+    const id = `construct:${this.nextConstructionBlueprintId++}`;
+    const blueprint: ConstructionBlueprint = { id, kind, x, y, objectId, cost };
+    this.constructionBlueprints.set(id, blueprint);
+
+    const duration =
+      kind === 'floor' ? 1.5 :
+      kind === 'wall' ? 3 :
+      kind === 'door' ? 2.5 : 4;
+
+    this.jobSystem.postJob({
+      id,
+      type: 'build',
+      targetTile: workTile,
+      priority: 9,
+      duration,
+      requiredSkill: 'construction',
+      minSkillLevel: 1,
+    });
+    return true;
+  }
+
+  private queueConstructionSelection(item: string, tiles: { x: number; y: number }[]): void {
+    const validTiles = tiles.filter(tile => this.isBuildTileValid(item, tile.x, tile.y));
+    if (validTiles.length === 0) {
+      this.hud.logEvent('No valid tiles in that construction selection.', 'warning');
+      return;
+    }
+
+    const cost = this.getBuildItemCost(item);
+    const totalCost = cost * validTiles.length;
+    if (totalCost > this.getSpendableWealth()) {
+      this.hud.logEvent(
+        `Not enough available wealth. Need ${totalCost}g, have ${Math.floor(this.getSpendableWealth())}g after reservations.`,
+        'warning',
+      );
+      return;
+    }
+
+    const kind: ConstructionKind =
+      item === 'wall' ? 'wall' :
+      item === 'floor' ? 'floor' :
+      item === 'door' ? 'door' : 'object';
+
+    let queued = 0;
+    for (const tile of validTiles) {
+      if (this.queueConstructionBlueprint(kind, tile.x, tile.y, cost, kind === 'object' ? item : undefined)) {
+        queued++;
+      }
+    }
+
+    if (queued > 0) {
+      const label = item === 'wall' ? 'wall' : item === 'floor' ? 'floor' : item === 'door' ? 'door' : DataManager.getObject(item)?.name ?? item;
+      this.hud.logEvent(
+        `Queued ${queued} ${label}${queued === 1 ? '' : 's'} for construction (${queued * cost}g reserved).`,
+        'info',
+      );
+      this.refreshConstructionBlueprintVisuals();
+      this.updateHUD();
+    }
+  }
+
+  private cancelConstructionBlueprintAt(x: number, y: number): boolean {
+    const blueprint = this.getConstructionBlueprintAt(x, y);
+    if (!blueprint) return false;
+    this.jobSystem.cancelJob(blueprint.id);
+    this.constructionBlueprints.delete(blueprint.id);
+    this.refreshConstructionBlueprintVisuals();
+    this.updateHUD();
+    this.hud.logEvent(`Cancelled construction blueprint at (${x}, ${y}).`, 'info');
+    return true;
+  }
+
+  private onJobCompleted(posting: { id: string }, _entity: number): void {
+    if (!posting.id.startsWith('construct:')) return;
+    const blueprint = this.constructionBlueprints.get(posting.id);
+    if (!blueprint) return;
+
+    let result: { success: boolean; message: string };
+    if (blueprint.kind === 'wall') {
+      result = this.buildingSystem.placeWall(blueprint.x, blueprint.y);
+    } else if (blueprint.kind === 'floor') {
+      result = this.buildingSystem.placeFloor(blueprint.x, blueprint.y);
+    } else if (blueprint.kind === 'door') {
+      result = this.buildingSystem.placeDoor(blueprint.x, blueprint.y);
+    } else if (blueprint.objectId) {
+      result = this.buildingSystem.placeObject(blueprint.x, blueprint.y, blueprint.objectId);
+    } else {
+      result = { success: false, message: 'Missing object definition' };
+    }
+
+    this.constructionBlueprints.delete(blueprint.id);
+    this.refreshConstructionBlueprintVisuals();
+
+    if (!result.success) {
+      this.hud.logEvent(`Construction failed at (${blueprint.x}, ${blueprint.y}): ${result.message}`, 'warning');
+      return;
+    }
+
+    this.cultWealth -= blueprint.cost;
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+    this.particles.spawnBuildDust(blueprint.x + offset.x + 0.5, blueprint.y + offset.z + 0.5);
+    this.audio.play('ui-build');
+
+    if (blueprint.kind === 'object' && blueprint.objectId) {
+      this.registerWorkstationJob(blueprint.x, blueprint.y, blueprint.objectId);
+      this.refreshRoomRequirementAt(blueprint.x, blueprint.y);
+      if (blueprint.objectId.startsWith('decor_')) {
+        this.handleDecorPlacement(blueprint.x, blueprint.y, blueprint.objectId.replace('decor_', ''));
+      }
+    }
+
+    this.sceneMgr.buildTiles();
+    this.sceneMgr.syncEntities();
+    this.pathfinder.invalidateCache();
+    this.pathfindSystem.invalidateCache();
+    this.roomGraph.invalidate();
+    this.updateHUD();
+  }
+
   private onBuildDragEnd(startX: number, startY: number, endX: number, endY: number): void {
     if (this.input.getMode() !== 'build' || !this.selectedBuildItem) return;
 
     const item = this.selectedBuildItem;
-
     if (item === 'room:clear') {
       const cleared = this.buildingSystem.clearRoomArea(startX, startY, endX, endY);
       if (cleared > 0) {
@@ -1376,54 +1661,8 @@ class CultTycoonGame {
       return;
     }
 
-    if (item === 'wall') {
-      const estimatedTiles = Math.max(Math.abs(endX - startX), Math.abs(endY - startY)) + 1;
-      const estimatedCost = estimatedTiles * 5;
-      if (this.cultWealth < estimatedCost) {
-        this.hud.logEvent(`Not enough wealth for wall line. Need up to ${estimatedCost}g.`, 'warning');
-        return;
-      }
-      const result = this.buildingSystem.placeWallLine(startX, startY, endX, endY);
-      if (result.success) {
-        this.cultWealth -= result.cost;
-        this.hud.logEvent(`${result.message} for ${result.cost}g`, 'success');
-        this.afterStructureChange();
-      } else {
-        this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
-      }
-      return;
-    }
-
-    if (item === 'floor') {
-      const area = (Math.abs(endX - startX) + 1) * (Math.abs(endY - startY) + 1);
-      const estimatedCost = area * 2;
-      if (this.cultWealth < estimatedCost) {
-        this.hud.logEvent(`Not enough wealth for floor area. Need up to ${estimatedCost}g.`, 'warning');
-        return;
-      }
-      const result = this.buildingSystem.placeFloorArea(startX, startY, endX, endY);
-      if (result.success) {
-        this.cultWealth -= result.cost;
-        this.hud.logEvent(`${result.message} for ${result.cost}g`, 'success');
-        this.afterStructureChange();
-      } else {
-        this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
-      }
-      return;
-    }
-
-    // Doors and objects remain single-tile placement. A click is a 1×1 drag.
-    this.handleBuild(endX, endY);
-  }
-
-  private afterStructureChange(): void {
-    this.audio.play('ui-build');
-    this.sceneMgr.buildTiles();
-    this.sceneMgr.syncEntities();
-    this.pathfinder.invalidateCache();
-    this.pathfindSystem.invalidateCache();
-    this.roomGraph.invalidate();
-    this.updateHUD();
+    const tiles = this.getBuildSelectionTiles(item, startX, startY, endX, endY);
+    this.queueConstructionSelection(item, tiles);
   }
 
   private designateRoom(startX: number, startY: number, endX: number, endY: number, roomDefinitionId: string): void {
@@ -1555,71 +1794,10 @@ class CultTycoonGame {
   }
 
   private handleBuild(x: number, y: number): void {
-    const item = this.selectedBuildItem!;
-    const objDef = DataManager.getObject(item);
-
-    // Determine cost
-    let cost = 5;
-    if (item === 'wall') cost = 5;
-    else if (item === 'floor') cost = 2;
-    else if (item === 'door') cost = 8;
-    else if (objDef) cost = objDef.cost;
-
-    // Check wealth
-    if (this.cultWealth < cost) {
-      this.hud.logEvent(`Not enough wealth! Need ${cost}g, have ${Math.floor(this.cultWealth)}g`, 'warning');
-      return;
-    }
-
-    // Place the item
-    let result: { success: boolean; message: string };
-    if (item === 'wall') {
-      result = this.buildingSystem.placeWall(x, y);
-    } else if (item === 'floor') {
-      result = this.buildingSystem.placeFloor(x, y);
-    } else if (item === 'door') {
-      result = this.buildingSystem.placeDoor(x, y);
-    } else if (objDef) {
-      result = this.buildingSystem.placeObject(x, y, item);
-    } else {
-      result = { success: false, message: 'Unknown build item' };
-    }
-
-    if (result.success) {
-      this.cultWealth -= cost;
-      const label = item === 'wall' ? 'Wall' : item === 'floor' ? 'Floor' : item === 'door' ? 'Door' : objDef?.name ?? item;
-      this.hud.logEvent(`${label} placed at (${x}, ${y}) for ${cost}g`, 'success');
-      this.showFloatingText(`-${cost}g`, x, y, '#fbbf24');
-      this.audio.play('ui-build');
-      const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
-      this.particles.spawnBuildDust(x + offset.x + 0.5, y + offset.z + 0.5);
-      this.particles.spawnResourceGain(x + offset.x + 0.5, y + offset.z + 0.5, 0xfbbf24);
-      this.sceneMgr.buildTiles();
-      this.sceneMgr.syncEntities();
-      this.pathfinder.invalidateCache();
-      this.pathfindSystem.invalidateCache();
-
-      // Invalidate room graph when structure changes
-      if (item === 'wall' || item === 'door' || item === 'floor') {
-        this.roomGraph.invalidate();
-      }
-
-      // Functional objects create persistent workstation jobs.
-      if (objDef) {
-        this.registerWorkstationJob(x, y, item);
-        this.refreshRoomRequirementAt(x, y);
-      }
-
-      // Handle decor placement — attach to room's Prestige component
-      if (item.startsWith('decor_')) {
-        const decorId = item.replace('decor_', '');
-        this.handleDecorPlacement(x, y, decorId);
-      }
-
-      this.updateHUD();
-    } else {
-      this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
-    }
+    if (!this.selectedBuildItem) return;
+    const item = this.selectedBuildItem;
+    if (item.startsWith('room:')) return;
+    this.queueConstructionSelection(item, [{ x, y }]);
   }
 
   private findNeedFacility(need: NeedKind, from: { x: number; y: number }): { x: number; y: number } | null {
