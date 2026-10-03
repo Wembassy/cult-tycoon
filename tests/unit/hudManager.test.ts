@@ -164,6 +164,23 @@ describe('HUDManager — Time Controls', () => {
     expect(hud.timeMode).toBe('pause');
   });
 
+
+  it('should keep the same speed button nodes while the clock updates', () => {
+    const before = container.querySelector('[data-mode="speed2"]');
+    hud.updateTime(6.25, 1);
+    hud.updateTime(6.5, 1);
+    const after = container.querySelector('[data-mode="speed2"]');
+    expect(after).toBe(before);
+  });
+
+  it('should dispatch clicks from persistent speed buttons', () => {
+    const modes: string[] = [];
+    hud.onTimeModeChange = (mode) => modes.push(mode);
+    const button = container.querySelector('[data-mode="speed3"]') as HTMLButtonElement;
+    button.click();
+    expect(modes).toEqual(['speed3']);
+  });
+
   it('should update time display', () => {
     hud.updateTime(14, 3);
     expect(hud.currentHour).toBe(14);
