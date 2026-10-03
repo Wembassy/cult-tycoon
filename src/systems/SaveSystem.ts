@@ -13,6 +13,8 @@ import { FollowerAI } from '../components/FollowerAI';
 import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
 import { Inventory } from '../components/Inventory';
+import { Schedule } from '../components/Schedule';
+import { WorkPreferences } from '../components/WorkPreferences';
 import type { TileMap } from '../world/TileMap';
 
 export interface SaveData {
@@ -61,7 +63,7 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.2.0';
+const SAVE_VERSION = '0.3.0';
 const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
 const AUTOSAVE_KEY = 'cult_tycoon_autosave';
 const MAX_SLOTS = 6;
@@ -113,8 +115,30 @@ export class SaveSystem {
       const inventory = world.getComponent(entityId, Inventory);
       if (inventory) components.Inventory = { items: inventory.items, capacity: inventory.capacity };
 
+      const schedule = world.getComponent(entityId, Schedule);
+      if (schedule) components.Schedule = {
+        shift: schedule.shift,
+        sleepStartHour: schedule.sleepStartHour,
+        sleepDuration: schedule.sleepDuration,
+      };
+
+      const workPreferences = world.getComponent(entityId, WorkPreferences);
+      if (workPreferences) components.WorkPreferences = {
+        role: workPreferences.role,
+        priorities: { ...workPreferences.priorities },
+      };
+
       const ai = world.getComponent(entityId, FollowerAI);
-      if (ai) components.FollowerAI = { state: ai.state, path: ai.path, pathIndex: ai.pathIndex, stateTimer: ai.stateTimer };
+      if (ai) components.FollowerAI = {
+        state: ai.state,
+        path: ai.path,
+        pathIndex: ai.pathIndex,
+        stateTimer: ai.stateTimer,
+        tier: ai.tier,
+        roomEntityId: ai.roomEntityId,
+        needTarget: ai.needTarget,
+        needTargetTile: ai.needTargetTile,
+      };
 
       serializedEntities.push({ id: entityId, components });
     }
@@ -304,6 +328,18 @@ export class SaveSystem {
         const inv = new Inventory(entity);
         Object.assign(inv, serialized.components.Inventory);
         world.addComponent(entity, inv);
+      }
+
+      if (serialized.components.Schedule) {
+        const schedule = new Schedule(entity);
+        Object.assign(schedule, serialized.components.Schedule);
+        world.addComponent(entity, schedule);
+      }
+
+      if (serialized.components.WorkPreferences) {
+        const prefs = new WorkPreferences(entity);
+        Object.assign(prefs, serialized.components.WorkPreferences);
+        world.addComponent(entity, prefs);
       }
 
       if (serialized.components.FollowerAI) {
