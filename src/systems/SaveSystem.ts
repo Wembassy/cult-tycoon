@@ -28,6 +28,14 @@ export interface SaveData {
   settings: GameSettings;
   building?: BuildingSnapshot;
   construction?: SerializedConstructionBlueprint[];
+  harvestOrders?: SerializedHarvestOrder[];
+}
+
+export interface SerializedHarvestOrder {
+  id: string;
+  kind: 'tree' | 'rock' | 'food';
+  x: number;
+  y: number;
 }
 
 export interface SerializedConstructionBlueprint {
@@ -38,6 +46,7 @@ export interface SerializedConstructionBlueprint {
   objectId?: string;
   rotation?: number;
   cost: number;
+  materialCost?: number;
 }
 
 export interface SerializedWorld {
@@ -53,7 +62,7 @@ export interface SerializedEntity {
 export interface SerializedTileMap {
   width: number;
   height: number;
-  tiles: { terrain: string; occupied: boolean; buildable: boolean; roomId: number | null }[];
+  tiles: { terrain: string; occupied: boolean; buildable: boolean; roomId: number | null; decor?: string }[];
 }
 
 export interface SerializedCult {
@@ -68,6 +77,8 @@ export interface SerializedCult {
   leaderTitle: string;
   day: number;
   hour: number;
+  materials?: number;
+  food?: number;
 }
 
 export interface GameSettings {
@@ -76,7 +87,7 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.5.0';
+const SAVE_VERSION = '0.6.0';
 const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
 const AUTOSAVE_KEY = 'cult_tycoon_autosave';
 const MAX_SLOTS = 6;
@@ -104,6 +115,7 @@ export class SaveSystem {
     time: { hour: number; day: number },
     building?: BuildingSnapshot,
     construction: SerializedConstructionBlueprint[] = [],
+    harvestOrders: SerializedHarvestOrder[] = [],
   ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
@@ -173,6 +185,7 @@ export class SaveSystem {
           occupied: tile?.occupied ?? false,
           buildable: tile?.buildable ?? true,
           roomId: tile?.roomId ?? null,
+          decor: tile?.decor ?? 'none',
         });
       }
     }
@@ -187,6 +200,7 @@ export class SaveSystem {
       settings: this.settings,
       building,
       construction: construction.map(blueprint => ({ ...blueprint })),
+      harvestOrders: harvestOrders.map(order => ({ ...order })),
     };
   }
 
