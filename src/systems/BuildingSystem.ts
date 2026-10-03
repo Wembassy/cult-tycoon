@@ -37,6 +37,7 @@ export interface PlacedObject {
 export interface Room {
   id: number;
   type: RoomType;
+  roomDefinitionId?: string;
   tiles: { x: number; y: number }[];
   area: number;
 }
@@ -271,6 +272,65 @@ export class BuildingSystem {
       tilesAffected: tiles,
       cost: totalCost,
     };
+  }
+
+  /**
+   * Designate a room rectangle, Prison Architect-style.
+   * Walls are not required at designation time; the designation defines intended use.
+   */
+  designateRoomArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    type: RoomType,
+    roomDefinitionId: string,
+  ): Room | null {
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+
+    const tiles: { x: number; y: number }[] = [];
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const tile = this.map.getTile(x, y);
+        if (!tile || !tile.buildable) continue;
+        tiles.push({ x, y });
+      }
+    }
+
+    if (tiles.length === 0) return null;
+
+    // Remove overwritten tiles from any prior designation.
+    const touchedRooms = new Set<number>();
+    for (const { x, y } of tiles) {
+      const tile = this.map.getTile(x, y);
+      if (tile?.roomId !== null && tile?.roomId !== undefined) {
+        touchedRooms.add(tile.roomId);
+      }
+    }
+
+    const roomId = this.nextRoomId++;
+    for (const { x, y } of tiles) {
+      this.map.setRoomId(x, y, roomId);
+    }
+
+    const room: Room = {
+      id: roomId,
+      type,
+      roomDefinitionId,
+      tiles,
+      area: tiles.length,
+    };
+    this.rooms.set(roomId, room);
+
+    for (const oldRoomId of touchedRooms) {
+      if (oldRoomId !== roomId) this.refreshRoom(oldRoomId);
+    }
+
+    this._dirty = true;
+    return room;
   }
 
   /**
