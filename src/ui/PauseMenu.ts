@@ -52,15 +52,12 @@ export class PauseMenu {
         align-items: center;
         gap: 24px;
         padding: 48px 64px;
-        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(26, 14, 46, 0.95) 0%, rgba(15, 8, 32, 0.98) 100%);
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
-        border: 1px solid rgba(212, 175, 55, 0.25);
+        background: rgba(18,12,30,0.96);
+                        border: 1px solid rgba(212, 175, 55, 0.25);
         border-radius: 8px;
         box-shadow: 0 0 40px rgba(0,0,0,0.8), 0 0 80px rgba(168, 85, 247, 0.08);
         animation: pm-slide-in 0.25s ease-out;
-        image-rendering: pixelated;
-      }
+              }
 
       @keyframes pm-slide-in {
         from { opacity: 0; transform: scale(0.95); }
@@ -100,18 +97,15 @@ export class PauseMenu {
         font-weight: 600;
         letter-spacing: 3px;
         color: #d4af37;
-        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(30, 20, 50, 0.8), rgba(15, 10, 30, 0.9));
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
-        border: 1px solid rgba(212, 175, 55, 0.3);
+        background: rgba(20,14,34,0.90);
+                        border: 1px solid rgba(212, 175, 55, 0.3);
         border-radius: 4px;
         cursor: pointer;
         transition: all 0.25s ease;
         text-transform: uppercase;
         position: relative;
         overflow: hidden;
-        image-rendering: pixelated;
-      }
+              }
 
       #pause-menu .pm-btn::before {
         content: '';
