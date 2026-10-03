@@ -110,16 +110,13 @@ export class MissionPanel {
 
       .mission-panel {
         height: 100%;
-        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
-        border-left: 1px solid rgba(100, 100, 160, 0.5);
+        background: rgba(12,18,30,0.94);
+                        border-left: 1px solid rgba(100, 100, 160, 0.5);
         box-shadow: -4px 0 20px rgba(0,0,0,0.7);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        image-rendering: pixelated;
-      }
+              }
 
       .mission-panel-header {
         display: flex;
@@ -286,17 +283,14 @@ export class MissionPanel {
       .cultist-selector-panel {
         width: 460px;
         max-height: 80vh;
-        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.97), rgba(10,10,25,0.98));
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
-        border: 1px solid rgba(100, 100, 160, 0.5);
+        background: rgba(12,18,30,0.95);
+                        border: 1px solid rgba(100, 100, 160, 0.5);
         border-radius: 8px;
         box-shadow: 0 4px 30px rgba(0,0,0,0.8);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        image-rendering: pixelated;
-      }
+              }
 
       .cultist-selector-header {
         padding: 12px 16px;
