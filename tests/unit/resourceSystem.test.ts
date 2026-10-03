@@ -110,11 +110,11 @@ describe('ResourceSystem', () => {
       expect(gameState.resources.influence).toBeGreaterThan(initialInfluence);
     });
 
-    it('should generate materials when followers are building', () => {
+    it('should not create raw materials when followers are building', () => {
       createFollower(world, 'build', 'working', { construction: 5 });
       const initialMaterials = gameState.resources.materials;
       system.update(world, 1);
-      expect(gameState.resources.materials).toBeGreaterThan(initialMaterials);
+      expect(gameState.resources.materials).toBe(initialMaterials);
     });
 
     it('should generate small faith from cleaning', () => {
@@ -124,11 +124,11 @@ describe('ResourceSystem', () => {
       expect(gameState.resources.faith).toBeGreaterThan(initialFaith);
     });
 
-    it('should generate small materials from hauling', () => {
+    it('should not create raw materials from hauling', () => {
       createFollower(world, 'haul', 'working');
       const initialMaterials = gameState.resources.materials;
       system.update(world, 1);
-      expect(gameState.resources.materials).toBeGreaterThan(initialMaterials);
+      expect(gameState.resources.materials).toBe(initialMaterials);
     });
 
     it('should NOT generate resources when follower is idle', () => {
@@ -572,7 +572,7 @@ describe('ResourceSystem', () => {
       expect(gameState.resources.faith).toBeGreaterThan(initial.faith);
       expect(gameState.resources.food).toBeGreaterThan(initial.food);
       expect(gameState.resources.influence).toBeGreaterThan(initial.influence);
-      expect(gameState.resources.materials).toBeGreaterThan(initial.materials);
+      expect(gameState.resources.materials).toBe(initial.materials);
     });
   });
 });
