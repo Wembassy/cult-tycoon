@@ -1,0 +1,35 @@
+name: Regenerate Follower Animations
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+    paths:
+      - 'scripts/generate_follower_animations.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: alpha/vertical-slice
+          fetch-depth: 0
+
+      - name: Generate follower animation library
+        run: python scripts/generate_follower_animations.py
+
+      - name: Commit generated animation binary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/assets/animations/followers/follower_animation_library.glb public/assets/animations/followers/manifest.json
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+          else
+            git commit -m "assets(alpha): regenerate follower animation poses"
+            git push origin HEAD:alpha/vertical-slice
+          fi
