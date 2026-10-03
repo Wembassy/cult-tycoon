@@ -24,6 +24,8 @@ import { Traits } from './components/Traits';
 import { Job } from './components/Job';
 import { Skills } from './components/Skills';
 import { Schedule, type Shift } from './components/Schedule';
+import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
+import type { WorkJobKey } from './ui/WorkPanel';
 import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem } from './systems/JobSystem';
 import { AISystem, type NeedKind } from './systems/AISystem';
@@ -395,6 +397,10 @@ class CultTycoonGame {
     this.hud.onOpenMissions = () => this.openMissionPanel();
     this.hud.onOpenSchedule = () => this.openSchedulePanel();
     this.hud.onOpenRituals = () => this.showRitualMenu();
+    this.hud.onOpenWork = () => this.openWorkPanel();
+    this.hud.onSetWorkRole = (entityId, role) => this.setWorkRole(entityId, role);
+    this.hud.onSetWorkPriority = (entityId, job, priority) => this.setWorkPriority(entityId, job, priority);
+    this.hud.onAutoAssignWorkRoles = () => this.autoAssignWorkRoles();
     this.hud.onTechTreeUnlock = (techId) => this.unlockTechFromPanel(techId);
     this.hud.onSendMission = (templateId, cultistIds) => this.startMissionFromPanel(templateId, cultistIds);
     this.hud.onAssignShift = (entityId, shift) => {
@@ -793,6 +799,9 @@ class CultTycoonGame {
         case 'm':
           this.openMissionPanel();
           break;
+        case 'w':
+          this.openWorkPanel();
+          break;
         case '?':
           this.showControlsHelp();
           break;
@@ -958,10 +967,69 @@ class CultTycoonGame {
         '<p><b>Pan:</b> Middle-mouse drag</p>',
         '<p><b>Recenter:</b> Home</p>',
         '<p><b>Build:</b> B · <b>Demolish:</b> X · <b>Cancel:</b> Right-click / Esc</p>',
-        '<p><b>Tech:</b> T · <b>Missions:</b> M · <b>Rituals:</b> R · <b>Pause:</b> Space</p>',
+        '<p><b>Work:</b> W · <b>Tech:</b> T · <b>Missions:</b> M · <b>Rituals:</b> R · <b>Pause:</b> Space</p>',
       ].join(''),
       buttons: [{ label: 'Got it', style: 'primary' }],
     });
+  }
+
+  private openWorkPanel(): void {
+    const entities = this.world.query([FollowerAI, Skills, WorkPreferences]);
+    const cultists = entities.map((entityId) => {
+      const ai = this.world.getComponent(entityId, FollowerAI)!;
+      const skills = this.world.getComponent(entityId, Skills)!;
+      const prefs = this.world.getComponent(entityId, WorkPreferences)!;
+      return {
+        id: entityId,
+        name: this.followerNames.get(entityId) ?? `Cultist ${entityId}`,
+        tier: ai.tier,
+        role: prefs.role,
+        skills: {
+          cook: skills.cooking,
+          research: skills.research,
+          pray: skills.faith,
+          build: skills.construction,
+          clean: Math.max(1, Math.round((skills.construction + skills.social) / 2)),
+          haul: skills.construction,
+        },
+        priorities: { ...prefs.priorities },
+      };
+    });
+    this.hud.showWorkPanel({ cultists });
+  }
+
+  private setWorkRole(entityId: number, role: WorkRole): void {
+    const prefs = this.world.getComponent(entityId, WorkPreferences);
+    if (!prefs) return;
+    prefs.applyRole(role);
+    this.hud.logEvent(`${this.followerNames.get(entityId) ?? 'Cultist'} assigned role: ${role}.`, 'info');
+    this.openWorkPanel();
+  }
+
+  private setWorkPriority(entityId: number, job: WorkJobKey, priority: WorkPriority): void {
+    const prefs = this.world.getComponent(entityId, WorkPreferences);
+    if (!prefs) return;
+    prefs.setPriority(job, priority);
+    this.openWorkPanel();
+  }
+
+  private autoAssignWorkRoles(): void {
+    const entities = this.world.query([Skills, WorkPreferences]);
+    for (const entityId of entities) {
+      const skills = this.world.getComponent(entityId, Skills)!;
+      const prefs = this.world.getComponent(entityId, WorkPreferences)!;
+      const ranked: { role: WorkRole; score: number }[] = [
+        { role: 'researcher', score: skills.research },
+        { role: 'cook', score: skills.cooking },
+        { role: 'devotee', score: Math.max(skills.faith, skills.social) },
+        { role: 'builder', score: skills.construction },
+        { role: 'caretaker', score: Math.round((skills.social + skills.construction) / 2) },
+      ];
+      ranked.sort((a, b) => b.score - a.score);
+      prefs.applyRole(ranked[0]?.role ?? 'generalist');
+    }
+    this.hud.logEvent('Roles auto-assigned from follower skills.', 'success');
+    this.openWorkPanel();
   }
 
   private openMissionPanel(): void {
@@ -1396,7 +1464,7 @@ class CultTycoonGame {
 
     this.hud.showInspector({
       name,
-      role: 'Follower',
+      role: this.world.getComponent(entity, WorkPreferences)?.role ?? 'Follower',
       health: health?.hp ?? 100,
       needs: {
         hunger: needs.hunger,
@@ -1445,6 +1513,30 @@ class CultTycoonGame {
       unlockedIds: this.techTree.getUnlocked().map(node => node.id),
       influence: this.cultInfluence,
       faith: this.cultFaith,
+    });
+
+    const workEntities = this.world.query([FollowerAI, Skills, WorkPreferences]);
+    this.hud.updateWorkPanel({
+      cultists: workEntities.map((entityId) => {
+        const ai = this.world.getComponent(entityId, FollowerAI)!;
+        const skills = this.world.getComponent(entityId, Skills)!;
+        const prefs = this.world.getComponent(entityId, WorkPreferences)!;
+        return {
+          id: entityId,
+          name: this.followerNames.get(entityId) ?? `Cultist ${entityId}`,
+          tier: ai.tier,
+          role: prefs.role,
+          skills: {
+            cook: skills.cooking,
+            research: skills.research,
+            pray: skills.faith,
+            build: skills.construction,
+            clean: Math.max(1, Math.round((skills.construction + skills.social) / 2)),
+            haul: skills.construction,
+          },
+          priorities: { ...prefs.priorities },
+        };
+      }),
     });
 
     // Update inspector if a follower is selected
