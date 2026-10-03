@@ -116,6 +116,7 @@ class CultTycoonGame {
   private currentDay = 1;
   private tickCount = 0;
   private selectedBuildItem: string | null = null;
+  private selectedBuildRotation = 0;
   private selectedEntity: number | null = null;
   private buildEntries: BuildPanelEntry[] = [];
   private activeBuildCategory: string | null = null;
@@ -439,12 +440,29 @@ class CultTycoonGame {
     // Input callbacks
     this.input.onTileClick = (tile) => this.onTileClick(tile.x, tile.y);
     this.input.onTileHover = (tile) => this.onTileHover(tile.x, tile.y);
-    this.input.onDragStart = (tile) => this.updateBuildPreview(tile.x, tile.y, tile.x, tile.y);
-    this.input.onDragUpdate = (start, end) => this.updateBuildPreview(start.x, start.y, end.x, end.y);
+    this.input.onDragStart = (tile) => {
+      if (this.input.getMode() === 'demolish') {
+        this.updateDemolishPreview(tile.x, tile.y, tile.x, tile.y);
+      } else {
+        this.updateBuildPreview(tile.x, tile.y, tile.x, tile.y);
+      }
+    };
+    this.input.onDragUpdate = (start, end) => {
+      if (this.input.getMode() === 'demolish') {
+        this.updateDemolishPreview(start.x, start.y, end.x, end.y);
+      } else {
+        this.updateBuildPreview(start.x, start.y, end.x, end.y);
+      }
+    };
     this.input.onDragEnd = (start, end) => {
+      const mode = this.input.getMode();
       this.sceneMgr.clearBuildPreview();
       this.hud.clearBuildStatus();
-      this.onBuildDragEnd(start.x, start.y, end.x, end.y);
+      if (mode === 'demolish') {
+        this.onDemolishDragEnd(start.x, start.y, end.x, end.y);
+      } else {
+        this.onBuildDragEnd(start.x, start.y, end.x, end.y);
+      }
     };
 
     // Setup keyboard shortcuts
@@ -940,7 +958,18 @@ class CultTycoonGame {
           this.openTechTreePanel();
           break;
         case 'r':
-          this.showRitualMenu();
+          if (this.input.getMode() === 'build' && this.selectedBuildItem && !this.selectedBuildItem.startsWith('room:')) {
+            const objDef = DataManager.getObject(this.selectedBuildItem);
+            if (objDef) {
+              this.selectedBuildRotation = (this.selectedBuildRotation + Math.PI / 2) % (Math.PI * 2);
+              const degrees = Math.round(this.selectedBuildRotation * 180 / Math.PI);
+              this.hud.setBuildStatus(`Rotation: ${degrees}° · click to place blueprint · R rotates`, 'info');
+            } else {
+              this.showRitualMenu();
+            }
+          } else {
+            this.showRitualMenu();
+          }
           break;
         case 'm':
           this.openMissionPanel();
@@ -993,6 +1022,8 @@ class CultTycoonGame {
         const cost = parseInt(item.getAttribute('data-cost') || '0');
         if (!id) return;
 
+        this.selectedBuildRotation = 0;
+
         if (this.activeBuildCategory === 'demolish') {
           this.input.setMode('demolish');
           this.selectedBuildItem = null;
@@ -1018,7 +1049,7 @@ class CultTycoonGame {
               id === 'wall' ? 'Drag to plan a wall line.' :
               id === 'floor' ? 'Drag a rectangle to plan floor construction.' :
               id === 'door' ? 'Click a tile beside a wall to plan a door.' :
-              'Click a tile to place a construction blueprint.';
+              'Click a tile to place a construction blueprint. Press R to rotate.';
             this.hud.logEvent(`Selected: ${label} (${cost}g). ${instruction}`, 'info');
             this.hud.setBuildStatus(instruction, 'info');
           }
@@ -1106,6 +1137,7 @@ class CultTycoonGame {
   private closeBuildMenu(): void {
     this.input.setMode('select');
     this.selectedBuildItem = null;
+    this.selectedBuildRotation = 0;
     this.activeBuildCategory = null;
     this.selectedEntity = null;
     this.hud.hideBuildItems();
@@ -1536,6 +1568,7 @@ class CultTycoonGame {
         kind: blueprint.kind,
         x: blueprint.x,
         y: blueprint.y,
+        rotation: blueprint.rotation,
       })),
     );
   }
@@ -1567,11 +1600,12 @@ class CultTycoonGame {
     y: number,
     cost: number,
     objectId?: string,
+    rotation: number = 0,
   ): boolean {
     if (this.getConstructionBlueprintAt(x, y)) return false;
 
     const id = `construct:${this.nextConstructionBlueprintId++}`;
-    const blueprint: ConstructionBlueprint = { id, kind, x, y, objectId, cost };
+    const blueprint: ConstructionBlueprint = { id, kind, x, y, objectId, rotation, cost };
     this.constructionBlueprints.set(id, blueprint);
     this.postConstructionJob(blueprint);
     return true;
@@ -1601,7 +1635,14 @@ class CultTycoonGame {
 
     let queued = 0;
     for (const tile of validTiles) {
-      if (this.queueConstructionBlueprint(kind, tile.x, tile.y, cost, kind === 'object' ? item : undefined)) {
+      if (this.queueConstructionBlueprint(
+        kind,
+        tile.x,
+        tile.y,
+        cost,
+        kind === 'object' ? item : undefined,
+        kind === 'object' ? this.selectedBuildRotation : 0,
+      )) {
         queued++;
       }
     }
@@ -1641,7 +1682,12 @@ class CultTycoonGame {
     } else if (blueprint.kind === 'door') {
       result = this.buildingSystem.placeDoor(blueprint.x, blueprint.y);
     } else if (blueprint.objectId) {
-      result = this.buildingSystem.placeObject(blueprint.x, blueprint.y, blueprint.objectId);
+      result = this.buildingSystem.placeObject(
+        blueprint.x,
+        blueprint.y,
+        blueprint.objectId,
+        blueprint.rotation ?? 0,
+      );
     } else {
       result = { success: false, message: 'Missing object definition' };
     }
@@ -1689,6 +1735,80 @@ class CultTycoonGame {
     this.pathfindSystem.invalidateCache();
     this.roomGraph.invalidate();
     this.updateHUD();
+  }
+
+  private getRectangleTiles(startX: number, startY: number, endX: number, endY: number): { x: number; y: number }[] {
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+    const tiles: { x: number; y: number }[] = [];
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) tiles.push({ x, y });
+    }
+    return tiles;
+  }
+
+  private canDemolishAt(x: number, y: number): boolean {
+    if (this.getConstructionBlueprintAt(x, y)) return true;
+    const tile = this.map.getTile(x, y);
+    if (!tile) return false;
+    return (
+      tile.occupied ||
+      this.buildingSystem.floorTiles.has(`${x},${y}`) ||
+      this.buildingSystem.wallTiles.has(`${x},${y}`) ||
+      this.buildingSystem.doorTiles.has(`${x},${y}`)
+    );
+  }
+
+  private updateDemolishPreview(startX: number, startY: number, endX: number, endY: number): void {
+    const tiles = this.getRectangleTiles(startX, startY, endX, endY);
+    const removable = tiles.filter(tile => this.canDemolishAt(tile.x, tile.y));
+    this.sceneMgr.showBuildPreview(
+      tiles.map(tile => ({ ...tile, valid: false })),
+      'floor',
+    );
+    this.hud.setBuildStatus(
+      `Demolish · ${removable.length} removable tile${removable.length === 1 ? '' : 's'}`,
+      removable.length > 0 ? 'invalid' : 'info',
+    );
+  }
+
+  private onDemolishDragEnd(startX: number, startY: number, endX: number, endY: number): void {
+    let removed = 0;
+    let cancelled = 0;
+
+    for (const tile of this.getRectangleTiles(startX, startY, endX, endY)) {
+      if (this.getConstructionBlueprintAt(tile.x, tile.y)) {
+        if (this.cancelConstructionBlueprintAt(tile.x, tile.y)) cancelled++;
+        continue;
+      }
+
+      const result = this.buildingSystem.demolish(tile.x, tile.y);
+      if (result.success) {
+        this.jobSystem.cancelJob(`station:${tile.x}:${tile.y}`);
+        removed++;
+      }
+    }
+
+    if (removed > 0) {
+      this.audio.play('destroy');
+      this.sceneMgr.buildTiles();
+      this.sceneMgr.syncEntities();
+      this.pathfinder.invalidateCache();
+      this.pathfindSystem.invalidateCache();
+      this.roomGraph.invalidate();
+    }
+
+    if (removed > 0 || cancelled > 0) {
+      this.hud.logEvent(
+        `Demolish order completed: ${removed} built tile${removed === 1 ? '' : 's'} removed, ${cancelled} blueprint${cancelled === 1 ? '' : 's'} cancelled.`,
+        'info',
+      );
+      this.updateHUD();
+    } else {
+      this.hud.logEvent('Nothing removable in that area.', 'info');
+    }
   }
 
   private onBuildDragEnd(startX: number, startY: number, endX: number, endY: number): void {
