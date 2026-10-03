@@ -1727,6 +1727,10 @@ class CultTycoonGame {
     return true;
   }
 
+  private refreshHarvestDesignationVisuals(): void {
+    this.sceneMgr.setHarvestDesignations(Array.from(this.harvestOrders.values()));
+  }
+
   private harvestOrderId(kind: SerializedHarvestOrder['kind'], x: number, y: number): string {
     return `harvest:${kind}:${x}:${y}`;
   }
@@ -1767,6 +1771,8 @@ class CultTycoonGame {
       queued++;
     }
 
+    this.refreshHarvestDesignationVisuals();
+
     if (queued === 0) {
       const label = kind === 'tree' ? 'trees' : kind === 'rock' ? 'rocks' : 'food bushes';
       this.hud.logEvent(`No undesignated ${label} were found in that area.`, 'info');
@@ -1788,6 +1794,7 @@ class CultTycoonGame {
     const tile = this.map.getTile(order.x, order.y);
     const expectedDecor = order.kind === 'tree' ? 'tree' : order.kind === 'rock' ? 'rock' : 'bush';
     this.harvestOrders.delete(id);
+    this.refreshHarvestDesignationVisuals();
 
     if (!tile || tile.decor !== expectedDecor) {
       this.hud.logEvent(`Harvest order at (${order.x}, ${order.y}) was cancelled because the resource is gone.`, 'info');
@@ -3002,6 +3009,13 @@ class CultTycoonGame {
     this.selectedBuildItem = null;
     this.selectedEntity = null;
     this.followerNames.clear();
+    this.constructionBlueprints.clear();
+    this.harvestOrders.clear();
+    this.nextConstructionBlueprintId = 1;
+    this.jobSystem.clear();
+    this.sceneMgr.setConstructionBlueprints([]);
+    this.sceneMgr.setHarvestDesignations([]);
+    this.sceneMgr.setSelectedFollower(null);
 
     // Reset systems
     this.investigatorSystem.reset();
@@ -3263,6 +3277,7 @@ class CultTycoonGame {
     for (const savedOrder of data.harvestOrders ?? []) {
       this.harvestOrders.set(savedOrder.id, { ...savedOrder });
     }
+    this.refreshHarvestDesignationVisuals();
 
     // Resume from a clean assignment state, then recreate jobs from restored stations.
     for (const entityId of this.world.query([Job, FollowerAI])) {
