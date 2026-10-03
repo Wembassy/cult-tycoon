@@ -1313,6 +1313,151 @@ class CultTycoonGame {
     this.sceneMgr.syncEntities();
   }
 
+  private onBuildDragEnd(startX: number, startY: number, endX: number, endY: number): void {
+    if (this.input.getMode() !== 'build' || !this.selectedBuildItem) return;
+
+    const item = this.selectedBuildItem;
+
+    if (item.startsWith('room:')) {
+      this.designateRoom(startX, startY, endX, endY, item.slice(5));
+      return;
+    }
+
+    if (item === 'wall') {
+      const estimatedTiles = Math.max(Math.abs(endX - startX), Math.abs(endY - startY)) + 1;
+      const estimatedCost = estimatedTiles * 5;
+      if (this.cultWealth < estimatedCost) {
+        this.hud.logEvent(`Not enough wealth for wall line. Need up to ${estimatedCost}g.`, 'warning');
+        return;
+      }
+      const result = this.buildingSystem.placeWallLine(startX, startY, endX, endY);
+      if (result.success) {
+        this.cultWealth -= result.cost;
+        this.hud.logEvent(`${result.message} for ${result.cost}g`, 'success');
+        this.afterStructureChange();
+      } else {
+        this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
+      }
+      return;
+    }
+
+    if (item === 'floor') {
+      const area = (Math.abs(endX - startX) + 1) * (Math.abs(endY - startY) + 1);
+      const estimatedCost = area * 2;
+      if (this.cultWealth < estimatedCost) {
+        this.hud.logEvent(`Not enough wealth for floor area. Need up to ${estimatedCost}g.`, 'warning');
+        return;
+      }
+      const result = this.buildingSystem.placeFloorArea(startX, startY, endX, endY);
+      if (result.success) {
+        this.cultWealth -= result.cost;
+        this.hud.logEvent(`${result.message} for ${result.cost}g`, 'success');
+        this.afterStructureChange();
+      } else {
+        this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
+      }
+      return;
+    }
+
+    // Doors and objects remain single-tile placement. A click is a 1×1 drag.
+    this.handleBuild(endX, endY);
+  }
+
+  private afterStructureChange(): void {
+    this.audio.play('ui-build');
+    this.sceneMgr.buildTiles();
+    this.sceneMgr.syncEntities();
+    this.pathfinder.invalidateCache();
+    this.pathfindSystem.invalidateCache();
+    this.roomGraph.invalidate();
+    this.updateHUD();
+  }
+
+  private designateRoom(startX: number, startY: number, endX: number, endY: number, roomDefinitionId: string): void {
+    const def = DataManager.getRoom(roomDefinitionId);
+    if (!def) {
+      this.hud.logEvent('Unknown room type.', 'warning');
+      return;
+    }
+
+    const width = Math.abs(endX - startX) + 1;
+    const height = Math.abs(endY - startY) + 1;
+    const area = width * height;
+    if (area < def.minSize) {
+      this.hud.logEvent(`${def.name} needs at least ${def.minSize} tiles; selected area is ${area}.`, 'warning');
+      return;
+    }
+
+    const typeMap: Record<string, RoomType> = {
+      dormitory: 'bedroom',
+      mess_hall: 'canteen',
+      prayer_room: 'temple',
+      research_room: 'research_office',
+      kitchen: 'kitchen',
+      ritual_room: 'temple',
+      storage: 'generic',
+      meditation_room: 'recreation_room',
+    };
+
+    const room = this.buildingSystem.designateRoomArea(
+      startX,
+      startY,
+      endX,
+      endY,
+      typeMap[roomDefinitionId] ?? 'generic',
+      roomDefinitionId,
+    );
+
+    if (!room) {
+      this.hud.logEvent(`Could not designate ${def.name} in that area.`, 'warning');
+      return;
+    }
+
+    this.sceneMgr.buildTiles();
+    const status = this.getRoomRequirementStatus(room.id);
+    if (status.missing.length > 0) {
+      this.hud.logEvent(
+        `${def.name} designated (${room.area} tiles). Add: ${status.missing.join(', ')}.`,
+        'info',
+      );
+    } else {
+      this.hud.logEvent(`${def.name} designated and complete.`, 'success');
+    }
+    this.updateHUD();
+  }
+
+  private getRoomRequirementStatus(roomId: number): { complete: boolean; missing: string[] } {
+    const room = this.buildingSystem.getRoom(roomId);
+    if (!room?.roomDefinitionId) return { complete: true, missing: [] };
+
+    const def = DataManager.getRoom(room.roomDefinitionId);
+    if (!def) return { complete: true, missing: [] };
+
+    const tileKeys = new Set(room.tiles.map(tile => `${tile.x},${tile.y}`));
+    const placedIds = new Set(
+      this.buildingSystem.getAllObjects()
+        .filter(obj => tileKeys.has(`${obj.x},${obj.y}`))
+        .map(obj => obj.objectId),
+    );
+
+    const missing = def.requiredObjects.filter(required => !placedIds.has(required));
+    return { complete: room.area >= def.minSize && missing.length === 0, missing };
+  }
+
+  private refreshRoomRequirementAt(x: number, y: number): void {
+    const tile = this.map.getTile(x, y);
+    if (!tile || tile.roomId === null) return;
+    const room = this.buildingSystem.getRoom(tile.roomId);
+    if (!room?.roomDefinitionId) return;
+    const def = DataManager.getRoom(room.roomDefinitionId);
+    if (!def) return;
+
+    const status = this.getRoomRequirementStatus(room.id);
+    if (status.complete) {
+      this.hud.logEvent(`${def.name} is now complete and functional.`, 'success');
+    }
+  }
+
   private onTileClick(x: number, y: number): void {
     const tile = this.map.getTile(x, y);
     if (!tile) return;
