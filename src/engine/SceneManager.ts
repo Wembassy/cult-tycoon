@@ -16,6 +16,7 @@ import type { AssetLoader } from './AssetLoader';
 import { FogOfWar } from '../world/FogOfWar';
 import type { BuildingSystem } from '../systems/BuildingSystem';
 import { TIER_COLORS, getBuildingModel, getWorkStation } from '../data/BuildingModels';
+import { findFollowerAnimationClip, type FollowerAnimationState } from '../data/FollowerAnimations';
 
 // Richer terrain colors
 const TERRAIN_COLORS: Record<string, number> = {
@@ -48,8 +49,6 @@ const ROOM_TYPE_NAMES: Record<string, string> = {
   generic: 'Room',
 };
 
-type FollowerAnimationState = 'idle' | 'walk' | 'work' | 'pray' | 'eat' | 'sleep';
-
 
 export class SceneManager {
   private scene: THREE.Scene;
@@ -64,6 +63,7 @@ export class SceneManager {
   private animationActions: Map<number, Map<FollowerAnimationState, THREE.AnimationAction>> = new Map();
   private activeAnimationState: Map<number, FollowerAnimationState> = new Map();
   private lastFollowerPositions: Map<number, THREE.Vector2> = new Map();
+  private sharedFollowerAnimations: THREE.AnimationClip[] = [];
   private entityLights: Map<number, THREE.PointLight> = new Map();
   private world: World;
   private map: TileMap;
@@ -102,6 +102,10 @@ export class SceneManager {
   setBuildingSystem(bs: BuildingSystem): void { this.buildingSystem = bs; }
 
   setFollowerNames(names: Map<number, string>): void { this.followerNames = names; }
+
+  setFollowerAnimationLibrary(clips: THREE.AnimationClip[]): void {
+    this.sharedFollowerAnimations = clips;
+  }
 
   /** Get the current BuildingSystem reference (if set). */
   getBuildingSystem(): BuildingSystem | null { return this.buildingSystem; }
@@ -824,25 +828,20 @@ export class SceneManager {
 
   private createFollowerAnimationController(
     root: THREE.Object3D,
-    clips: THREE.AnimationClip[],
+    embeddedClips: THREE.AnimationClip[],
   ): { mixer: THREE.AnimationMixer; actions: Map<FollowerAnimationState, THREE.AnimationAction> } | null {
-    const keywords: Record<FollowerAnimationState, string[]> = {
-      idle: ['idle', 'stand', 'rest', 'breath'],
-      walk: ['walk', 'locomotion', 'move'],
-      work: ['work', 'hammer', 'build', 'clean', 'research', 'cook', 'craft'],
-      pray: ['pray', 'worship', 'ritual', 'kneel'],
-      eat: ['eat', 'drink'],
-      sleep: ['sleep', 'lie', 'rest_sleep'],
-    };
-
     const mixer = new THREE.AnimationMixer(root);
     const actions = new Map<FollowerAnimationState, THREE.AnimationAction>();
 
-    for (const state of Object.keys(keywords) as FollowerAnimationState[]) {
-      const clip = clips.find(candidate => {
-        const name = candidate.name.toLowerCase();
-        return keywords[state].some(keyword => name.includes(keyword));
-      });
+    for (const state of ['idle', 'walk', 'work', 'pray', 'eat', 'sleep'] as FollowerAnimationState[]) {
+      const sharedIndex = findFollowerAnimationClip(this.sharedFollowerAnimations, state);
+      const embeddedIndex = findFollowerAnimationClip(embeddedClips, state);
+      const clip = sharedIndex >= 0
+        ? this.sharedFollowerAnimations[sharedIndex]
+        : embeddedIndex >= 0
+          ? embeddedClips[embeddedIndex]
+          : null;
+
       if (!clip) continue;
       const action = mixer.clipAction(clip);
       action.enabled = true;
