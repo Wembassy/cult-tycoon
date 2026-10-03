@@ -73,6 +73,7 @@ export class HUDManager {
   private schedulePanel: SchedulePanel | null = null;
   private workPanel: WorkPanel | null = null;
   private eventLogEntries: EventLogEntry[] = [];
+  private eventLogCollapsed = false;
   private nextEventId = 1;
   private maxLogEntries = 20;
   private _timeMode: TimeControlMode = 'play';
@@ -122,6 +123,15 @@ export class HUDManager {
     this.container.appendChild(this.inspector);
     this.container.appendChild(this.eventLog);
     this.container.appendChild(this.timeControls);
+
+    this.eventLog.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.hud-log-toggle')) {
+        this.eventLogCollapsed = !this.eventLogCollapsed;
+        this.renderEventLog();
+      }
+    });
+    this.renderEventLog();
 
     // Build items panel hidden by default
     this.buildItems.style.display = 'none';
@@ -586,9 +596,22 @@ export class HUDManager {
 
   private renderEventLog(): void {
     if (!this.eventLog) return;
-    this.eventLog.innerHTML = this.eventLogEntries
-      .map(e => `<div class="hud-log-entry hud-log-${e.type}">${e.text}</div>`)
-      .join('');
+    this.eventLog.classList.toggle('collapsed', this.eventLogCollapsed);
+    const entries = this.eventLogCollapsed
+      ? ''
+      : this.eventLogEntries
+          .map(e => `<div class="hud-log-entry hud-log-${e.type}">${e.text}</div>`)
+          .join('');
+
+    this.eventLog.innerHTML = `
+      <div class="hud-log-header">
+        <span class="hud-log-title">Activity</span>
+        <button class="hud-log-toggle" type="button" title="${this.eventLogCollapsed ? 'Expand activity log' : 'Collapse activity log'}">
+          ${this.eventLogCollapsed ? '▲' : '▼'}
+        </button>
+      </div>
+      <div class="hud-log-body">${entries}</div>
+    `;
   }
 
   /**
