@@ -1,0 +1,50 @@
+name: Publish Alpha 3 Release
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packaged Alpha 3 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 37090627546             --repo Wembassy/cult-tycoon             --name cult-tycoon-alpha-windows
+
+      - name: Verify packaged ZIP
+        run: |
+          test -s cult-tycoon-alpha-windows.zip
+          unzip -l cult-tycoon-alpha-windows.zip | head -80
+
+      - name: Publish Alpha 3 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0-alpha.3             cult-tycoon-alpha-windows.zip             --repo Wembassy/cult-tycoon             --target 1fda255e47c32b30cbf362f0729759f5744eb3fc             --title "Cult Tycoon v0.1.0 Alpha 3"             --prerelease             --notes "Alpha 3 focuses on first-session playability and management UX.
+
+          Highlights:
+          - visible starter clearing and readable fog of war
+          - responsive semi-transparent HUD, hamburger management menu, minimap
+          - collapsible activity log
+          - horizontal build submenus
+          - Prison Architect-style draggable room designation and Clear Room tool
+          - room requirements/completion feedback
+          - guided first-session objectives: Dormitory -> Kitchen -> roles -> research -> mission -> heat
+          - RimWorld-style work roles/priorities
+          - real facility-seeking needs behavior
+          - first-party generated Idle/Walk/Work/Pray/Eat/Sleep follower animations
+          - compound/work-role/schedule persistence improvements
+
+          Validation:
+          - ESLint passes
+          - 429 unit tests pass
+          - TypeScript/Vite production build passes
+          - follower GLB rig/animation audit passes
+          - Windows Electron/NSIS packaging passes"
