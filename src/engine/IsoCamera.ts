@@ -211,6 +211,39 @@ export class IsoCamera {
   }
 
   /**
+   * Convert screen coordinates to a subdivision grid without changing the
+   * simulation tile map. A subdivisions value of 10 gives ten placement cells
+   * across each terrain tile.
+   */
+  screenToGrid(screenX: number, screenY: number, subdivisions: number = 10): TileCoord {
+    const divisions = Math.max(1, Math.floor(subdivisions));
+    const ndcX = (screenX / this.viewWidth) * 2 - 1;
+    const ndcY = -(screenY / this.viewHeight) * 2 + 1;
+    this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
+
+    const hit = new THREE.Vector3();
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, hit)) {
+      return {
+        x: Math.floor((hit.x - this.mapOffset.x) * divisions),
+        y: Math.floor((hit.z - this.mapOffset.z) * divisions),
+      };
+    }
+    return { x: 0, y: 0 };
+  }
+
+  gridToScreen(gridX: number, gridY: number, subdivisions: number = 10): { x: number; y: number } {
+    const divisions = Math.max(1, Math.floor(subdivisions));
+    const cellSize = 1 / divisions;
+    const worldX = gridX * cellSize + this.mapOffset.x + cellSize / 2;
+    const worldZ = gridY * cellSize + this.mapOffset.z + cellSize / 2;
+    const projected = new THREE.Vector3(worldX, 0, worldZ).project(this.camera);
+    return {
+      x: (projected.x + 1) / 2 * this.viewWidth,
+      y: (1 - projected.y) / 2 * this.viewHeight,
+    };
+  }
+
+  /**
    * Project a tile coordinate to screen pixel position.
    */
   tileToScreen(tileX: number, tileY: number): { x: number; y: number } {
