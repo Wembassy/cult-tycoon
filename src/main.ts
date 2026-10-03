@@ -1542,6 +1542,7 @@ class CultTycoonGame {
       // Functional objects create persistent workstation jobs.
       if (objDef) {
         this.registerWorkstationJob(x, y, item);
+        this.refreshRoomRequirementAt(x, y);
       }
 
       // Handle decor placement — attach to room's Prestige component
