@@ -100,7 +100,7 @@ export class TechTreePanel {
         max-width: 1200px;
         height: 85vh;
         max-height: 800px;
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(100, 100, 160, 0.5);
