@@ -657,6 +657,44 @@ class CultTycoonGame {
         backdrop-filter: blur(8px);
         box-shadow: 0 2px 12px rgba(0,0,0,0.6);
       }
+      .hud-log-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .hud-log-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #cbd5e1;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+      }
+      .hud-log-toggle {
+        width: 24px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(100,120,160,0.35);
+        border-radius: 4px;
+        color: #cbd5e1;
+        background: rgba(255,255,255,0.05);
+        cursor: pointer;
+      }
+      .hud-log-toggle:hover {
+        background: rgba(255,255,255,0.10);
+      }
+      .hud-event-log.collapsed {
+        width: 150px;
+        max-height: none;
+        overflow: hidden;
+        padding: 7px 9px;
+      }
+      .hud-event-log.collapsed .hud-log-header {
+        margin-bottom: 0;
+      }
       .hud-log-entry {
         font-size: 11px; padding: 2px 0; line-height: 1.4;
         text-shadow: 0 1px 2px rgba(0,0,0,0.6);
