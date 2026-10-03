@@ -172,6 +172,10 @@ export class SceneManager {
         const noiseVal = Math.sin(x * 0.5) * Math.cos(y * 0.5) + Math.sin((x + y) * 0.3);
         const variation = noiseVal * 0.06;
         const finalColor = new THREE.Color(color).offsetHSL(0, 0, variation);
+        if (tile.roomId !== null) {
+          // Designated rooms get a subtle blueprint tint so painted areas are legible.
+          finalColor.lerp(new THREE.Color(0x4777aa), 0.22);
+        }
 
         const geom = new THREE.BoxGeometry(TILE_SIZE, height, TILE_SIZE);
         const mat = isWater
