@@ -785,28 +785,28 @@ export class SceneManager {
       // Real fantasy character GLBs — cult-appropriate variants.
       // Use entityId (not meshId hash) so different followers get different models.
       const variants = [
-        '/assets/models/followers/fantasy_wizard_01.glb',
-        '/assets/models/followers/fantasy_sorcerer_01.glb',
-        '/assets/models/followers/fantasy_witch_01.glb',
-        '/assets/models/followers/fantasy_druid_01.glb',
-        '/assets/models/followers/fantasy_bard_01.glb',
-        '/assets/models/followers/fantasy_gypsy_01.glb',
-        '/assets/models/followers/fantasy_rougemale_01.glb',
-        '/assets/models/followers/fantasy_malepeasant_01.glb',
-        '/assets/models/followers/fantasy_femalepeasant_01.glb',
-        '/assets/models/followers/dungeon_goblinshaman_01.glb',
-        '/assets/models/followers/adventure_viking_01.glb',
-        '/assets/models/followers/adventure_warrior_01.glb',
+        './assets/models/followers/fantasy_wizard_01.glb',
+        './assets/models/followers/fantasy_sorcerer_01.glb',
+        './assets/models/followers/fantasy_witch_01.glb',
+        './assets/models/followers/fantasy_druid_01.glb',
+        './assets/models/followers/fantasy_bard_01.glb',
+        './assets/models/followers/fantasy_gypsy_01.glb',
+        './assets/models/followers/fantasy_rougemale_01.glb',
+        './assets/models/followers/fantasy_malepeasant_01.glb',
+        './assets/models/followers/fantasy_femalepeasant_01.glb',
+        './assets/models/followers/dungeon_goblinshaman_01.glb',
+        './assets/models/followers/adventure_viking_01.glb',
+        './assets/models/followers/adventure_warrior_01.glb',
       ];
       return variants[entityId % variants.length];
     }
-    if (meshId.includes('wall')) return '/assets/models/buildings/wall_straight.glb';
-    if (meshId.includes('door')) return '/assets/models/buildings/door.glb';
-    if (meshId.includes('bed')) return '/assets/models/buildings/bed.glb';
-    if (meshId.includes('altar') || meshId.includes('prayer')) return '/assets/models/buildings/prayer_mat.glb';
-    if (meshId.includes('cookpot') || meshId.includes('cooking')) return '/assets/models/buildings/cooking_pot.glb';
-    if (meshId.includes('desk') || meshId.includes('research')) return '/assets/models/buildings/research_desk.glb';
-    if (meshId.includes('ritual')) return '/assets/models/buildings/ritual_circle.glb';
+    if (meshId.includes('wall')) return './assets/models/buildings/wall_straight.glb';
+    if (meshId.includes('door')) return './assets/models/buildings/door.glb';
+    if (meshId.includes('bed')) return './assets/models/buildings/bed.glb';
+    if (meshId.includes('altar') || meshId.includes('prayer')) return './assets/models/buildings/prayer_mat.glb';
+    if (meshId.includes('cookpot') || meshId.includes('cooking')) return './assets/models/buildings/cooking_pot.glb';
+    if (meshId.includes('desk') || meshId.includes('research')) return './assets/models/buildings/research_desk.glb';
+    if (meshId.includes('ritual')) return './assets/models/buildings/ritual_circle.glb';
     return null;
   }
 
