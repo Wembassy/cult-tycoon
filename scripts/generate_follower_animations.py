@@ -204,9 +204,15 @@ def main():
     # IDLE — slow breathing and weight shift.
     t = [0.0, 0.5, 1.0, 1.5, 2.0]
     add_clip("Idle", [
-        translation_track("pelvis", t, [(0,0,0),(0,0.012,0),(0,0,0),(0,0.008,0),(0,0,0)]),
-        rotation_track("spine_02", t, [(0,0,0),(1.2,0,0),(0,0,0),(-0.8,0,0),(0,0,0)]),
+        translation_track("pelvis", t, [(0,0,0),(0,0.006,0),(0,0,0),(0,0.004,0),(0,0,0)]),
+        rotation_track("spine_02", t, [(0,0,0),(1.0,0,0),(0,0,0),(-0.6,0,0),(0,0,0)]),
         rotation_track("head", t, [(0,0,0),(0,1.5,0),(0,0,0),(0,-1.5,0),(0,0,0)]),
+        # The source characters use a T-pose rest stance. Explicitly lower both
+        # shoulders in every semantic clip so idle never appears as a bobbing T-pose.
+        rotation_track("upperarm_l", t, [(0,0,58),(1,0,60),(0,0,58),(-1,0,57),(0,0,58)]),
+        rotation_track("upperarm_r", t, [(0,0,-58),(-1,0,-60),(0,0,-58),(1,0,-57),(0,0,-58)]),
+        rotation_track("lowerarm_l", t, [(-8,0,0),(-10,0,0),(-8,0,0),(-9,0,0),(-8,0,0)]),
+        rotation_track("lowerarm_r", t, [(-8,0,0),(-10,0,0),(-8,0,0),(-9,0,0),(-8,0,0)]),
     ])
 
     # WALK — in-place cycle with opposing arm/leg swing and pelvis bob.
@@ -217,8 +223,8 @@ def main():
         rotation_track("thigh_r", t, [(-25,0,0),(0,0,0),(25,0,0),(0,0,0),(-25,0,0)]),
         rotation_track("calf_l", t, [(0,0,0),(22,0,0),(5,0,0),(0,0,0),(0,0,0)]),
         rotation_track("calf_r", t, [(5,0,0),(0,0,0),(0,0,0),(22,0,0),(5,0,0)]),
-        rotation_track("upperarm_l", t, [(-20,0,0),(0,0,0),(20,0,0),(0,0,0),(-20,0,0)]),
-        rotation_track("upperarm_r", t, [(20,0,0),(0,0,0),(-20,0,0),(0,0,0),(20,0,0)]),
+        rotation_track("upperarm_l", t, [(-20,0,58),(0,0,58),(20,0,58),(0,0,58),(-20,0,58)]),
+        rotation_track("upperarm_r", t, [(20,0,-58),(0,0,-58),(-20,0,-58),(0,0,-58),(20,0,-58)]),
         rotation_track("spine_02", t, [(0,0,-2),(0,0,0),(0,0,2),(0,0,0),(0,0,-2)]),
     ])
 
@@ -226,9 +232,9 @@ def main():
     t = [0.0, 0.3, 0.6, 0.9, 1.2]
     add_clip("Work", [
         rotation_track("spine_02", t, [(-5,0,0),(-10,0,0),(-3,0,0),(-10,0,0),(-5,0,0)]),
-        rotation_track("upperarm_r", t, [(-10,0,-15),(-42,0,-12),(-8,0,-10),(-42,0,-12),(-10,0,-15)]),
+        rotation_track("upperarm_r", t, [(-10,0,-42),(-42,0,-30),(-8,0,-48),(-42,0,-30),(-10,0,-42)]),
         rotation_track("lowerarm_r", t, [(-25,0,0),(-60,0,0),(-20,0,0),(-60,0,0),(-25,0,0)]),
-        rotation_track("upperarm_l", t, [(-15,0,10),(-20,0,10),(-15,0,10),(-20,0,10),(-15,0,10)]),
+        rotation_track("upperarm_l", t, [(-15,0,52),(-20,0,48),(-15,0,52),(-20,0,48),(-15,0,52)]),
     ])
 
     # PRAY — hands raised toward the chest with a gentle bow.
@@ -236,8 +242,8 @@ def main():
     add_clip("Pray", [
         rotation_track("spine_02", t, [(-5,0,0),(-9,0,0),(-7,0,0),(-9,0,0),(-5,0,0)]),
         rotation_track("head", t, [(5,0,0),(9,0,0),(7,0,0),(9,0,0),(5,0,0)]),
-        rotation_track("upperarm_l", t, [(-30,0,28),(-34,0,30),(-32,0,29),(-34,0,30),(-30,0,28)]),
-        rotation_track("upperarm_r", t, [(-30,0,-28),(-34,0,-30),(-32,0,-29),(-34,0,-30),(-30,0,-28)]),
+        rotation_track("upperarm_l", t, [(-30,0,42),(-34,0,39),(-32,0,41),(-34,0,39),(-30,0,42)]),
+        rotation_track("upperarm_r", t, [(-30,0,-42),(-34,0,-39),(-32,0,-41),(-34,0,-39),(-30,0,-42)]),
         rotation_track("lowerarm_l", t, [(-65,0,0),(-70,0,0),(-67,0,0),(-70,0,0),(-65,0,0)]),
         rotation_track("lowerarm_r", t, [(-65,0,0),(-70,0,0),(-67,0,0),(-70,0,0),(-65,0,0)]),
     ])
@@ -245,7 +251,8 @@ def main():
     # EAT — right hand repeatedly comes toward the face.
     t = [0.0, 0.4, 0.8, 1.2, 1.6]
     add_clip("Eat", [
-        rotation_track("upperarm_r", t, [(-20,0,-10),(-45,0,-18),(-20,0,-10),(-45,0,-18),(-20,0,-10)]),
+        rotation_track("upperarm_l", t, [(0,0,58),(0,0,58),(0,0,58),(0,0,58),(0,0,58)]),
+        rotation_track("upperarm_r", t, [(-20,0,-44),(-45,0,-30),(-20,0,-44),(-45,0,-30),(-20,0,-44)]),
         rotation_track("lowerarm_r", t, [(-35,0,0),(-85,0,0),(-35,0,0),(-85,0,0),(-35,0,0)]),
         rotation_track("head", t, [(0,0,0),(6,-3,0),(0,0,0),(6,-3,0),(0,0,0)]),
     ])
@@ -259,8 +266,8 @@ def main():
         rotation_track("thigh_r", t, [(10,0,0),(10,0,0),(10,0,0),(10,0,0),(10,0,0)]),
         rotation_track("calf_l", t, [(-20,0,0),(-20,0,0),(-20,0,0),(-20,0,0),(-20,0,0)]),
         rotation_track("calf_r", t, [(-18,0,0),(-18,0,0),(-18,0,0),(-18,0,0),(-18,0,0)]),
-        rotation_track("upperarm_l", t, [(-15,0,18),(-15,0,18),(-15,0,18),(-15,0,18),(-15,0,18)]),
-        rotation_track("upperarm_r", t, [(-18,0,-15),(-18,0,-15),(-18,0,-15),(-18,0,-15),(-18,0,-15)]),
+        rotation_track("upperarm_l", t, [(-15,0,48),(-15,0,48),(-15,0,48),(-15,0,48),(-15,0,48)]),
+        rotation_track("upperarm_r", t, [(-18,0,-46),(-18,0,-46),(-18,0,-46),(-18,0,-46),(-18,0,-46)]),
     ])
 
     gltf = {
