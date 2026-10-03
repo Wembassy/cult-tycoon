@@ -153,20 +153,16 @@ export class SchedulingSystem implements System {
             ai.needTarget = 'hunger';
             ai.needTargetTile = null;
           }
-          if (ai.state !== 'needs') {
-            ai.state = 'needs';
-            ai.stateTimer = 0;
-          }
+          ai.state = 'needs';
+          ai.stateTimer = 0;
           break;
         case 'sleeping':
           if (ai.needTarget === null) {
             ai.needTarget = 'energy';
             ai.needTargetTile = null;
           }
-          if (ai.state !== 'needs') {
-            ai.state = 'needs';
-            ai.stateTimer = 0;
-          }
+          ai.state = 'needs';
+          ai.stateTimer = 0;
           break;
         case 'free':
           // Free time does not forcibly cancel an active job yet; it simply stops
