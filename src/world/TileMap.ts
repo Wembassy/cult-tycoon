@@ -84,6 +84,11 @@ export class TileMap {
     if (tile) tile.roomId = roomId;
   }
 
+  setDecor(x: number, y: number, decor: DecorType): void {
+    const tile = this.getTile(x, y);
+    if (tile) tile.decor = decor;
+  }
+
   getRoomTiles(roomId: number): Tile[] {
     const result: Tile[] = [];
     for (let y = 0; y < this.height; y++) {
