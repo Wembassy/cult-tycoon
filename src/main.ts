@@ -50,7 +50,7 @@ import { RoomGraph } from './world/RoomGraph';
 import { FogOfWar } from './world/FogOfWar';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
-import { HUDManager, ResourceBarData, BuildPanelEntry, BuildCategory } from './ui/HUDManager';
+import { HUDManager, ResourceBarData, BuildPanelEntry, BuildCategory, type TimeControlMode } from './ui/HUDManager';
 import { DialogSystem } from './ui/DialogSystem';
 import { StartMenu } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
@@ -129,7 +129,8 @@ class CultTycoonGame {
   }
 
   // Time control
-  private timeMode: 'pause' | 'play' | 'fast' = 'play';
+  private timeMode: TimeControlMode = 'speed1';
+  private lastHudUpdateSecond = -1;
 
   // Menu system
   private gameState: GameState = 'menu';
@@ -417,7 +418,7 @@ class CultTycoonGame {
 
     // Set up HUD
     this.updateHUD();
-    this.hud.setTimeMode('play');
+    this.hud.setTimeMode('speed1');
     this.hud.updateTime(6, 1);
     this.hud.logEvent('Welcome to Cult Tycoon!', 'success');
     this.hud.logEvent('Your cult begins with 6 followers and a revealed starter clearing for the first compound.', 'info');
@@ -707,22 +708,23 @@ class CultTycoonGame {
 
       /* Time Controls — bottom center, sprite banner background */
       .hud-time-controls {
-        position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 8px; align-items: center; padding: 8px 20px;
-        background: rgba(12,18,30,0.88);
-        border: 1px solid rgba(100, 100, 160, 0.4);
-        border-radius: 4px; pointer-events: auto;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+        position: absolute; top: 72px; right: 205px;
+        display: flex; gap: 6px; align-items: center; padding: 7px 10px;
+        background: rgba(12,18,30,0.94);
+        border: 1px solid rgba(110, 150, 210, 0.55);
+        border-radius: 6px; pointer-events: auto;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.55);
+        z-index: 12;
       }
       .hud-time-btn {
-        background: rgba(0,0,0,0.3); border: 1px solid rgba(100,100,160,0.3);
-        color: #ccc; padding: 4px 12px; border-radius: 3px;
-        cursor: pointer; font-size: 12px; transition: all 0.15s;
+        min-width: 38px;
+        background: rgba(0,0,0,0.28); border: 1px solid rgba(100,130,180,0.35);
+        color: #dbeafe; padding: 5px 8px; border-radius: 4px;
+        cursor: pointer; font-size: 12px; font-weight: 700; transition: all 0.15s;
       }
       .hud-time-btn:hover { background: rgba(80,80,140,0.4); }
       .hud-time-btn.active { background: rgba(168,85,247,0.3); border-color: rgba(168,85,247,0.5); color: #fff; box-shadow: 0 0 8px rgba(168,85,247,0.2); }
-      .hud-time { font-size: 13px; font-weight: 600; color: #ccc; margin-right: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+      .hud-time { font-size: 13px; font-weight: 700; color: #f1f5f9; margin-right: 8px; white-space: nowrap; }
 
       /* Responsive HUD scaling */
       @media (max-width: 1200px) {
@@ -786,7 +788,7 @@ class CultTycoonGame {
           right: 6px;
         }
         .hud-event-log { display: none; }
-        .hud-time-controls { padding: 6px 10px; }
+        .hud-time-controls { top: 148px; right: 8px; padding: 6px 8px; }
         .hud-time { font-size: 11px; }
       }
 
@@ -912,10 +914,13 @@ class CultTycoonGame {
           this.togglePause();
           break;
         case '1':
-          if (this.timeMode !== 'pause') this.setTimeMode('play');
+          this.setTimeMode('speed1');
           break;
         case '2':
-          if (this.timeMode !== 'pause') this.setTimeMode('fast');
+          this.setTimeMode('speed2');
+          break;
+        case '3':
+          this.setTimeMode('speed3');
           break;
       }
     });
@@ -994,7 +999,7 @@ class CultTycoonGame {
       timeCtrl.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         if (target.classList.contains('hud-time-btn')) {
-          const mode = target.dataset.mode as 'pause' | 'play' | 'fast';
+          const mode = target.dataset.mode as TimeControlMode;
           this.setTimeMode(mode);
         }
       });
@@ -1055,15 +1060,18 @@ class CultTycoonGame {
     this.hud.highlightBuildItem(null);
   }
 
-  private setTimeMode(mode: 'pause' | 'play' | 'fast'): void {
+  private setTimeMode(mode: TimeControlMode): void {
     this.timeMode = mode;
-    this.timeScale = mode === 'pause' ? 0 : mode === 'fast' ? 3 : 1;
+    this.timeScale =
+      mode === 'pause' ? 0 :
+      mode === 'speed2' ? 2 :
+      mode === 'speed3' ? 3 : 1;
     this.hud.setTimeMode(mode);
   }
 
   private togglePause(): void {
     if (this.timeMode === 'pause') {
-      this.setTimeMode('play');
+      this.setTimeMode('speed1');
     } else {
       this.setTimeMode('pause');
     }
@@ -1080,7 +1088,8 @@ class CultTycoonGame {
         '<p><b>Pan:</b> Middle-mouse drag</p>',
         '<p><b>Recenter:</b> Home</p>',
         '<p><b>Build:</b> B · <b>Demolish:</b> X · <b>Cancel:</b> Right-click / Esc</p>',
-        '<p><b>Jobs / Work:</b> J · <b>Tech:</b> T · <b>Missions:</b> M · <b>Rituals:</b> R · <b>Pause:</b> Space</p>',
+        '<p><b>Speed:</b> Space pause · 1 = 1× · 2 = 2× · 3 = 3×</p>',
+        '<p><b>Jobs / Work:</b> J · <b>Tech:</b> T · <b>Missions:</b> M · <b>Rituals:</b> R</p>',
       ].join(''),
       buttons: [{ label: 'Got it', style: 'primary' }],
     });
@@ -2161,11 +2170,14 @@ class CultTycoonGame {
       }
     }
 
-    // Update HUD every 30 ticks (~1 second)
-    const tickFloor = Math.floor(this.tickCount);
-    if (tickFloor % 30 === 0) {
+    // Clock updates continuously so the player can always see that simulation is moving.
+    this.hud.updateTime(this.currentHour, this.currentDay);
+
+    // Expensive HUD panels/minimap refresh once per real simulation second.
+    const hudSecond = Math.floor(this.tickCount);
+    if (hudSecond !== this.lastHudUpdateSecond) {
+      this.lastHudUpdateSecond = hudSecond;
       this.updateHUD();
-      this.hud.updateTime(this.currentHour, this.currentDay);
     }
 
     // Sync entity positions for animation
@@ -2262,7 +2274,7 @@ class CultTycoonGame {
     document.getElementById('ov-continue')?.addEventListener('click', () => {
       overlay.remove();
       this.gameEnded = false;
-      this.setTimeMode('play');
+      this.setTimeMode('speed1');
     });
     document.getElementById('ov-newgame')?.addEventListener('click', () => {
       overlay.remove();
@@ -2487,7 +2499,7 @@ class CultTycoonGame {
     this.hud.logEvent('New game started!', 'success');
     this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
 
-    this.setTimeMode('play');
+    this.setTimeMode('speed1');
   }
 
   dispose(): void {
@@ -2665,7 +2677,7 @@ class CultTycoonGame {
     this.updateHUD();
     this.hud.updateTime(Math.floor(this.currentHour), this.currentDay);
     this.hud.logEvent(`Save loaded — Day ${this.currentDay}, Hour ${Math.floor(this.currentHour)}.`, 'success');
-    this.setTimeMode('play');
+    this.setTimeMode('speed1');
   }
 
   /**
@@ -2744,11 +2756,11 @@ class CultTycoonGame {
     this.pauseMenu?.hide();
 
     // Restore time scale
-    const prevMode = (this.pauseMenu as any)._prevTimeMode as 'pause' | 'play' | 'fast' | undefined;
+    const prevMode = (this.pauseMenu as any)._prevTimeMode as TimeControlMode | undefined;
     if (prevMode) {
       this.setTimeMode(prevMode);
     } else {
-      this.setTimeMode('play');
+      this.setTimeMode('speed1');
     }
   }
 
