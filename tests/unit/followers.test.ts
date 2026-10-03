@@ -246,20 +246,20 @@ describe('AISystem', () => {
     expect(followerAI.state).toBe('needs');
   });
 
-  it('should transition from needs to idle after cooldown', () => {
+  it('should keep a critical need unresolved when no facility exists', () => {
     const entity = createFollower(world, 5, 5);
     const followerAI = world.getComponent(entity, FollowerAI)!;
     const needs = world.getComponent(entity, Needs)!;
 
     followerAI.state = 'needs';
+    followerAI.needTarget = 'hunger';
     followerAI.stateTimer = 0;
-    needs.hunger = 50;
+    needs.hunger = 10;
 
-    // needsCooldown is 60 ticks
     ai.update(world, 60);
 
-    expect(followerAI.state).toBe('idle');
-    expect(needs.hunger).toBeGreaterThan(50); // should have restored
+    expect(followerAI.state).toBe('needs');
+    expect(needs.hunger).toBe(10);
   });
 
   it('should transition from done to idle after cooldown', () => {
