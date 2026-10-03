@@ -43,6 +43,7 @@ export interface ConstructionBlueprintVisual {
   kind: ConstructionVisualKind;
   x: number;
   y: number;
+  rotation?: number;
 }
 
 export interface BuildPreviewTile {
@@ -1154,6 +1155,7 @@ export class SceneManager {
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(blueprint.x + offset.x + 0.5, y, blueprint.y + offset.z + 0.5);
+      mesh.rotation.y = blueprint.rotation ?? 0;
       mesh.userData.blueprintId = blueprint.id;
       this.blueprintGroup.add(mesh);
     }
