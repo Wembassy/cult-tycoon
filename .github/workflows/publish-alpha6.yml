@@ -1,0 +1,74 @@
+name: Publish Alpha 6 Release
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified Alpha 6 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 37145733007             --repo Wembassy/cult-tycoon             --name cult-tycoon-alpha6-windows
+          find . -maxdepth 4 -type f -print
+
+      - name: Verify release files
+        run: |
+          test -s cult-tycoon-alpha6-windows.zip
+          test -n "$(find release/nsis -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          test -n "$(find release/portable -maxdepth 1 -type f -name '*.exe' -print -quit)"
+
+      - name: Publish Alpha 6 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PORTABLE="$(find release/portable -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          INSTALLER="$(find release/nsis -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          gh release create v0.1.0-alpha.6             cult-tycoon-alpha6-windows.zip             "$PORTABLE"             "$INSTALLER"             --repo Wembassy/cult-tycoon             --target 466d999872d8104ce71dca0cd4278ac2374f50d7             --title "Cult Tycoon v0.1.0 Alpha 6"             --prerelease             --notes "Alpha 6 is the rendering, time-control, and colony-building interaction overhaul.
+
+          Visibility / camera:
+          - gameplay renders directly without bloom/vignette post-processing by default
+          - atmospheric distance fog disabled for a crisp colony view
+          - fog-of-war tile colors are recomputed from terrain colors instead of cumulatively darkening
+          - unexplored/explored tiles are opaque readable states rather than transparent black overlays
+          - dawn is readable immediately instead of becoming visible only after waiting
+
+          Time / simulation:
+          - always-visible Day + HH:MM clock
+          - Pause / 1x / 2x / 3x speed controls
+          - Space pauses; 1/2/3 select speed
+          - fixed stale clock refresh bug
+
+          Colony-builder construction:
+          - walls drag as lines
+          - floors drag as rectangles
+          - rooms remain drag-designated zones
+          - objects create placement blueprints instead of appearing instantly
+          - green/red live placement preview with blocked-tile and cost feedback
+          - cyan persistent construction blueprints
+          - followers with Build work construct blueprints before structures appear
+          - construction funds are reserved while planned and consumed on completion
+          - drag demolition removes completed construction and cancels blueprints
+          - floor demolition fixed
+          - R rotates furniture while in build mode
+          - pending construction and rotations persist through save/load
+          - door blueprints wait for supporting planned walls when necessary
+
+          Validation:
+          - explicit alpha/vertical-slice checkout and branch guard passed
+          - clean dist/release workspace
+          - 432 unit tests pass
+          - ESLint passes
+          - TypeScript/Vite production build passes
+          - NSIS installer passes
+          - portable EXE passes
+          - packaged app.asar marker verification passes for Alpha 6, hamburger, minimap, clock speed3, build status, construction blueprints, and onboarding
+
+          For testing, use the portable EXE first."
