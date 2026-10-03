@@ -86,7 +86,7 @@ export class AudioManager {
    * Try to load ambient background audio from file.
    */
   private tryLoadAmbient(): void {
-    const ambientPath = '/assets/audio/ambient_loop.mp3';
+    const ambientPath = './assets/audio/ambient_loop.mp3';
     // We check if file exists by attempting to load it; Howler handles 404 gracefully
     this.ambientHowl = new Howl({
       src: [ambientPath],
