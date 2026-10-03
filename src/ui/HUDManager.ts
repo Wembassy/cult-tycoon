@@ -65,7 +65,7 @@ export interface EventLogEntry {
   timestamp: number;
 }
 
-export type TimeControlMode = 'pause' | 'play' | 'fast';
+export type TimeControlMode = 'pause' | 'speed1' | 'speed2' | 'speed3';
 
 export class HUDManager {
   private container: HTMLElement;
@@ -88,7 +88,7 @@ export class HUDManager {
   private eventLogCollapsed = false;
   private nextEventId = 1;
   private maxLogEntries = 20;
-  private _timeMode: TimeControlMode = 'play';
+  private _timeMode: TimeControlMode = 'speed1';
   private _currentTime = 0;
   private _currentDay = 1;
   private _activeCategoryId: string | null = null;
@@ -732,11 +732,14 @@ export class HUDManager {
 
   private renderTimeControls(): void {
     if (!this.timeControls) return;
-    const timeStr = `Day ${this._currentDay} · ${Math.floor(this._currentTime).toString().padStart(2, '0')}:00`;
+    const hour = Math.floor(this._currentTime) % 24;
+    const minutes = Math.floor((this._currentTime - Math.floor(this._currentTime)) * 60);
+    const timeStr = `Day ${this._currentDay} · ${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     const buttons: { mode: TimeControlMode; label: string; title: string }[] = [
       { mode: 'pause', label: '⏸', title: 'Pause (Space)' },
-      { mode: 'play', label: '▶', title: 'Normal speed (1)' },
-      { mode: 'fast', label: '▶▶', title: 'Fast speed (2)' },
+      { mode: 'speed1', label: '1×', title: 'Normal speed (1)' },
+      { mode: 'speed2', label: '2×', title: 'Double speed (2)' },
+      { mode: 'speed3', label: '3×', title: 'Triple speed (3)' },
     ];
     this.timeControls.innerHTML =
       `<span class="hud-time">${timeStr}</span>` +
