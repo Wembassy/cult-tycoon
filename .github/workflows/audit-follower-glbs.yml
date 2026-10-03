@@ -58,6 +58,13 @@ jobs:
               if skins:
                   print("  joints=" + ",".join(str(len(s.get("joints", []))) for s in skins))
                   print("  skeleton_roots=" + ",".join(str(s.get("skeleton", "none")) for s in skins))
+                  if os.path.basename(path) == "fantasy_wizard_01.glb":
+                      joint_names = []
+                      for skin in skins:
+                          for joint_index in skin.get("joints", []):
+                              if joint_index < len(nodes):
+                                  joint_names.append(nodes[joint_index].get("name", f"node_{joint_index}"))
+                      print("  joint_names=" + "|".join(joint_names))
               else:
                   print("  joints=0")
               print(f"  animations={len(anims)}")
