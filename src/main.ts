@@ -651,9 +651,7 @@ class CultTycoonGame {
         position: absolute; bottom: 50px; right: 8px;
         width: 320px; max-height: 180px; overflow-y: auto;
         padding: 10px;
-        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.9), rgba(10,10,25,0.92));
-        background-size: 100% 100%, 100% 100%;
-        background-repeat: no-repeat;
+        background: rgba(12,18,30,0.90);
         border: 1px solid rgba(100, 100, 160, 0.4);
         border-radius: 6px; pointer-events: auto;
         backdrop-filter: blur(8px);
@@ -2029,9 +2027,7 @@ class CultTycoonGame {
       style.id = 'overlay-styles';
       style.textContent = `
         .ov-card {
-          background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(135deg, rgba(30,30,50,0.95), rgba(20,20,40,0.95));
-          background-size: 100% 100%, 100% 100%;
-          background-repeat: no-repeat;
+          background: rgba(20,20,34,0.96);
           border: 2px solid rgba(168,85,247,0.4);
           border-radius: 12px; padding: 40px 48px; text-align: center;
           max-width: 480px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
