@@ -74,6 +74,7 @@ export class SceneManager {
   private buildingGroup: THREE.Group;
   private buildPreviewGroup: THREE.Group;
   private blueprintGroup: THREE.Group;
+  private harvestDesignationGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
   private selectionRing: THREE.Mesh;
   private selectedFollower: number | null = null;
@@ -125,10 +126,13 @@ export class SceneManager {
     this.buildPreviewGroup.name = 'build-preview';
     this.blueprintGroup = new THREE.Group();
     this.blueprintGroup.name = 'construction-blueprints';
+    this.harvestDesignationGroup = new THREE.Group();
+    this.harvestDesignationGroup.name = 'harvest-designations';
     this.scene.add(this.tileGroup);
     this.scene.add(this.entityGroup);
     this.scene.add(this.buildingGroup);
     this.scene.add(this.blueprintGroup);
+    this.scene.add(this.harvestDesignationGroup);
     this.scene.add(this.buildPreviewGroup);
 
     // Fill light to enhance isometric view — softens shadows from the front
@@ -1224,6 +1228,30 @@ export class SceneManager {
     }
   }
 
+  setHarvestDesignations(orders: { id: string; kind: 'tree' | 'rock' | 'food'; x: number; y: number }[]): void {
+    this.clearVisualGroup(this.harvestDesignationGroup);
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+
+    for (const order of orders) {
+      const tile = this.map.getTile(order.x, order.y);
+      if (!tile) continue;
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
+      const geometry = new THREE.RingGeometry(0.24, 0.34, 20);
+      const material = new THREE.MeshBasicMaterial({
+        color: order.kind === 'food' ? 0x84cc16 : 0xf59e0b,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const marker = new THREE.Mesh(geometry, material);
+      marker.rotation.x = -Math.PI / 2;
+      marker.position.set(order.x + offset.x + 0.5, height + 0.045, order.y + offset.z + 0.5);
+      marker.userData.harvestOrderId = order.id;
+      this.harvestDesignationGroup.add(marker);
+    }
+  }
+
   private clearVisualGroup(group: THREE.Group): void {
     while (group.children.length > 0) {
       const child = group.children[0];
@@ -1286,8 +1314,10 @@ export class SceneManager {
     this.scene.remove(this.buildingGroup);
     this.clearVisualGroup(this.buildPreviewGroup);
     this.clearVisualGroup(this.blueprintGroup);
+    this.clearVisualGroup(this.harvestDesignationGroup);
     this.scene.remove(this.buildPreviewGroup);
     this.scene.remove(this.blueprintGroup);
+    this.scene.remove(this.harvestDesignationGroup);
     if (this.buildingFillLight) this.scene.remove(this.buildingFillLight);
   }
 }
