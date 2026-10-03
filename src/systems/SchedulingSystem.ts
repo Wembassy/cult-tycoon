@@ -137,8 +137,8 @@ export class SchedulingSystem implements System {
 
       const activity = this.getActivityForShift(schedule.shift, this.currentHour);
 
-      // Don't override 'moving' or 'stuck' states — let the AI resolve those first
-      if (ai.state === 'moving' || ai.state === 'stuck') continue;
+      // Critical needs and active movement take priority over the shift schedule.
+      if (ai.state === 'moving' || ai.state === 'stuck' || ai.state === 'needs') continue;
 
       switch (activity) {
         case 'working':
