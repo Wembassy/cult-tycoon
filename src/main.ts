@@ -1684,6 +1684,7 @@ class CultTycoonGame {
 
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
     this.particles.spawnBuildDust(blueprint.x + offset.x + 0.5, blueprint.y + offset.z + 0.5);
+    this.showFloatingText(`-${blueprint.cost}g`, blueprint.x, blueprint.y, '#fbbf24');
     this.audio.play('ui-build');
 
     if (blueprint.kind === 'object' && blueprint.objectId) {
