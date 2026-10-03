@@ -168,11 +168,11 @@ class CultTycoonGame {
     this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
     this.renderer.camera.setMapBounds(this.map.width, this.map.height);
 
-    // Fog of war — reveal starting area, 10-tile radius
-    this.fogOfWar = new FogOfWar(8);
+    // Fog of war — guarantee a generous starter clearing around the initial compound area.
+    this.fogOfWar = new FogOfWar(10);
     const mapCenterX = Math.floor(this.map.width / 2);
     const mapCenterY = Math.floor(this.map.height / 2);
-    this.fogOfWar.revealArea(mapCenterX, mapCenterY, 10);
+    this.fogOfWar.revealArea(mapCenterX, mapCenterY, 15);
 
     // Scene manager builds tile meshes (fog applied during build)
     this.sceneMgr = new SceneManager(this.renderer.threeScene, this.world, this.map, this.assets);
@@ -283,7 +283,7 @@ class CultTycoonGame {
     );
 
     // Fog system — updates visibility around followers every 10 ticks
-    this.fogSystem = new FogSystem(this.fogOfWar, 10);
+    this.fogSystem = new FogSystem(this.fogOfWar, 0.33);
 
     // Scheduling system — manages shifts and daily activities
     this.schedulingSystem = new SchedulingSystem();
@@ -420,7 +420,7 @@ class CultTycoonGame {
     this.hud.setTimeMode('play');
     this.hud.updateTime(6, 1);
     this.hud.logEvent('Welcome to Cult Tycoon!', 'success');
-    this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
+    this.hud.logEvent('Your cult begins with 6 followers and a revealed starter clearing for the first compound.', 'info');
     this.hud.logEvent('Press B for build mode, click objects in the panel.', 'info');
     this.hud.logEvent('Press T for tech tree, R for rituals, M for missions.', 'info');
 
@@ -1199,6 +1199,11 @@ class CultTycoonGame {
     for (const f of followers) {
       this.followerNames.set(f.entityId, f.name);
     }
+
+    // The starting compound must always have enough visible space to build immediately.
+    this.fogOfWar.revealArea(spawnX, spawnY, 15);
+    this.sceneMgr.buildTiles();
+
     // Auto-assign shifts to new followers
     this.schedulingSystem.autoAssignShifts(this.world);
     this.sceneMgr.syncEntities();
@@ -2121,9 +2126,9 @@ class CultTycoonGame {
     this.roomGraph = new RoomGraph(this.map);
 
     // Reset fog of war
-    this.fogOfWar = new FogOfWar(8);
-    this.fogOfWar.revealArea(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2), 10);
-    this.fogSystem = new FogSystem(this.fogOfWar, 10);
+    this.fogOfWar = new FogOfWar(10);
+    this.fogOfWar.revealArea(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2), 15);
+    this.fogSystem = new FogSystem(this.fogOfWar, 0.33);
     this.sceneMgr.setFog(this.fogOfWar);
     this.sceneMgr.buildTiles();
 
