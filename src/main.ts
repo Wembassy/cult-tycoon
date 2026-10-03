@@ -2275,10 +2275,35 @@ class CultTycoonGame {
       }
     }
 
-    // Pathfinder needs to be rebuilt with the restored map state
-    this.pathfinder = new Pathfinder(this.map);
+    // Restore BuildingSystem's internal object/room collections after tile occupancy.
+    this.buildingSystem.restoreSnapshot(data.building);
+    this.jobSystem.clear();
 
-    // Rebuild scene tiles
+    // Resume from a clean assignment state, then recreate jobs from restored stations.
+    for (const entityId of this.world.query([Job, FollowerAI])) {
+      const job = this.world.getComponent(entityId, Job)!;
+      job.jobId = null;
+      job.type = 'idle';
+      job.priority = 0;
+      job.targetTile = null;
+      job.workProgress = 0;
+
+      const ai = this.world.getComponent(entityId, FollowerAI)!;
+      ai.path = [];
+      ai.pathIndex = 0;
+      if (!ai.needTarget) ai.state = 'idle';
+    }
+    for (const obj of this.buildingSystem.getAllObjects()) {
+      this.registerWorkstationJob(obj.x, obj.y, obj.objectId);
+    }
+
+    // Existing pathfinder references use the same TileMap instance; invalidate caches
+    // rather than replacing the Pathfinder behind live systems.
+    this.pathfinder.invalidateCache();
+    this.pathfindSystem.invalidateCache();
+    this.roomGraph.invalidate();
+
+    // Rebuild scene tiles and placed objects.
     this.sceneMgr.buildTiles();
     this.sceneMgr.syncEntities();
 
@@ -2399,6 +2424,7 @@ class CultTycoonGame {
       this.map,
       cult,
       { hour: this.currentHour, day: this.currentDay },
+      this.buildingSystem.getSnapshot(),
     );
 
     const success = this.saveSystem.save(data);
