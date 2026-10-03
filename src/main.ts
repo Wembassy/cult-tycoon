@@ -26,7 +26,7 @@ import { Skills } from './components/Skills';
 import { Schedule, type Shift } from './components/Schedule';
 import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem } from './systems/JobSystem';
-import { AISystem } from './systems/AISystem';
+import { AISystem, type NeedKind } from './systems/AISystem';
 import { PathfindSystem } from './systems/PathfindSystem';
 import { BuildingSystem } from './systems/BuildingSystem';
 import { RenderSystem } from './systems/RenderSystem';
@@ -188,6 +188,7 @@ class CultTycoonGame {
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
     this.buildingSystem = new BuildingSystem(this.map);
+    this.aiSystem.setNeedFacilityProvider((need, from) => this.findNeedFacility(need, from));
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.renderSystem.setBuildingSystem(this.buildingSystem);
     this.renderSystem.setFollowerNames(this.followerNames);
@@ -1231,6 +1232,32 @@ class CultTycoonGame {
     } else {
       this.hud.logEvent(`Can't build: ${result.message}`, 'warning');
     }
+  }
+
+  private findNeedFacility(need: NeedKind, from: { x: number; y: number }): { x: number; y: number } | null {
+    const facilitiesByNeed: Record<NeedKind, string[]> = {
+      hunger: ['cookpot', 'cauldron', 'garden_plot', 'farm_plot'],
+      faith: ['altar', 'sacrificial_altar', 'offering_bowl', 'incense_burner', 'prayer_beads', 'statue'],
+      fun: ['bonfire', 'zen_garden', 'meditation_mat'],
+      sanity: ['meditation_mat', 'zen_garden', 'bonfire'],
+      energy: ['bed', 'bunk_bed'],
+      bladder: ['bathroom_fixture', 'toilet'],
+      hygiene: ['bathroom_fixture', 'shower'],
+    };
+
+    const validIds = new Set(facilitiesByNeed[need]);
+    const candidates = this.buildingSystem.getAllObjects()
+      .filter(obj => validIds.has(obj.objectId))
+      .map(obj => {
+        const workTile = this.findAdjacentWorkTile(obj.x, obj.y);
+        if (!workTile) return null;
+        const distance = Math.abs(workTile.x - from.x) + Math.abs(workTile.y - from.y);
+        return { tile: workTile, distance };
+      })
+      .filter((entry): entry is { tile: { x: number; y: number }; distance: number } => entry !== null)
+      .sort((a, b) => a.distance - b.distance);
+
+    return candidates[0]?.tile ?? null;
   }
 
   private registerWorkstationJob(x: number, y: number, objectId: string): void {
