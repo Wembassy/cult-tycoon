@@ -14,6 +14,7 @@ import { Health } from '../components/Health';
 import { Inventory } from '../components/Inventory';
 import { FollowerAI } from '../components/FollowerAI';
 import { QualityTier, ALL_TIERS, TIER_SKILL_RANGE } from '../components/CultistTier';
+import { WorkPreferences } from '../components/WorkPreferences';
 
 const NAMES = [
   'Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank', 'Grace', 'Henry',
@@ -83,6 +84,9 @@ export class FollowerFactory {
     const job = new Job(entity);
     job.type = 'idle';
     world.addComponent(entity, job);
+
+    // Work preferences — generalist by default; player can specialize later.
+    world.addComponent(entity, new WorkPreferences(entity));
 
     // Skills — randomized starting skills based on tier
     const prLevel = config.prLevel ?? 0;
