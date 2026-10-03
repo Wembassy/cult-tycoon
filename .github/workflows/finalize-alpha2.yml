@@ -1,0 +1,18 @@
+name: Finalize Alpha 2 Release
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish Alpha 2 draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "v0.1.0-alpha.2"             --repo Wembassy/cult-tycoon             --draft=false             --prerelease=true
