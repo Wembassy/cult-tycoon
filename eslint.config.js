@@ -50,7 +50,7 @@ export default [
     },
   },
   {
-    files: ['electron/**/*.js'],
+    files: ['electron/**/*.{js,cjs}'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
