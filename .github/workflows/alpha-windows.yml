@@ -1,0 +1,40 @@
+name: Alpha Windows Build
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+  workflow_dispatch:
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate
+        run: |
+          npm run lint
+          npm run test
+          npm run build
+
+      - name: Package Windows Alpha
+        run: npx electron-builder --win --publish never
+
+      - name: Upload Alpha installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: cult-tycoon-alpha-windows
+          path: |
+            release/*.exe
+            release/*.yml
+            release/win-unpacked/**
+          if-no-files-found: error
+          retention-days: 14
