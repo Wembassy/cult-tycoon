@@ -854,7 +854,7 @@ export class SceneManager {
     return { mixer, actions };
   }
 
-  private getFollowerAnimationState(ai: FollowerAI | null, job: Job | null): FollowerAnimationState {
+  private getFollowerAnimationState(ai: FollowerAI | null | undefined, job: Job | null | undefined): FollowerAnimationState {
     if (!ai) return 'idle';
     if (ai.state === 'moving') return 'walk';
 
