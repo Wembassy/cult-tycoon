@@ -1,4 +1,13 @@
 {
   "enabled": true,
-  "source": "./assets/animations/followers/follower_animation_library.glb"
+  "source": "./assets/animations/followers/follower_animation_library.glb",
+  "generatedBy": "scripts/generate_follower_animations.py",
+  "states": [
+    "idle",
+    "walk",
+    "work",
+    "pray",
+    "eat",
+    "sleep"
+  ]
 }
