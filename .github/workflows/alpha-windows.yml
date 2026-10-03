@@ -52,10 +52,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v0.1.0-alpha.1"
-          $title = "Cult Tycoon v0.1.0 Alpha 1"
+          $tag = "v0.1.0-alpha.2"
+          $title = "Cult Tycoon v0.1.0 Alpha 2"
           $notes = @"
-          First Windows Alpha candidate.
+          Second Windows Alpha candidate. Fixes startup visibility and fog-of-war readability.
 
           Validation:
           - ESLint passes
@@ -63,7 +63,7 @@ jobs:
           - TypeScript/Vite production build passes
           - Windows Electron/NSIS packaging passes
 
-          Download the attached cult-tycoon-alpha-windows.zip and run Cult Tycoon Setup 0.1.0.exe.
+          Download the attached cult-tycoon-alpha-windows.zip and run Cult Tycoon Setup 0.1.0.exe. Alpha 2 reveals a large starter clearing and keeps unexplored terrain as a dark silhouette instead of a black void.
           "@
 
           gh release view $tag 2>$null
