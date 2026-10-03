@@ -110,7 +110,7 @@ export class MissionPanel {
 
       .mission-panel {
         height: 100%;
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.96), rgba(10,10,25,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border-left: 1px solid rgba(100, 100, 160, 0.5);
@@ -286,7 +286,7 @@ export class MissionPanel {
       .cultist-selector-panel {
         width: 460px;
         max-height: 80vh;
-        background-image: url('/assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.97), rgba(10,10,25,0.98));
+        background-image: url('./assets/ui/scifi_panel.png'), linear-gradient(180deg, rgba(15,15,30,0.97), rgba(10,10,25,0.98));
         background-size: 100% 100%, 100% 100%;
         background-repeat: no-repeat;
         border: 1px solid rgba(100, 100, 160, 0.5);
