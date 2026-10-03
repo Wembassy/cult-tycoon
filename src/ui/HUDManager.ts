@@ -21,6 +21,8 @@ export interface ResourceBarData {
   notoriety: number;
   faith: number;
   morale: number;
+  materials: number;
+  food: number;
   population: number;
   maxPopulation: number;
 }
@@ -40,7 +42,7 @@ export interface BuildPanelEntry {
   label: string;
   icon: string;
   cost: number;
-  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure' | 'decor';
+  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure' | 'decor' | 'harvest';
 }
 
 export interface BuildCategory {
@@ -554,6 +556,8 @@ export class HUDManager {
       { label: 'Notoriety', value: Math.floor(data.notoriety), icon: 'scifi_icon_shield', fallback: '🛡️', barColor: '#ef4444', max: 100 },
       { label: 'Faith', value: Math.floor(data.faith), icon: 'scifi_icon_health', fallback: '❤️', barColor: '#3b82f6', max: 100 },
       { label: 'Morale', value: Math.floor(data.morale), icon: 'scifi_icon_morale', fallback: '😊', barColor: '#10b981', max: 100 },
+      { label: 'Materials', value: Math.floor(data.materials), icon: 'scifi_icon_energy', fallback: '🧱', barColor: '#94a3b8', max: null },
+      { label: 'Food', value: Math.floor(data.food), icon: 'scifi_icon_hunger', fallback: '🍲', barColor: '#84cc16', max: null },
       { label: 'Pop', value: `${data.population}/${data.maxPopulation}`, icon: 'scifi_icon_hunger', fallback: '👥', barColor: '#f97316', max: null },
     ];
     this.resourceBar.innerHTML = stats.map(s => {
