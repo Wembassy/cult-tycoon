@@ -2045,7 +2045,7 @@ class CultTycoonGame {
       dayFactor = 0.3 + t * 0.4;
       lightColor = 0xffb066;
       ambientColor = 0x6677aa;
-      fogColor = 0x2a2233;
+      fogColor = 0x343044;
       bloomStrength = 0.6;
     } else if (hour >= 8 && hour < 16) {
       // Full day — bright white, full bloom
@@ -2060,23 +2060,23 @@ class CultTycoonGame {
       dayFactor = 1.0 - t * 0.6;
       lightColor = t < 0.5 ? 0xffaa66 : 0xaa6699;
       ambientColor = 0x8899bb;
-      fogColor = 0x2a1a33;
+      fogColor = 0x34283f;
       bloomStrength = 0.9 + t * 0.3;
     } else {
       // Night — cool blue, low light, strong bloom for torches/lights
       dayFactor = 0.25;
       lightColor = 0x6688cc;
       ambientColor = 0x334466;
-      fogColor = 0x0a0a1a;
+      fogColor = 0x182033;
       bloomStrength = 1.2;
     }
 
     const ambient = this.renderer.ambient;
-    ambient.intensity = 0.25 + dayFactor * 0.35;
+    ambient.intensity = 0.62 + dayFactor * 0.28;
     ambient.color.setHex(ambientColor);
 
     const dirLight = this.renderer.directional;
-    dirLight.intensity = 0.2 + dayFactor * 0.6;
+    dirLight.intensity = 0.5 + dayFactor * 0.65;
     dirLight.color.setHex(lightColor);
 
     // Update fog color to match time of day
