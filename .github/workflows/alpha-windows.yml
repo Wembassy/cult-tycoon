@@ -52,20 +52,23 @@ jobs:
           npm run test
           npm run build
 
-      - name: Package Windows Alpha 5
-        run: npx electron-builder --win --publish never
+      - name: Package Windows Alpha 5 installer
+        run: npx electron-builder --win nsis --publish never --config.directories.output=release/nsis
+
+      - name: Package Windows Alpha 5 portable
+        run: npx electron-builder --win portable --publish never --config.directories.output=release/portable
 
       - name: Verify packaged Alpha 5 UI and identity
         shell: pwsh
         run: |
-          $asar = "release/win-unpacked/resources/app.asar"
+          $asar = "release/nsis/win-unpacked/resources/app.asar"
           if (-not (Test-Path $asar)) { throw "Missing packaged app.asar" }
-          node -e "const fs=require('fs');const s=fs.readFileSync('release/win-unpacked/resources/app.asar').toString('utf8');for(const needle of ['ALPHA 5','hud-menu-toggle','hud-minimap','Designate a Dormitory','Cult Tycoon - Alpha 5']){if(!s.includes(needle)){console.error('Missing packaged marker:',needle);process.exit(1)}}console.log('Packaged Alpha 5 UI markers verified.')"
+          node -e "const fs=require('fs');const s=fs.readFileSync('release/nsis/win-unpacked/resources/app.asar').toString('utf8');for(const needle of ['ALPHA 5','hud-menu-toggle','hud-minimap','Designate a Dormitory','Cult Tycoon - Alpha 5']){if(!s.includes(needle)){console.error('Missing packaged marker:',needle);process.exit(1)}}console.log('Packaged Alpha 5 UI markers verified.')"
 
       - name: Create release ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path "release/*" -DestinationPath "cult-tycoon-alpha5-windows.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "release/nsis/*","release/portable/*" -DestinationPath "cult-tycoon-alpha5-windows.zip" -CompressionLevel Optimal
 
       - name: Upload Alpha 5 artifact
         uses: actions/upload-artifact@v4
@@ -73,7 +76,7 @@ jobs:
           name: cult-tycoon-alpha5-windows
           path: |
             cult-tycoon-alpha5-windows.zip
-            release/*portable*.exe
-            release/Cult Tycoon Alpha 5*.exe
+            release/portable/*.exe
+            release/nsis/*.exe
           if-no-files-found: error
           retention-days: 14
