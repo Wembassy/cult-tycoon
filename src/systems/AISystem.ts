@@ -16,6 +16,10 @@ import { Needs } from '../components/Needs';
 import { Pathfinder } from '../world/Pathfinder';
 import { TileMap } from '../world/TileMap';
 
+export type NeedKind = 'hunger' | 'faith' | 'fun' | 'sanity' | 'energy' | 'bladder' | 'hygiene';
+export interface NeedFacilityTarget { x: number; y: number; }
+export type NeedFacilityProvider = (need: NeedKind, from: { x: number; y: number }) => NeedFacilityTarget | null;
+
 export interface AISystemConfig {
   moveSpeed: number;       // tiles per tick
   idleTimeout: number;     // ticks before idle follower looks for work
@@ -35,11 +39,15 @@ const DEFAULT_CONFIG: AISystemConfig = {
 export class AISystem {
   private config: AISystemConfig;
   private pathfinder: Pathfinder;
+  private needFacilityProvider: NeedFacilityProvider | null = null;
 
   constructor(_map: TileMap, pathfinder: Pathfinder, config: Partial<AISystemConfig> = {}) {
     this.pathfinder = pathfinder;
-    this.pathfinder = pathfinder;
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  setNeedFacilityProvider(provider: NeedFacilityProvider): void {
+    this.needFacilityProvider = provider;
   }
 
   /**
@@ -85,9 +93,9 @@ export class AISystem {
     if (ai.stateTimer >= this.config.idleTimeout) {
       const needs = world.getComponent(entity, Needs);
       if (needs) {
-        // Check if any needs are critical
-        if (needs.hunger < 30 || needs.faith < 30 || needs.fun < 20 ||
-            needs.energy < 20 || needs.bladder < 20 || needs.hygiene < 20) {
+        const criticalNeed = this.getMostUrgentNeed(needs);
+        if (criticalNeed) {
+          ai.needTarget = criticalNeed;
           ai.state = 'needs';
           ai.stateTimer = 0;
           return 1;
@@ -170,9 +178,10 @@ export class AISystem {
         if (ai.pathIndex >= ai.path.length) {
           ai.path = [];
           ai.pathIndex = 0;
-          // Wander jobs go to 'done' (then back to idle → wander again).
-          // Real jobs go to 'working' (JobSystem progresses work).
-          if (job && job.type !== 'wander' && job.type !== 'idle') {
+          // Need-seeking movement resolves into facility use before normal job logic.
+          if (ai.needTarget && ai.needTargetTile) {
+            ai.state = 'needs';
+          } else if (job && job.type !== 'wander' && job.type !== 'idle') {
             ai.state = 'working';
           } else {
             ai.state = 'done';
@@ -208,25 +217,58 @@ export class AISystem {
 
   private handleNeeds(world: World, entity: number, ai: FollowerAI): number {
     const needs = world.getComponent(entity, Needs);
-    if (!needs) {
+    const transform = world.getComponent(entity, Transform);
+    if (!needs || !transform) {
+      this.clearNeedTarget(ai);
       ai.state = 'idle';
       ai.stateTimer = 0;
       return 1;
     }
 
-    // If needs are still critical, keep waiting (follower is "taking care of needs")
-    // In a full implementation, this would path to a relevant building (kitchen, shrine, etc.)
-    // For now, just wait for needs cooldown then return to idle
-    if (ai.stateTimer >= this.config.needsCooldown) {
-      // Restore some needs (simulating eating/praying/etc.)
-      needs.hunger = clamp(needs.hunger + 30, 0, 100);
-      needs.faith = clamp(needs.faith + 20, 0, 100);
-      needs.fun = clamp(needs.fun + 25, 0, 100);
-      needs.sanity = clamp(needs.sanity + 15, 0, 100);
-      needs.energy = clamp(needs.energy + 25, 0, 100);
-      needs.bladder = clamp(needs.bladder + 40, 0, 100);
-      needs.hygiene = clamp(needs.hygiene + 30, 0, 100);
+    const need = ai.needTarget ?? this.getMostUrgentNeed(needs);
+    if (!need) {
+      this.clearNeedTarget(ai);
+      ai.state = 'idle';
+      ai.stateTimer = 0;
+      return 1;
+    }
+    ai.needTarget = need;
 
+    // If we have not chosen a facility yet, ask the game layer for the nearest valid one.
+    if (!ai.needTargetTile) {
+      const facility = this.needFacilityProvider?.(need, { x: transform.x, y: transform.y }) ?? null;
+      if (!facility) {
+        // No appropriate facility exists. Stay needy so the player feels the consequence.
+        ai.stateTimer = Math.min(ai.stateTimer, this.config.needsCooldown);
+        return 0;
+      }
+
+      const path = this.pathfinder.findPath(
+        Math.round(transform.x),
+        Math.round(transform.y),
+        facility.x,
+        facility.y,
+      );
+      if (!path.success || path.path.length === 0) {
+        return 0;
+      }
+
+      ai.needTargetTile = facility;
+      ai.path = path.path;
+      ai.pathIndex = path.path.length > 1 ? 1 : 0;
+      if (path.path.length > 1) {
+        ai.state = 'moving';
+        ai.stateTimer = 0;
+        return 1;
+      }
+    }
+
+    // At the facility: restore only the need this facility is intended to satisfy.
+    const recoveryRate = this.getNeedRecoveryRate(need);
+    needs[need] = clamp(needs[need] + recoveryRate, 0, 100);
+
+    if (needs[need] >= 80) {
+      this.clearNeedTarget(ai);
       ai.state = 'idle';
       ai.stateTimer = 0;
       return 1;
@@ -276,6 +318,7 @@ export class AISystem {
         jobComp.targetTile = null;
         jobComp.workProgress = 0;
       }
+      this.clearNeedTarget(ai);
       ai.state = 'idle';
       ai.stateTimer = 0;
       ai.path = [];
@@ -284,6 +327,48 @@ export class AISystem {
     }
 
     return 0;
+  }
+
+  private getMostUrgentNeed(needs: Needs): NeedKind | null {
+    const thresholds: { need: NeedKind; threshold: number }[] = [
+      { need: 'hunger', threshold: 30 },
+      { need: 'energy', threshold: 25 },
+      { need: 'bladder', threshold: 25 },
+      { need: 'hygiene', threshold: 25 },
+      { need: 'faith', threshold: 30 },
+      { need: 'sanity', threshold: 25 },
+      { need: 'fun', threshold: 25 },
+    ];
+
+    let selected: NeedKind | null = null;
+    let lowestRatio = Infinity;
+    for (const entry of thresholds) {
+      const value = needs[entry.need];
+      if (value >= entry.threshold) continue;
+      const ratio = value / entry.threshold;
+      if (ratio < lowestRatio) {
+        lowestRatio = ratio;
+        selected = entry.need;
+      }
+    }
+    return selected;
+  }
+
+  private getNeedRecoveryRate(need: NeedKind): number {
+    switch (need) {
+      case 'hunger': return 0.45;
+      case 'faith': return 0.35;
+      case 'fun': return 0.35;
+      case 'sanity': return 0.3;
+      case 'energy': return 0.55;
+      case 'bladder': return 0.8;
+      case 'hygiene': return 0.45;
+    }
+  }
+
+  private clearNeedTarget(ai: FollowerAI): void {
+    ai.needTarget = null;
+    ai.needTargetTile = null;
   }
 
   getConfig(): AISystemConfig {
