@@ -1,0 +1,36 @@
+name: Runtime validation
+on:
+  push:
+    branches: [quality/runtime-stabilization]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: runtime-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run lint && npm test && npm run build
+      - name: Prepare reproducible runtime workspace
+        run: |
+          git rev-parse HEAD > VALIDATION_COMMIT.txt
+          tar --exclude=.git --exclude=release --exclude=runtime-workspace.tar.gz -czf /tmp/runtime-workspace.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-workspace
+          path: /tmp/runtime-workspace.tar.gz
+          retention-days: 3
+          compression-level: 0
