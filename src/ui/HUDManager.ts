@@ -107,6 +107,7 @@ export class HUDManager {
   onSetWorkRole?: (entityId: number, role: WorkRole) => void;
   onSetWorkPriority?: (entityId: number, job: WorkJobKey, priority: WorkPriority) => void;
   onAutoAssignWorkRoles?: () => void;
+  onTimeModeChange?: (mode: TimeControlMode) => void;
 
   constructor(config: HUDConfig) {
     this.container = config.container;
@@ -192,6 +193,13 @@ export class HUDManager {
     this.injectTopBarStyles();
     this.setObjective('Establish the compound', 'Build basic shelter, inspect your followers, then choose your first research or mission.');
     this.renderTimeControls();
+    this.timeControls?.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest('.hud-time-btn') as HTMLButtonElement | null;
+      if (!button) return;
+      const mode = button.dataset.mode as TimeControlMode | undefined;
+      if (!mode) return;
+      this.onTimeModeChange?.(mode);
+    });
   }
 
   private setupTopBar(): void {
@@ -731,27 +739,32 @@ export class HUDManager {
   }
 
   /**
-   * Set time control mode without replacing the clock.
+   * Set time control mode without replacing button nodes.
+   * Keeping the same DOM nodes between mousedown/mouseup is important: the clock
+   * updates many times per second while the simulation runs.
    */
   setTimeMode(mode: TimeControlMode): void {
     this._timeMode = mode;
-    this.renderTimeControls();
+    this.updateTimeControlState();
   }
 
   /**
-   * Update the clock without replacing the controls.
+   * Update only the clock text. Do not rebuild the controls every simulation tick.
    */
   updateTime(hour: number, day: number): void {
     this._currentTime = hour;
     this._currentDay = day;
-    this.renderTimeControls();
+    this.updateTimeControlState();
+  }
+
+  private formatTime(): string {
+    const hour = Math.floor(this._currentTime) % 24;
+    const minutes = Math.floor((this._currentTime - Math.floor(this._currentTime)) * 60);
+    return `Day ${this._currentDay} · ${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   }
 
   private renderTimeControls(): void {
     if (!this.timeControls) return;
-    const hour = Math.floor(this._currentTime) % 24;
-    const minutes = Math.floor((this._currentTime - Math.floor(this._currentTime)) * 60);
-    const timeStr = `Day ${this._currentDay} · ${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     const buttons: { mode: TimeControlMode; label: string; title: string }[] = [
       { mode: 'pause', label: '⏸', title: 'Pause (Space)' },
       { mode: 'speed1', label: '1×', title: 'Normal speed (1)' },
@@ -759,10 +772,21 @@ export class HUDManager {
       { mode: 'speed3', label: '3×', title: 'Triple speed (3)' },
     ];
     this.timeControls.innerHTML =
-      `<span class="hud-time">${timeStr}</span>` +
+      '<span class="hud-time"></span>' +
       buttons.map(btn =>
-        `<button class="hud-time-btn ${btn.mode === this._timeMode ? 'active' : ''}" data-mode="${btn.mode}" title="${btn.title}">${btn.label}</button>`
+        `<button type="button" class="hud-time-btn" data-mode="${btn.mode}" title="${btn.title}">${btn.label}</button>`
       ).join('');
+    this.updateTimeControlState();
+  }
+
+  private updateTimeControlState(): void {
+    if (!this.timeControls) return;
+    const clock = this.timeControls.querySelector('.hud-time');
+    if (clock) clock.textContent = this.formatTime();
+    this.timeControls.querySelectorAll<HTMLButtonElement>('.hud-time-btn').forEach(button => {
+      button.classList.toggle('active', button.dataset.mode === this._timeMode);
+      button.setAttribute('aria-pressed', button.dataset.mode === this._timeMode ? 'true' : 'false');
+    });
   }
 
   updateMinimap(data: MinimapData): void {
