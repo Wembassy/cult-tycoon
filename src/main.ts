@@ -411,6 +411,7 @@ class CultTycoonGame {
     this.hud.onSetWorkRole = (entityId, role) => this.setWorkRole(entityId, role);
     this.hud.onSetWorkPriority = (entityId, job, priority) => this.setWorkPriority(entityId, job, priority);
     this.hud.onAutoAssignWorkRoles = () => this.autoAssignWorkRoles();
+    this.hud.onTimeModeChange = (mode) => this.setTimeMode(mode);
     this.hud.onTechTreeUnlock = (techId) => this.unlockTechFromPanel(techId);
     this.hud.onSendMission = (templateId, cultistIds) => this.startMissionFromPanel(templateId, cultistIds);
     this.hud.onAssignShift = (entityId, shift) => {
@@ -1077,17 +1078,6 @@ class CultTycoonGame {
       });
     }
 
-    // Time control buttons
-    const timeCtrl = this.hud['timeControls'];
-    if (timeCtrl) {
-      timeCtrl.addEventListener('click', (e) => {
-        const target = e.target as HTMLElement;
-        if (target.classList.contains('hud-time-btn')) {
-          const mode = target.dataset.mode as TimeControlMode;
-          this.setTimeMode(mode);
-        }
-      });
-    }
   }
 
   private highlightBuildPanel(id: string | null): void {
