@@ -1,0 +1,49 @@
+name: Publish Alpha 4 Release
+
+on:
+  push:
+    branches: [alpha/vertical-slice]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packaged Alpha 4 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 37091508807             --repo Wembassy/cult-tycoon             --name cult-tycoon-alpha-windows
+
+      - name: Verify packaged ZIP
+        run: |
+          test -s cult-tycoon-alpha-windows.zip
+          unzip -l cult-tycoon-alpha-windows.zip | head -80
+
+      - name: Publish Alpha 4 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0-alpha.4             cult-tycoon-alpha-windows.zip             --repo Wembassy/cult-tycoon             --target 99f33fa02b0bcb714b1bb925009c54b58275cfcd             --title "Cult Tycoon v0.1.0 Alpha 4"             --prerelease             --notes "Alpha 4 corrects the startup/runtime issues observed in Alpha 3.
+
+          Fixes:
+          - clears Electron HTTP cache on launch and cache-busts the packaged index load
+          - window title and HUD now visibly identify ALPHA 4
+          - package verification now fails if hamburger/minimap/onboarding markers are missing from app.asar
+          - much brighter minimum ambient/directional lighting
+          - higher tone-mapping exposure
+          - significantly lighter fog silhouettes and explored terrain
+          - reduced vignette darkness
+          - brighter night/dawn fog/background colors
+          - regression test requires hamburger menu, minimap, and Alpha build badge
+
+          Validation:
+          - lint passes
+          - unit tests pass
+          - TypeScript/Vite production build passes
+          - Windows Electron/NSIS packaging passes
+          - packaged app.asar UI-marker verification passes"
+
