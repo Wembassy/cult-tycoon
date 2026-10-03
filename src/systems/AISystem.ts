@@ -74,7 +74,7 @@ export class AISystem {
           // JobSystem handles work progress; AI just waits
           break;
         case 'needs':
-          transitions += this.handleNeeds(world, entity, ai);
+          transitions += this.handleNeeds(world, entity, ai, dt);
           break;
         case 'done':
           transitions += this.handleDone(ai);
@@ -215,7 +215,7 @@ export class AISystem {
     return 0;
   }
 
-  private handleNeeds(world: World, entity: number, ai: FollowerAI): number {
+  private handleNeeds(world: World, entity: number, ai: FollowerAI, dt: number): number {
     const needs = world.getComponent(entity, Needs);
     const transform = world.getComponent(entity, Transform);
     if (!needs || !transform) {
@@ -263,7 +263,7 @@ export class AISystem {
 
     // At the facility: restore only the need this facility is intended to satisfy.
     const recoveryRate = this.getNeedRecoveryRate(need);
-    needs[need] = clamp(needs[need] + recoveryRate, 0, 100);
+    needs[need] = clamp(needs[need] + recoveryRate * dt, 0, 100);
 
     if (needs[need] >= 80) {
       this.finishNeedAndResumeJob(world, entity, ai);
@@ -352,13 +352,13 @@ export class AISystem {
 
   private getNeedRecoveryRate(need: NeedKind): number {
     switch (need) {
-      case 'hunger': return 0.45;
-      case 'faith': return 0.35;
-      case 'fun': return 0.35;
-      case 'sanity': return 0.3;
-      case 'energy': return 0.55;
-      case 'bladder': return 0.8;
-      case 'hygiene': return 0.45;
+      case 'hunger': return 18;
+      case 'faith': return 12;
+      case 'fun': return 12;
+      case 'sanity': return 10;
+      case 'energy': return 22;
+      case 'bladder': return 35;
+      case 'hygiene': return 18;
     }
   }
 
