@@ -11,25 +11,25 @@
   ],
   "mac": {
     "category": "public.app-category.strategy-games",
-    "target": ["dmg"],
-    "icon": "assets/icons/icon.icns"
+    "target": [
+      "dmg"
+    ]
   },
   "win": {
-    "target": ["nsis"],
-    "icon": "assets/icons/icon.ico"
+    "target": [
+      "nsis"
+    ]
   },
   "linux": {
-    "target": ["AppImage"],
-    "category": "Game",
-    "icon": "assets/icons/icon.png"
+    "target": [
+      "AppImage"
+    ],
+    "category": "Game"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
-  },
-  "steam": {
-    "steamAppId": "PLACEHOLDER_STEAM_APP_ID"
   }
 }
