@@ -91,6 +91,19 @@ describe('SaveSystem — Serialization', () => {
     expect(data.time.hour).toBe(14);
     expect(data.time.day).toBe(3);
   });
+
+
+  it('should serialize pending construction blueprints', () => {
+    const construction = [
+      { id: 'construct:1', kind: 'wall' as const, x: 3, y: 4, cost: 5 },
+      { id: 'construct:2', kind: 'object' as const, x: 5, y: 5, objectId: 'bed', cost: 20 },
+    ];
+
+    const data = save.serialize(world, map, TEST_CULT, { hour: 14, day: 3 }, undefined, construction);
+
+    expect(data.construction).toEqual(construction);
+    expect(data.construction).not.toBe(construction);
+  });
 });
 
 describe('SaveSystem — Save/Load', () => {
