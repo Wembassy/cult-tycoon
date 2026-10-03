@@ -239,6 +239,17 @@ describe('BuildingSystem — Room Designation', () => {
     expect(bs.getRoom(second.id)?.area).toBe(9);
   });
 
+  it('should demolish floor tiles even though floors are not occupied', () => {
+    expect(bs.placeFloor(3, 3).success).toBe(true);
+    expect(bs.floorTiles.has('3,3')).toBe(true);
+    expect(map.isOccupied(3, 3)).toBe(false);
+
+    const result = bs.demolish(3, 3);
+
+    expect(result.success).toBe(true);
+    expect(bs.floorTiles.has('3,3')).toBe(false);
+  });
+
   it('should preserve a designated room when furniture is demolished', () => {
     const room = bs.designateRoomArea(2, 2, 4, 4, 'bedroom', 'dormitory')!;
     bs.placeObject(3, 3, 'bed');
