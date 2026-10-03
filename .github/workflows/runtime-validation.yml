@@ -4,7 +4,7 @@ on:
     branches: [quality/runtime-stabilization]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: runtime-validation-${{ github.ref }}
   cancel-in-progress: true
@@ -15,25 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: quality/runtime-stabilization
-      - name: Retrieve locally verified source changes
-        uses: actions/checkout@v4
-        with:
-          ref: 8241bf2f307cde67630f1662897aebe7dc615a78
-          path: _delivery
-          sparse-checkout: .delivery
           persist-credentials: false
-      - name: Apply exact validated source snapshot
-        run: |
-          python _delivery/.delivery/apply.py
-          rm -rf _delivery
-          git add electron src tests package.json package-lock.json index.html eslint.config.js
-          if ! git diff --cached --quiet; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git commit -m 'fix: stabilize runtime, building, NPC needs, jobs, rendering and persistence'
-            git push origin HEAD:quality/runtime-stabilization
-          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -55,8 +37,6 @@ jobs:
         run: |
           mkdir -p runtime-results
           git rev-parse HEAD > runtime-results/commit.txt
-          cat runtime-results/state.json || true
-          cat runtime-results/console.json || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
