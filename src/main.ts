@@ -1724,9 +1724,12 @@ class CultTycoonGame {
   }
 
   private postConstructionJob(blueprint: ConstructionBlueprint, priority: number = 9): void {
+    const target = blueprint.space === 'construction'
+      ? this.buildingSystem.toTerrainTile(blueprint.x, blueprint.y)
+      : { x: blueprint.x, y: blueprint.y };
     const workTile = blueprint.kind === 'floor'
-      ? { x: blueprint.x, y: blueprint.y }
-      : this.findAdjacentWorkTile(blueprint.x, blueprint.y) ?? { x: blueprint.x, y: blueprint.y };
+      ? target
+      : this.findAdjacentWorkTile(target.x, target.y) ?? target;
 
     const duration =
       blueprint.kind === 'floor' ? 1.5 :
@@ -1751,18 +1754,87 @@ class CultTycoonGame {
     cost: number,
     objectId?: string,
     rotation: number = 0,
+    orientation?: ConstructionOrientation,
+    space: 'local' | 'construction' = 'construction',
   ): boolean {
-    if (this.getConstructionBlueprintAt(x, y)) return false;
+    if (this.getConstructionBlueprintAt(x, y, orientation)) return false;
 
     const id = `construct:${this.nextConstructionBlueprintId++}`;
     const materialCost = this.getBuildMaterialCost(objectId ?? kind);
-    const blueprint: ConstructionBlueprint = { id, kind, x, y, objectId, rotation, cost, materialCost };
+    const blueprint: ConstructionBlueprint = {
+      id,
+      kind,
+      x,
+      y,
+      space,
+      orientation,
+      objectId,
+      rotation,
+      cost,
+      materialCost,
+    };
     this.constructionBlueprints.set(id, blueprint);
     this.postConstructionJob(blueprint);
     return true;
   }
 
-  private queueConstructionSelection(item: string, tiles: { x: number; y: number }[]): void {
+  private queueConstructionSelection(item: string, tiles: BuildSelectionCoord[]): void {
+    const validTiles = tiles.filter(pos => this.isBuildTileValid(item, pos.x, pos.y, pos.orientation));
+    if (validTiles.length === 0) {
+      this.hud.logEvent('No valid cells in that construction selection.', 'warning');
+      return;
+    }
+
+    const cost = this.getBuildItemCost(item);
+    const materialCost = this.getBuildMaterialCost(item);
+    const totalCost = cost * validTiles.length;
+    const totalMaterials = materialCost * validTiles.length;
+    if (totalCost > this.getSpendableWealth()) {
+      this.hud.logEvent(
+        `Not enough available wealth. Need ${totalCost}g, have ${Math.floor(this.getSpendableWealth())}g after reservations.`,
+        'warning',
+      );
+      return;
+    }
+    if (totalMaterials > this.getAvailableMaterials()) {
+      this.hud.logEvent(
+        `Not enough Materials. Need ${totalMaterials}, have ${Math.floor(this.getAvailableMaterials())} after reservations. Designate trees/rocks in Harvest.`,
+        'warning',
+      );
+      return;
+    }
+
+    const kind: ConstructionKind =
+      item === 'wall' ? 'wall' :
+      item === 'floor' ? 'floor' :
+      item === 'door' ? 'door' : 'object';
+
+    let queued = 0;
+    for (const pos of validTiles) {
+      if (this.queueConstructionBlueprint(
+        kind,
+        pos.x,
+        pos.y,
+        cost,
+        kind === 'object' ? item : undefined,
+        kind === 'object' ? this.selectedBuildRotation : 0,
+        pos.orientation,
+        pos.space ?? 'construction',
+      )) {
+        queued++;
+      }
+    }
+
+    if (queued > 0) {
+      const label = item === 'wall' ? 'wall segment' : item === 'floor' ? 'floor cell' : item === 'door' ? 'door' : DataManager.getObject(item)?.name ?? item;
+      this.hud.logEvent(
+        `Queued ${queued} ${label}${queued === 1 ? '' : 's'} for construction (${queued * cost}g + ${queued * materialCost} Materials reserved).`,
+        'info',
+      );
+      this.refreshConstructionBlueprintVisuals();
+      this.updateHUD();
+    }
+  }[]): void {
     const validTiles = tiles.filter(tile => this.isBuildTileValid(item, tile.x, tile.y));
     if (validTiles.length === 0) {
       this.hud.logEvent('No valid tiles in that construction selection.', 'warning');
@@ -1818,8 +1890,12 @@ class CultTycoonGame {
     }
   }
 
-  private cancelConstructionBlueprintAt(x: number, y: number): boolean {
-    const blueprint = this.getConstructionBlueprintAt(x, y);
+  private cancelConstructionBlueprintAt(
+    x: number,
+    y: number,
+    orientation?: ConstructionOrientation,
+  ): boolean {
+    const blueprint = this.getConstructionBlueprintAt(x, y, orientation);
     if (!blueprint) return false;
     this.jobSystem.cancelJob(blueprint.id);
     this.constructionBlueprints.delete(blueprint.id);
@@ -1925,6 +2001,75 @@ class CultTycoonGame {
   }
 
   private onJobCompleted(posting: { id: string }, _entity: number): void {
+    if (posting.id.startsWith('harvest:')) {
+      this.completeHarvestOrder(posting.id);
+      return;
+    }
+    if (!posting.id.startsWith('construct:')) return;
+    const blueprint = this.constructionBlueprints.get(posting.id);
+    if (!blueprint) return;
+
+    let result: { success: boolean; message: string };
+    if (blueprint.kind === 'wall' && blueprint.orientation) {
+      result = this.buildingSystem.placeWallEdge(blueprint.x, blueprint.y, blueprint.orientation);
+    } else if (blueprint.kind === 'floor') {
+      result = this.buildingSystem.placeFloor(blueprint.x, blueprint.y);
+    } else if (blueprint.kind === 'door' && blueprint.orientation) {
+      result = this.buildingSystem.placeDoorEdge(blueprint.x, blueprint.y, blueprint.orientation);
+    } else if (blueprint.objectId) {
+      result = this.buildingSystem.placeObject(
+        blueprint.x,
+        blueprint.y,
+        blueprint.objectId,
+        blueprint.rotation ?? 0,
+      );
+    } else {
+      result = { success: false, message: 'Missing construction orientation or object definition' };
+    }
+
+    if (!result.success) {
+      if (blueprint.kind === 'door' && blueprint.orientation &&
+          this.hasPlannedWall(blueprint.x, blueprint.y, blueprint.orientation)) {
+        this.postConstructionJob(blueprint, 6);
+        return;
+      }
+
+      this.constructionBlueprints.delete(blueprint.id);
+      this.refreshConstructionBlueprintVisuals();
+      this.hud.logEvent(`Construction failed at (${blueprint.x}, ${blueprint.y}): ${result.message}`, 'warning');
+      return;
+    }
+
+    this.constructionBlueprints.delete(blueprint.id);
+    this.refreshConstructionBlueprintVisuals();
+    this.gameInstanceState.resources.materials = Math.max(
+      0,
+      this.gameInstanceState.resources.materials - (blueprint.materialCost ?? 0),
+    );
+
+    const local = blueprint.space === 'construction'
+      ? this.buildingSystem.toTerrainTile(blueprint.x, blueprint.y)
+      : { x: blueprint.x, y: blueprint.y };
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+    this.particles.spawnBuildDust(local.x + offset.x + 0.5, local.y + offset.z + 0.5);
+    this.showFloatingText(`-${blueprint.cost}g`, local.x, local.y, '#fbbf24');
+    this.audio.play('ui-build');
+
+    if (blueprint.kind === 'object' && blueprint.objectId) {
+      this.registerWorkstationJob(local.x, local.y, blueprint.objectId);
+      this.refreshRoomRequirementAt(local.x, local.y);
+      if (blueprint.objectId.startsWith('decor_')) {
+        this.handleDecorPlacement(local.x, local.y, blueprint.objectId.replace('decor_', ''));
+      }
+    }
+
+    this.sceneMgr.buildTiles();
+    this.sceneMgr.syncEntities();
+    this.pathfinder.invalidateCache();
+    this.pathfindSystem.invalidateCache();
+    this.roomGraph.invalidate();
+    this.updateHUD();
+  }, _entity: number): void {
     if (posting.id.startsWith('harvest:')) {
       this.completeHarvestOrder(posting.id);
       return;
