@@ -20,7 +20,7 @@ export interface SpatialConfig {
 
 export const ALPHA_SPATIAL_CONFIG: Readonly<SpatialConfig> = Object.freeze({
   constructionSubdivisions: 10,
-  navigationSubdivisions: 1,
+  navigationSubdivisions: 10,
 });
 
 export interface GridCoord {
