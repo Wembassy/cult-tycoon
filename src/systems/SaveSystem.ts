@@ -24,6 +24,8 @@ import { ALPHA_SPATIAL_CONFIG } from '../world/Spatial';
 import type { FarmingSnapshot } from './FarmingSystem';
 import type { IdeologySnapshot } from './IdeologySystem';
 import type { GlobalRegion } from '../world/GlobalWorld';
+import { Outsider } from '../components/Outsider';
+import type { OutsiderSnapshot } from './OutsiderSystem';
 
 export interface SaveData {
   version: string;
@@ -39,6 +41,7 @@ export interface SaveData {
   logistics?: LogisticsSnapshot;
   farming?: FarmingSnapshot;
   ideology?: IdeologySnapshot;
+  outsiders?: OutsiderSnapshot;
   worldStart?: {
     globalSeed: number;
     region: GlobalRegion;
@@ -149,6 +152,7 @@ export class SaveSystem {
     logistics?: LogisticsSnapshot,
     farming?: FarmingSnapshot,
     ideology?: IdeologySnapshot,
+    outsiders?: OutsiderSnapshot,
     worldStart?: {
       globalSeed: number;
       region: GlobalRegion;
@@ -191,6 +195,18 @@ export class SaveSystem {
         sleepStartHour: schedule.sleepStartHour,
         sleepDuration: schedule.sleepDuration,
         hours: [...schedule.hours],
+      };
+
+      const outsider = world.getComponent(entityId, Outsider);
+      if (outsider) components.Outsider = {
+        name: outsider.name,
+        state: outsider.state,
+        stayRemaining: outsider.stayRemaining,
+        recruitmentProgress: outsider.recruitmentProgress,
+        recruitmentCooldown: outsider.recruitmentCooldown,
+        path: outsider.path.map(point => ({ ...point })),
+        pathIndex: outsider.pathIndex,
+        exitTarget: outsider.exitTarget ? { ...outsider.exitTarget } : null,
       };
 
       const beliefState = world.getComponent(entityId, BeliefState);
@@ -263,6 +279,7 @@ export class SaveSystem {
       logistics,
       farming,
       ideology,
+      outsiders,
       worldStart,
       spatial: {
         constructionSubdivisions: ALPHA_SPATIAL_CONFIG.constructionSubdivisions,
@@ -452,6 +469,12 @@ export class SaveSystem {
         const schedule = new Schedule(entity);
         Object.assign(schedule, serialized.components.Schedule);
         world.addComponent(entity, schedule);
+      }
+
+      if (serialized.components.Outsider) {
+        const outsider = new Outsider(entity);
+        Object.assign(outsider, serialized.components.Outsider);
+        world.addComponent(entity, outsider);
       }
 
       if (serialized.components.BeliefState) {
