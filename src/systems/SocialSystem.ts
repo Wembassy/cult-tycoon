@@ -11,6 +11,8 @@ import { Needs } from '../components/Needs';
 import { FollowerAI } from '../components/FollowerAI';
 import { Transform } from '../components/Transform';
 import { Traits } from '../components/Traits';
+import { Job } from '../components/Job';
+import type { MentalBreakType } from '../components/SocialState';
 
 export class SocialSystem extends System {
   private accumulator = 0;
@@ -44,6 +46,17 @@ export class SocialSystem extends System {
       ) / 6;
 
       social.mood = clamp(needsMood + social.memoryMoodTotal(), 0, 100);
+
+      this.updateMentalBreak(world, entity, social, needs, dt);
+      if (!social.activeBreak && social.mood < 30 && aiCanRecreate(world.getComponent(entity, FollowerAI)!)) {
+        const ai = world.getComponent(entity, FollowerAI)!;
+        if (ai.needTarget === null) {
+          ai.needTarget = 'fun';
+          ai.needTargetTile = null;
+          ai.state = 'needs';
+          ai.stateTimer = 0;
+        }
+      }
     }
 
     if (this.accumulator < 1) return;
@@ -51,10 +64,119 @@ export class SocialSystem extends System {
     this.processInteractions(world, followers);
   }
 
+  private updateMentalBreak(
+    world: World,
+    entity: number,
+    social: SocialState,
+    needs: Needs,
+    dt: number,
+  ): void {
+    const ai = world.getComponent(entity, FollowerAI)!;
+    const job = world.getComponent(entity, Job);
+
+    if (social.activeBreak) {
+      social.activeBreak.remaining -= dt;
+
+      switch (social.activeBreak.type) {
+        case 'refuse_work':
+          ai.state = 'idle';
+          ai.path = [];
+          ai.pathIndex = 0;
+          break;
+        case 'isolate':
+          ai.state = 'idle';
+          needs.fun = clamp(needs.fun + 0.08 * dt, 0, 100);
+          needs.social = clamp(needs.social - 0.05 * dt, 0, 100);
+          break;
+        case 'binge_eat':
+          if (needs.hunger < 95 && ai.needTarget === null) {
+            ai.needTarget = 'hunger';
+            ai.needTargetTile = null;
+            ai.state = 'needs';
+            ai.stateTimer = 0;
+          }
+          break;
+        case 'argue_fight':
+          ai.state = 'idle';
+          break;
+        case 'attempt_leave':
+          ai.state = 'idle';
+          needs.social = clamp(needs.social - 0.08 * dt, 0, 100);
+          break;
+      }
+
+      if (social.activeBreak.remaining <= 0) {
+        const finished = social.activeBreak.type;
+        social.activeBreak = null;
+        social.breakCooldown = 75;
+        ai.needTarget = null;
+        ai.needTargetTile = null;
+        ai.path = [];
+        ai.pathIndex = 0;
+        ai.state = 'idle';
+        ai.stateTimer = 0;
+        social.addMemory({
+          id: `break-ended:${finished}:${Math.floor(this.elapsed)}`,
+          label: 'Recovered from a mental break',
+          mood: -2,
+          duration: 25,
+          stackKey: 'mental_break_recovery',
+        });
+      }
+      return;
+    }
+
+    if (social.mood >= 18 || social.breakCooldown > 0) return;
+    if (!job || (job.type !== 'idle' && job.type !== 'wander')) return;
+    if (ai.state !== 'idle' && ai.state !== 'done' && ai.state !== 'needs') return;
+
+    const types: MentalBreakType[] = [
+      'refuse_work',
+      'isolate',
+      'binge_eat',
+      'argue_fight',
+      'attempt_leave',
+    ];
+    const type = types[Math.floor(this.pseudoRoll(entity, entity + 97) * types.length)] ?? 'refuse_work';
+    const duration = 12 + this.pseudoRoll(entity + 11, entity + 53) * 14;
+
+    social.activeBreak = { type, remaining: duration };
+    social.addMemory({
+      id: `mental-break:${type}:${Math.floor(this.elapsed)}`,
+      label: `Mental break: ${type.replaceAll('_', ' ')}`,
+      mood: -6,
+      duration: duration + 30,
+      stackKey: `mental_break:${type}`,
+    });
+
+    if (type === 'argue_fight') {
+      const target = Object.values(social.relationships)
+        .sort((a, b) => b.familiarity - a.familiarity)[0];
+      if (target) {
+        social.activeBreak.targetEntity = target.targetEntity;
+        target.opinion = clamp(target.opinion - 18, -100, 100);
+        const other = world.getComponent(target.targetEntity, SocialState);
+        if (other) {
+          const reverse = other.getRelationship(entity);
+          reverse.opinion = clamp(reverse.opinion - 18, -100, 100);
+          other.addMemory({
+            id: `argument:${entity}:${Math.floor(this.elapsed)}`,
+            label: 'Was targeted in an argument',
+            mood: -7,
+            duration: 55,
+            stackKey: 'was_argued_with',
+            sourceEntity: entity,
+          });
+        }
+      }
+    }
+  }
+
   private processInteractions(world: World, followers: number[]): void {
     for (let i = 0; i < followers.length; i++) {
       const a = followers[i];
       const aState = world.getComponent(a, SocialState)!;
+      if (aState.activeBreak) continue;
       const aAI = world.getComponent(a, FollowerAI)!;
       const aTransform = world.getComponent(a, Transform)!;
       if (aState.interactionCooldown > 0 || !this.isSociallyAvailable(aAI)) continue;
@@ -66,6 +188,7 @@ export class SocialSystem extends System {
         if (i === j) continue;
         const b = followers[j];
         const bState = world.getComponent(b, SocialState)!;
+        if (bState.activeBreak) continue;
         const bAI = world.getComponent(b, FollowerAI)!;
         if (bState.interactionCooldown > 0 || !this.isSociallyAvailable(bAI)) continue;
 
@@ -173,6 +296,10 @@ export class SocialSystem extends System {
     const seed = Math.sin(a * 12.9898 + b * 78.233 + Math.floor(this.elapsed) * 0.127) * 43758.5453;
     return seed - Math.floor(seed);
   }
+}
+
+function aiCanRecreate(ai: FollowerAI): boolean {
+  return ai.state === 'idle' || ai.state === 'done';
 }
 
 function clamp(value: number, min: number, max: number): number {
