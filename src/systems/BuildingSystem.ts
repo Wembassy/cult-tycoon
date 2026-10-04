@@ -547,6 +547,24 @@ export class BuildingSystem {
     const maxX = Math.max(startX, endX);
     const minY = Math.min(startY, endY);
     const maxY = Math.max(startY, endY);
+
+    if (this.constructionSubdivisions > 1) {
+      this.ensureAutomaticRooms();
+      let cleared = 0;
+      for (const room of this.rooms.values()) {
+        if (!room.roomDefinitionId) continue;
+        const overlaps = room.tiles.some(tile =>
+          tile.x >= minX && tile.x <= maxX && tile.y >= minY && tile.y <= maxY,
+        );
+        if (!overlaps) continue;
+        room.roomDefinitionId = undefined;
+        room.type = 'generic';
+        cleared++;
+      }
+      if (cleared > 0) this._dirty = true;
+      return cleared;
+    }
+
     const touchedRooms = new Set<number>();
     let cleared = 0;
 
