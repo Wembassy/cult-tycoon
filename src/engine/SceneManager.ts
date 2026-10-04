@@ -86,6 +86,12 @@ export class SceneManager {
   private buildingGroup: THREE.Group;
   private roofGroup: THREE.Group;
   private wallVisuals: THREE.Object3D[] = [];
+  private doorVisuals: Array<{
+    pivot: THREE.Group;
+    x: number;
+    y: number;
+    orientation: 'horizontal' | 'vertical';
+  }> = [];
   private wallsVisible = true;
   private roofsVisible = true;
   private buildPreviewGroup: THREE.Group;
@@ -489,6 +495,7 @@ export class SceneManager {
   syncBuildings(bs: BuildingSystem): void {
     // Clear existing building meshes
     this.wallVisuals = [];
+    this.doorVisuals = [];
     this.clearVisualGroup(this.roofGroup);
     while (this.buildingGroup.children.length > 0) {
       const child = this.buildingGroup.children[0];
@@ -557,18 +564,29 @@ export class SceneManager {
       });
       const door = new THREE.Mesh(doorGeom, doorMat);
       const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
-      const localX = edge.orientation === 'horizontal'
-        ? (edge.x + 0.5) * constructionCellSize
-        : edge.x * constructionCellSize;
-      const localZ = edge.orientation === 'horizontal'
-        ? edge.y * constructionCellSize
-        : (edge.y + 0.5) * constructionCellSize;
-      door.position.set(localX + offset.x, height + doorHeight / 2, localZ + offset.z);
+
+      // Pivot at one end so the door visibly swings instead of rotating around
+      // its center. Room topology still treats the edge as a closed boundary;
+      // traversal is handled separately by NavigationGrid.
+      const pivot = new THREE.Group();
+      const pivotX = edge.x * constructionCellSize + offset.x;
+      const pivotZ = edge.y * constructionCellSize + offset.z;
+      pivot.position.set(pivotX, height, pivotZ);
+
+      if (edge.orientation === 'horizontal') {
+        door.position.set(length / 2, doorHeight / 2, 0);
+      } else {
+        door.position.set(0, doorHeight / 2, length / 2);
+      }
+
       door.castShadow = true;
       door.userData = { buildKind: 'door-edge', ...edge };
-      door.visible = this.wallsVisible;
-      this.wallVisuals.push(door);
-      this.buildingGroup.add(door);
+      pivot.userData = { buildKind: 'door-pivot', ...edge };
+      pivot.add(door);
+      pivot.visible = this.wallsVisible;
+      this.wallVisuals.push(pivot);
+      this.doorVisuals.push({ pivot, x: edge.x, y: edge.y, orientation: edge.orientation });
+      this.buildingGroup.add(pivot);
     }
 
     // Render walls as extruded boxes
@@ -1091,6 +1109,8 @@ export class SceneManager {
       this.selectionRing.visible = false;
     }
 
+    this.updateDoorVisuals(dt);
+
     // Update animation mixers
     for (const mixer of this.mixers.values()) {
       mixer.update(dt);
@@ -1109,6 +1129,42 @@ export class SceneManager {
         this.lastFollowerPositions.delete(entityId);
         this.entityLights.delete(entityId);
       }
+    }
+  }
+
+  private updateDoorVisuals(dt: number): void {
+    const bs = this.buildingSystem;
+    if (!bs || this.doorVisuals.length === 0) return;
+
+    const followers = this.world.query([Transform, FollowerAI]);
+    const openRadius = Math.max(0.22, bs.cellSize * 2.5);
+    const maxStep = Math.min(1, Math.max(0.08, dt * 12));
+
+    for (const visual of this.doorVisuals) {
+      const centerX = visual.orientation === 'horizontal'
+        ? (visual.x + 0.5) * bs.cellSize - 0.5
+        : visual.x * bs.cellSize - 0.5;
+      const centerY = visual.orientation === 'horizontal'
+        ? visual.y * bs.cellSize - 0.5
+        : (visual.y + 0.5) * bs.cellSize - 0.5;
+
+      let shouldOpen = false;
+      for (const entity of followers) {
+        const transform = this.world.getComponent(entity, Transform);
+        if (!transform) continue;
+        const dx = transform.x - centerX;
+        const dy = transform.y - centerY;
+        if (dx * dx + dy * dy <= openRadius * openRadius) {
+          shouldOpen = true;
+          break;
+        }
+      }
+
+      const openAngle = visual.orientation === 'horizontal'
+        ? -Math.PI * 0.42
+        : Math.PI * 0.42;
+      const target = shouldOpen ? openAngle : 0;
+      visual.pivot.rotation.y += (target - visual.pivot.rotation.y) * maxStep;
     }
   }
 
