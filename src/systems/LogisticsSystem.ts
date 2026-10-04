@@ -99,6 +99,32 @@ export class LogisticsSystem {
     for (const cell of cells) unique.set(this.cellKey(cell.x, cell.y), { ...cell });
     if (unique.size === 0) return null;
 
+    // A construction cell may belong to exactly one stockpile. Painting a new
+    // zone transfers ownership of overlapping cells instead of creating two
+    // destinations that could both reserve the same physical location.
+    const incomingKeys = new Set(unique.keys());
+    for (const [zoneId, existing] of this.stockpiles) {
+      const retained = existing.cells.filter(cell => !incomingKeys.has(this.cellKey(cell.x, cell.y)));
+      if (retained.length === existing.cells.length) continue;
+
+      existing.cells = retained;
+      for (const [reservationKey, reservedZoneId] of this.reservedDestinationCells) {
+        if (reservedZoneId !== zoneId) continue;
+        const coord = reservationKey.slice(zoneId.length + 1);
+        if (incomingKeys.has(coord)) this.reservedDestinationCells.delete(reservationKey);
+      }
+
+      for (const stack of this.stacks.values()) {
+        if (stack.stockpileId !== zoneId) continue;
+        const construction = this.localToConstructionCell(stack.x, stack.y);
+        if (!incomingKeys.has(this.cellKey(construction.x, construction.y))) continue;
+        stack.stockpileId = undefined;
+        if (stack.state === 'stockpiled') stack.state = 'ground';
+      }
+
+      if (existing.cells.length === 0) this.stockpiles.delete(zoneId);
+    }
+
     const zone: StockpileZone = {
       id: `stockpile:${this.nextStockpileId++}`,
       cells: Array.from(unique.values()),
@@ -582,6 +608,13 @@ export class LogisticsSystem {
     return {
       x: (x + 0.5) / this.constructionSubdivisions - 0.5,
       y: (y + 0.5) / this.constructionSubdivisions - 0.5,
+    };
+  }
+
+  private localToConstructionCell(x: number, y: number): { x: number; y: number } {
+    return {
+      x: Math.floor((x + 0.5) * this.constructionSubdivisions),
+      y: Math.floor((y + 0.5) * this.constructionSubdivisions),
     };
   }
 
