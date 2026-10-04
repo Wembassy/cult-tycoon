@@ -43,6 +43,8 @@ export interface ConstructionBlueprintVisual {
   kind: ConstructionVisualKind;
   x: number;
   y: number;
+  orientation?: 'horizontal' | 'vertical';
+  space?: 'local' | 'construction';
   rotation?: number;
 }
 
@@ -50,6 +52,8 @@ export interface BuildPreviewTile {
   x: number;
   y: number;
   valid: boolean;
+  orientation?: 'horizontal' | 'vertical';
+  space?: 'local' | 'construction';
 }
 
 
@@ -463,8 +467,75 @@ export class SceneManager {
 
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
 
+    // Alpha edge-based walls. Construction coordinates are vertices/edges,
+    // not occupied floor cells.
+    const constructionCellSize = bs.cellSize;
+    const edgeThickness = Math.max(0.025, Math.min(0.08, constructionCellSize * 0.35));
+
+    for (const edge of bs.wallEdges) {
+      const terrain = bs.toTerrainTile(
+        Math.max(0, edge.x - (edge.orientation === 'vertical' ? 1 : 0)),
+        Math.max(0, edge.y - (edge.orientation === 'horizontal' ? 1 : 0)),
+      );
+      const tile = this.map.getTile(terrain.x, terrain.y);
+      if (!tile) continue;
+      const model = getBuildingModel('generic');
+      const length = constructionCellSize;
+      const wallGeom = edge.orientation === 'horizontal'
+        ? new THREE.BoxGeometry(length, 1.6, edgeThickness)
+        : new THREE.BoxGeometry(edgeThickness, 1.6, length);
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: model.color,
+        flatShading: true,
+        roughness: 0.85,
+      });
+      const wall = new THREE.Mesh(wallGeom, wallMat);
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+      const localX = edge.orientation === 'horizontal'
+        ? (edge.x + 0.5) * constructionCellSize
+        : edge.x * constructionCellSize;
+      const localZ = edge.orientation === 'horizontal'
+        ? edge.y * constructionCellSize
+        : (edge.y + 0.5) * constructionCellSize;
+      wall.position.set(localX + offset.x, height + 0.8, localZ + offset.z);
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      wall.userData = { buildKind: 'wall-edge', ...edge };
+      this.buildingGroup.add(wall);
+    }
+
+    for (const edge of bs.doorEdges) {
+      const terrain = bs.toTerrainTile(
+        Math.max(0, edge.x - (edge.orientation === 'vertical' ? 1 : 0)),
+        Math.max(0, edge.y - (edge.orientation === 'horizontal' ? 1 : 0)),
+      );
+      const tile = this.map.getTile(terrain.x, terrain.y);
+      if (!tile) continue;
+      const length = constructionCellSize;
+      const doorGeom = edge.orientation === 'horizontal'
+        ? new THREE.BoxGeometry(length, 1.2, edgeThickness * 1.25)
+        : new THREE.BoxGeometry(edgeThickness * 1.25, 1.2, length);
+      const doorMat = new THREE.MeshStandardMaterial({
+        color: 0x5a3a2a,
+        flatShading: true,
+        roughness: 0.7,
+      });
+      const door = new THREE.Mesh(doorGeom, doorMat);
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+      const localX = edge.orientation === 'horizontal'
+        ? (edge.x + 0.5) * constructionCellSize
+        : edge.x * constructionCellSize;
+      const localZ = edge.orientation === 'horizontal'
+        ? edge.y * constructionCellSize
+        : (edge.y + 0.5) * constructionCellSize;
+      door.position.set(localX + offset.x, height + 0.6, localZ + offset.z);
+      door.castShadow = true;
+      door.userData = { buildKind: 'door-edge', ...edge };
+      this.buildingGroup.add(door);
+    }
+
     // Render walls as extruded boxes
-    for (const tileKey of bs.wallTiles) {
+    for (const tileKey of (bs.subdivisions === 1 ? bs.wallTiles : new Set<string>())) {
       const [x, y] = tileKey.split(',').map(Number);
       const tile = this.map.getTile(x, y);
       if (!tile) continue;
@@ -489,7 +560,7 @@ export class SceneManager {
     }
 
     // Render doors as distinct meshes (shorter, different color, arched top)
-    for (const tileKey of bs.doorTiles) {
+    for (const tileKey of (bs.subdivisions === 1 ? bs.doorTiles : new Set<string>())) {
       const [x, y] = tileKey.split(',').map(Number);
       const tile = this.map.getTile(x, y);
       if (!tile) continue;
@@ -522,17 +593,19 @@ export class SceneManager {
       this.buildingGroup.add(post2);
     }
 
-    // Render floors as flat planes with slight color variation
+    // Render floors in Construction Space.
     for (const tileKey of bs.floorTiles) {
       const [x, y] = tileKey.split(',').map(Number);
-      const tile = this.map.getTile(x, y);
+      const terrain = bs.toTerrainTile(x, y);
+      const tile = this.map.getTile(terrain.x, terrain.y);
       if (!tile) continue;
 
       const roomId = tile.roomId;
       const room = roomId !== null ? bs.getRoom(roomId) : null;
       const model = room ? getBuildingModel(room.type) : getBuildingModel('generic');
 
-      const floorGeom = new THREE.PlaneGeometry(0.95, 0.95);
+      const size = bs.cellSize * 0.96;
+      const floorGeom = new THREE.PlaneGeometry(size, size);
       const floorMat = new THREE.MeshStandardMaterial({
         color: model.color,
         flatShading: true,
@@ -542,20 +615,30 @@ export class SceneManager {
       const floor = new THREE.Mesh(floorGeom, floorMat);
       floor.rotation.x = -Math.PI / 2;
       const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
-      floor.position.set(x + offset.x + 0.5, height + 0.02, y + offset.z + 0.5);
+      floor.position.set(
+        (x + 0.5) * bs.cellSize + offset.x,
+        height + 0.02,
+        (y + 0.5) * bs.cellSize + offset.z,
+      );
       floor.receiveShadow = true;
       this.buildingGroup.add(floor);
     }
 
-    // Render placed objects (beds, altars, etc.)
+    // Render placed objects using fine Construction Space coordinates.
     for (const obj of bs.getAllObjects()) {
-      const tile = this.map.getTile(obj.x, obj.y);
+      const terrain = bs.toTerrainTile(obj.x, obj.y);
+      const tile = this.map.getTile(terrain.x, terrain.y);
       if (!tile) continue;
 
       const objMesh = this.createObjectMesh(obj.objectId);
       if (objMesh) {
         const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
-        objMesh.position.set(obj.x + offset.x + 0.5, height, obj.y + offset.z + 0.5);
+        objMesh.position.set(
+          (obj.x + 0.5) * bs.cellSize + offset.x,
+          height,
+          (obj.y + 0.5) * bs.cellSize + offset.z,
+        );
+        objMesh.rotation.y = obj.rotation ?? 0;
         this.buildingGroup.add(objMesh);
       }
     }
