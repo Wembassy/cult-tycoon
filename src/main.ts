@@ -433,6 +433,8 @@ class CultTycoonGame {
     this.hud.onSetWorkPriority = (entityId, job, priority) => this.setWorkPriority(entityId, job, priority);
     this.hud.onAutoAssignWorkRoles = () => this.autoAssignWorkRoles();
     this.hud.onTimeModeChange = (mode) => this.setTimeMode(mode);
+    this.hud.onWallsVisibilityChange = (visible) => this.sceneMgr.setWallsVisible(visible);
+    this.hud.onRoofsVisibilityChange = (visible) => this.sceneMgr.setRoofsVisible(visible);
     this.hud.onTechTreeUnlock = (techId) => this.unlockTechFromPanel(techId);
     this.hud.onSendMission = (templateId, cultistIds) => this.startMissionFromPanel(templateId, cultistIds);
     this.hud.onAssignShift = (entityId, shift) => {
