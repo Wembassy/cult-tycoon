@@ -144,6 +144,39 @@ export class LogisticsSystem {
     return { nutrition, kind: stack.kind };
   }
 
+  getRawFoodQuantity(): number {
+    let total = 0;
+    for (const stack of this.stacks.values()) {
+      if ((stack.kind === 'food' || stack.kind === 'crop') &&
+          (stack.state === 'ground' || stack.state === 'stockpiled') &&
+          !stack.reservedJobId) {
+        total += stack.quantity;
+      }
+    }
+    return total;
+  }
+
+  consumeRawFood(quantity: number): number {
+    let remaining = Math.max(0, Math.floor(quantity));
+    let consumed = 0;
+    const stacks = Array.from(this.stacks.values())
+      .filter(stack =>
+        (stack.kind === 'food' || stack.kind === 'crop') &&
+        (stack.state === 'ground' || stack.state === 'stockpiled') &&
+        !stack.reservedJobId &&
+        stack.quantity > 0,
+      );
+    for (const stack of stacks) {
+      if (remaining <= 0) break;
+      const take = Math.min(remaining, stack.quantity);
+      stack.quantity -= take;
+      remaining -= take;
+      consumed += take;
+      if (stack.quantity <= 0) this.stacks.delete(stack.id);
+    }
+    return consumed;
+  }
+
   designateStockpile(
     cells: { x: number; y: number }[],
     filters: ItemKind[] = ['wood', 'stone', 'food', 'crop', 'meal'],
