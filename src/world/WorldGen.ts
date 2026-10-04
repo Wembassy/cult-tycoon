@@ -12,6 +12,10 @@ export interface WorldGenConfig {
   stonePatches: number;
   dirtPatches: number;
   seed: number;
+  treeDensity: number;
+  rockDensity: number;
+  bushDensity: number;
+  flowerDensity: number;
 }
 
 export class WorldGen {
@@ -38,6 +42,10 @@ export class WorldGen {
       waterPools = 2,
       stonePatches = 3,
       dirtPatches = 4,
+      treeDensity = 0.04,
+      rockDensity = 0.02,
+      bushDensity = 0.03,
+      flowerDensity = 0.02,
     } = config;
 
     // Use the seed from config if provided, otherwise use constructor seed
@@ -61,10 +69,10 @@ export class WorldGen {
     }
 
     // Scatter decorative elements
-    const treeCount = Math.floor(width * height * 0.04); // ~4% trees
-    const rockCount = Math.floor(width * height * 0.02); // ~2% rocks
-    const bushCount = Math.floor(width * height * 0.03); // ~3% bushes
-    const flowerCount = Math.floor(width * height * 0.02); // ~2% flowers
+    const treeCount = Math.floor(width * height * Math.max(0, treeDensity));
+    const rockCount = Math.floor(width * height * Math.max(0, rockDensity));
+    const bushCount = Math.floor(width * height * Math.max(0, bushDensity));
+    const flowerCount = Math.floor(width * height * Math.max(0, flowerDensity))
 
     for (let i = 0; i < treeCount; i++) {
       const x = Math.floor(gen.rng() * width);
