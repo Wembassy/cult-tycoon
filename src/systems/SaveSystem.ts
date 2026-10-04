@@ -271,7 +271,7 @@ export class SaveSystem {
     return {
       version: SAVE_VERSION,
       timestamp: Date.now(),
-      world: { nextEntityId: entities.length, entities: serializedEntities },
+      world: { nextEntityId: world.nextId, entities: serializedEntities },
       tileMap: { width: tileMap.width, height: tileMap.height, tiles },
       cult,
       time,
@@ -418,7 +418,7 @@ export class SaveSystem {
     world.clear();
 
     for (const serialized of data.world.entities) {
-      const entity = world.createEntity();
+      const entity = world.createEntityWithId(serialized.id);
 
       if (serialized.components.Transform) {
         const t = new Transform(entity);
