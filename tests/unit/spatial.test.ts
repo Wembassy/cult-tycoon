@@ -24,8 +24,9 @@ describe('Spatial coordinate conversions', () => {
     expect(constructionCellCenterToWorld(20, 50)).toEqual({ x: 2.05, z: 5.05 });
   });
 
-  it('keeps navigation conversion independent from construction resolution', () => {
-    expect(worldToNavigation(2.34, 5.91)).toEqual({ x: 2, y: 5 });
-    expect(navigationToWorldCenter(2, 5)).toEqual({ x: 2.5, z: 5.5 });
+  it('uses an independently configured fine Navigation Space', () => {
+    expect(ALPHA_SPATIAL_CONFIG.navigationSubdivisions).toBe(10);
+    expect(worldToNavigation(2.34, 5.91)).toEqual({ x: 23, y: 59 });
+    expect(navigationToWorldCenter(20, 50)).toEqual({ x: 2.05, z: 5.05 });
   });
 });
