@@ -53,14 +53,32 @@ export class JobSystem {
   /**
    * Cancel a posted job
    */
-  cancelJob(jobId: string): boolean {
+  cancelJob(jobId: string, world?: World): boolean {
     const queueIdx = this.queue.findIndex(j => j.id === jobId);
     if (queueIdx >= 0) {
       this.queue.splice(queueIdx, 1);
       return true;
     }
-    if (this.assigned.has(jobId)) {
+
+    const assigned = this.assigned.get(jobId);
+    if (assigned) {
       this.assigned.delete(jobId);
+      if (world) {
+        const job = world.getComponent(assigned.entity, Job);
+        if (job?.jobId === jobId) {
+          job.jobId = null;
+          job.type = 'idle';
+          job.priority = 0;
+          job.targetTile = null;
+          job.workProgress = 0;
+        }
+        const ai = world.getComponent(assigned.entity, FollowerAI);
+        if (ai) {
+          ai.state = 'idle';
+          ai.path = [];
+          ai.pathIndex = 0;
+        }
+      }
       return true;
     }
     return false;
