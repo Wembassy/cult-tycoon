@@ -4024,6 +4024,7 @@ class CultTycoonGame {
     this.startMenu?.destroy();
     this.pauseMenu?.destroy();
     this.settingsMenu?.destroy();
+    this.worldStartPanel?.destroy();
   }
 
   // ─── Menu System ───────────────────────────────────────────────
@@ -4132,6 +4133,12 @@ class CultTycoonGame {
     this.gameEnded = false;
     this._popZeroTimer = 0;
 
+    this.worldStartSelection = data.worldStart ? {
+      globalSeed: data.worldStart.globalSeed,
+      region: { ...data.worldStart.region },
+      settlementPoint: { ...data.worldStart.settlementPoint },
+    } : null;
+
     // Restore cult stats
     this.cultWealth = data.cult.wealth;
     this.cultInfluence = data.cult.influence;
@@ -4217,6 +4224,9 @@ class CultTycoonGame {
     this.jobSystem.clear();
     this.logisticsSystem.restoreSnapshot(data.logistics, this.world);
     this.farmingSystem.restoreSnapshot(data.farming);
+    if (this.worldStartSelection) {
+      this.farmingSystem.setTemperatureC(this.worldStartSelection.region.temperatureC);
+    }
     this.ideologySystem.restoreSnapshot(data.ideology);
     this.refreshLogisticsVisuals();
     this.refreshFarmingVisuals();
@@ -4278,6 +4288,13 @@ class CultTycoonGame {
 
     // Reset investigator system for the loaded map
     this.investigatorSystem.reset();
+
+    if (this.worldStartSelection) {
+      this.renderer.camera.setTarget(
+        this.worldStartSelection.settlementPoint.x - this.map.width / 2,
+        this.worldStartSelection.settlementPoint.y - this.map.height / 2,
+      );
+    }
 
     // Update HUD
     this.updateHUD();
