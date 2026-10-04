@@ -63,6 +63,7 @@ import { DataManager } from './data/DataManager';
 import { HUDManager, ResourceBarData, BuildPanelEntry, BuildCategory, type TimeControlMode } from './ui/HUDManager';
 import { DialogSystem } from './ui/DialogSystem';
 import { StartMenu } from './ui/StartMenu';
+import { WorldStartPanel, type WorldStartSelection } from './ui/WorldStartPanel';
 import { PauseMenu } from './ui/PauseMenu';
 import { SettingsMenu, SettingsData, GraphicsQuality } from './ui/SettingsMenu';
 import { SaveSystem, type SaveData, type SerializedCult, type SerializedConstructionBlueprint, type SerializedHarvestOrder } from './systems/SaveSystem';
@@ -163,6 +164,8 @@ class CultTycoonGame {
   private startMenu: StartMenu | null = null;
   private pauseMenu: PauseMenu | null = null;
   private settingsMenu: SettingsMenu | null = null;
+  private worldStartPanel: WorldStartPanel | null = null;
+  private worldStartSelection: WorldStartSelection | null = null;
 
   // Save system
   private saveSystem: SaveSystem;
@@ -3960,7 +3963,7 @@ class CultTycoonGame {
     this.gameState = 'menu';
 
     this.startMenu = new StartMenu({
-      onNewGame: () => this.startNewGame(),
+      onNewGame: () => this.openWorldStartSelection(),
       onContinue: () => this.continueGame(),
       onSettings: () => this.openSettings(),
       onQuit: () => this.quitGame(),
@@ -3983,18 +3986,37 @@ class CultTycoonGame {
   /**
    * Start a new game from the start menu.
    */
-  private startNewGame(): void {
+  private openWorldStartSelection(): void {
+    this.startMenu?.hide();
+    this.worldStartPanel?.destroy();
+    this.worldStartPanel = new WorldStartPanel(12345, {
+      onConfirm: (selection) => {
+        this.worldStartSelection = selection;
+        this.worldStartPanel?.hide();
+        this.startNewGame(selection);
+      },
+      onCancel: () => {
+        this.worldStartPanel?.hide();
+        this.startMenu?.show();
+      },
+    });
+    this.worldStartPanel.mount();
+    this.worldStartPanel.show();
+  }
+
+  private startNewGame(selection?: WorldStartSelection): void {
     console.log('[Menu] Starting new game...');
     this.startMenu?.hide();
 
-    // Start preloading and then the game
     this.gameState = 'loading';
     this.preloadAssets().then(() => {
+      if (selection) this.resetForNewGame(selection);
       console.log('[Menu] Preload complete, starting game loop');
       this.gameState = 'playing';
       this.start();
     }).catch((err) => {
       console.error('[Menu] Preload failed:', err);
+      if (selection) this.resetForNewGame(selection);
       this.gameState = 'playing';
       this.start();
     });
@@ -4010,7 +4032,7 @@ class CultTycoonGame {
     if (!data) {
       console.warn('[Menu] No save found — falling back to new game');
       this.hud.logEvent('No saved game found. Starting new game.', 'warning');
-      this.startNewGame();
+      this.openWorldStartSelection();
       return;
     }
 
@@ -4307,6 +4329,11 @@ class CultTycoonGame {
       this.logisticsSystem.getSnapshot(),
       this.farmingSystem.getSnapshot(),
       this.ideologySystem.getSnapshot(),
+      this.worldStartSelection ? {
+        globalSeed: this.worldStartSelection.globalSeed,
+        region: { ...this.worldStartSelection.region },
+        settlementPoint: { ...this.worldStartSelection.settlementPoint },
+      } : undefined,
     );
 
     const success = this.saveSystem.save(data);
