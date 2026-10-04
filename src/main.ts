@@ -30,7 +30,7 @@ import { Schedule, type Shift } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
 import type { WorkJobKey } from './ui/WorkPanel';
 import { NeedsSystem } from './systems/NeedsSystem';
-import { JobSystem } from './systems/JobSystem';
+import { JobSystem, type JobPosting } from './systems/JobSystem';
 import { AISystem, type NeedKind } from './systems/AISystem';
 import { PathfindSystem } from './systems/PathfindSystem';
 import { BuildingSystem, type RoomType, type ConstructionOrientation } from './systems/BuildingSystem';
@@ -1871,6 +1871,14 @@ class CultTycoonGame {
     this.sceneMgr.setHarvestDesignations(Array.from(this.harvestOrders.values()));
   }
 
+  private refreshLogisticsVisuals(): void {
+    this.sceneMgr.setLogisticsVisuals(
+      this.logisticsSystem.getStacks(),
+      this.logisticsSystem.getStockpiles(),
+      this.buildingSystem.subdivisions,
+    );
+  }
+
   private harvestOrderId(kind: SerializedHarvestOrder['kind'], x: number, y: number): string {
     return `harvest:${kind}:${x}:${y}`;
   }
@@ -1957,9 +1965,9 @@ class CultTycoonGame {
     this.updateHUD();
   }
 
-  private onJobCompleted(posting: { id: string; type?: string; metadata?: Record<string, string | number | boolean> }, entity: number): void {
+  private onJobCompleted(posting: JobPosting, entity: number): void {
     const logisticsResult = this.logisticsSystem.handleJobCompleted(
-      posting as any,
+      posting,
       entity,
       this.world,
       this.gameInstanceState.resources,
@@ -2400,6 +2408,11 @@ class CultTycoonGame {
     if (item.startsWith('room:')) return;
     if (item.startsWith('harvest:')) {
       this.designateHarvestArea(x, y, x, y, item.slice(8) as SerializedHarvestOrder['kind']);
+      return;
+    }
+    if (item === 'zone:stockpile') {
+      this.logisticsSystem.designateStockpile([{ x, y }]);
+      this.refreshLogisticsVisuals();
       return;
     }
     this.queueConstructionSelection(item, [{ x, y }]);
