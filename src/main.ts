@@ -2459,6 +2459,21 @@ class CultTycoonGame {
         this.selectedEntity = null;
         this.sceneMgr.setSelectedFollower(null);
         this.hud.hideInspector();
+
+        if (event) {
+          const rect = this.canvas.getBoundingClientRect();
+          const fine = this.renderer.camera.screenToGrid(
+            event.clientX - rect.left,
+            event.clientY - rect.top,
+            this.buildingSystem.subdivisions,
+          );
+          const stockpile = this.logisticsSystem.getStockpileAtCell(fine.x, fine.y);
+          if (stockpile) {
+            this.showStockpileDialog(stockpile.id);
+            return;
+          }
+        }
+
         if (tile.roomId !== null) {
           const room = this.buildingSystem.getRoom(tile.roomId);
           const def = room?.roomDefinitionId ? DataManager.getRoom(room.roomDefinitionId) : null;
@@ -2474,6 +2489,39 @@ class CultTycoonGame {
         }
       }
     }
+  }
+
+  private showStockpileDialog(stockpileId: string): void {
+    const zone = this.logisticsSystem.getStockpiles().find(candidate => candidate.id === stockpileId);
+    if (!zone) return;
+
+    const filters = zone.filters.length > 0 ? zone.filters.join(', ') : 'nothing';
+    const apply = (next: ItemKind[], label: string) => {
+      this.logisticsSystem.setStockpileFilters(stockpileId, next);
+      this.logisticsSystem.ensureHaulJobs();
+      this.refreshLogisticsVisuals();
+      this.hud.logEvent(`Stockpile filters changed to ${label}.`, 'info');
+    };
+
+    this.dialog.show({
+      title: 'Stockpile',
+      icon: '▦',
+      body: `<p><b>${zone.cells.length}</b> construction cells</p><p>Allowed: <b>${filters}</b></p><p>Choose a filter preset for this Alpha stockpile.</p>`,
+      buttons: [
+        { label: 'All', onClick: () => apply(['wood', 'stone', 'food', 'crop', 'meal'], 'all items') },
+        { label: 'Materials', onClick: () => apply(['wood', 'stone'], 'materials') },
+        { label: 'Food', onClick: () => apply(['food', 'crop', 'meal'], 'food') },
+        {
+          label: 'Remove Zone',
+          style: 'danger',
+          onClick: () => {
+            this.logisticsSystem.removeStockpile(stockpileId);
+            this.refreshLogisticsVisuals();
+            this.hud.logEvent('Stockpile zone removed.', 'info');
+          },
+        },
+      ],
+    });
   }
 
   private handleBuild(x: number, y: number): void {
