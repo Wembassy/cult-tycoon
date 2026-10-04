@@ -28,6 +28,8 @@ export interface NeedsConfig {
   energyDecay: number;   // per tick (restored by sleep)
   bladderDecay: number;  // per tick (restored by bathroom)
   hygieneDecay: number;  // per tick (restored by shower)
+  comfortDecay: number;
+  socialDecay: number;
 }
 
 const DEFAULT_CONFIG: NeedsConfig = {
@@ -38,6 +40,8 @@ const DEFAULT_CONFIG: NeedsConfig = {
   energyDecay: 0.096,
   bladderDecay: 0.16,
   hygieneDecay: 0.064,
+  comfortDecay: 0.035,
+  socialDecay: 0.05,
 };
 
 const TRAIT_MULT: Partial<Record<TraitType, Partial<Record<keyof NeedsConfig, number>>>> = {
@@ -80,6 +84,8 @@ export class NeedsSystem {
       needs.energy = clamp(needs.energy - mult.energyDecay * dt, 0, 100);
       needs.bladder = clamp(needs.bladder - mult.bladderDecay * dt, 0, 100);
       needs.hygiene = clamp(needs.hygiene - mult.hygieneDecay * dt, 0, 100);
+      needs.comfort = clamp(needs.comfort - mult.comfortDecay * dt, 0, 100);
+      needs.social = clamp(needs.social - mult.socialDecay * dt, 0, 100);
 
       // Apply prestige mood modifiers if the cultist is in a room with Prestige
       if (ai.roomEntityId >= 0) {
