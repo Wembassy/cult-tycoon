@@ -1950,6 +1950,7 @@ class CultTycoonGame {
     }
 
     this.map.setDecor(order.x, order.y, 'none');
+    if (order.kind === 'tree' || order.kind === 'rock') this.map.setOccupied(order.x, order.y, false);
 
     const kind: ItemKind = order.kind === 'food' ? 'food' : order.kind === 'rock' ? 'stone' : 'wood';
     const yieldAmount = order.kind === 'food' ? 8 : order.kind === 'rock' ? 14 : 10;
