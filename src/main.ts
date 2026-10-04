@@ -3550,7 +3550,7 @@ class CultTycoonGame {
     // Restore BuildingSystem's internal object/room collections after tile occupancy.
     this.buildingSystem.restoreSnapshot(data.building);
     this.jobSystem.clear();
-    this.logisticsSystem.restoreSnapshot(data.logistics);
+    this.logisticsSystem.restoreSnapshot(data.logistics, this.world);
     this.refreshLogisticsVisuals();
 
     this.constructionBlueprints.clear();
