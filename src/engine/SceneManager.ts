@@ -83,6 +83,7 @@ export class SceneManager {
   private buildPreviewGroup: THREE.Group;
   private blueprintGroup: THREE.Group;
   private harvestDesignationGroup: THREE.Group;
+  private logisticsGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
   private selectionRing: THREE.Mesh;
   private selectedFollower: number | null = null;
@@ -138,12 +139,15 @@ export class SceneManager {
     this.blueprintGroup.name = 'construction-blueprints';
     this.harvestDesignationGroup = new THREE.Group();
     this.harvestDesignationGroup.name = 'harvest-designations';
+    this.logisticsGroup = new THREE.Group();
+    this.logisticsGroup.name = 'logistics';
     this.scene.add(this.tileGroup);
     this.scene.add(this.entityGroup);
     this.scene.add(this.buildingGroup);
     this.scene.add(this.roofGroup);
     this.scene.add(this.blueprintGroup);
     this.scene.add(this.harvestDesignationGroup);
+    this.scene.add(this.logisticsGroup);
     this.scene.add(this.buildPreviewGroup);
 
     // Fill light to enhance isometric view — softens shadows from the front
@@ -1497,6 +1501,81 @@ export class SceneManager {
     }
   }
 
+  setLogisticsVisuals(
+    stacks: Array<{ id: string; kind: string; quantity: number; x: number; y: number; state: string }>,
+    stockpiles: Array<{ id: string; cells: { x: number; y: number }[] }>,
+    constructionSubdivisions: number,
+  ): void {
+    this.clearVisualGroup(this.logisticsGroup);
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+    const cellSize = 1 / Math.max(1, constructionSubdivisions);
+
+    // Stockpile zones are intentionally subtle so furnishings remain readable.
+    const zoneMaterial = new THREE.MeshBasicMaterial({
+      color: 0x4f8f68,
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const zoneGeometry = new THREE.PlaneGeometry(cellSize * 0.94, cellSize * 0.94);
+    for (const zone of stockpiles) {
+      for (const cell of zone.cells) {
+        const terrainX = Math.floor(cell.x / constructionSubdivisions);
+        const terrainY = Math.floor(cell.y / constructionSubdivisions);
+        const tile = this.map.getTile(terrainX, terrainY);
+        if (!tile) continue;
+        const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
+        const mesh = new THREE.Mesh(zoneGeometry.clone(), zoneMaterial.clone());
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(
+          (cell.x + 0.5) * cellSize + offset.x,
+          height + 0.035,
+          (cell.y + 0.5) * cellSize + offset.z,
+        );
+        mesh.userData = { stockpileId: zone.id };
+        this.logisticsGroup.add(mesh);
+      }
+    }
+    zoneGeometry.dispose();
+    zoneMaterial.dispose();
+
+    const colors: Record<string, number> = {
+      wood: 0x8b5a2b,
+      stone: 0x8a9199,
+      food: 0x76a94f,
+      crop: 0xc7a94a,
+      meal: 0xd9833b,
+    };
+
+    for (const stack of stacks) {
+      if (stack.state === 'carried') continue;
+      const terrainX = Math.max(0, Math.min(this.map.width - 1, Math.round(stack.x)));
+      const terrainY = Math.max(0, Math.min(this.map.height - 1, Math.round(stack.y)));
+      const tile = this.map.getTile(terrainX, terrainY);
+      if (!tile) continue;
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
+      const size = Math.min(0.28, 0.12 + Math.log2(Math.max(1, stack.quantity)) * 0.025);
+      const geometry = stack.kind === 'stone'
+        ? new THREE.DodecahedronGeometry(size * 0.75, 0)
+        : new THREE.BoxGeometry(size, size * 0.55, size);
+      const material = new THREE.MeshStandardMaterial({
+        color: colors[stack.kind] ?? 0xd1d5db,
+        roughness: 0.85,
+        flatShading: true,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(
+        stack.x + offset.x + 0.5,
+        height + size * 0.35,
+        stack.y + offset.z + 0.5,
+      );
+      mesh.castShadow = true;
+      mesh.userData = { itemStackId: stack.id, itemKind: stack.kind, quantity: stack.quantity };
+      this.logisticsGroup.add(mesh);
+    }
+  }
+
   private clearVisualGroup(group: THREE.Group): void {
     while (group.children.length > 0) {
       const child = group.children[0];
@@ -1562,9 +1641,11 @@ export class SceneManager {
     this.clearVisualGroup(this.buildPreviewGroup);
     this.clearVisualGroup(this.blueprintGroup);
     this.clearVisualGroup(this.harvestDesignationGroup);
+    this.clearVisualGroup(this.logisticsGroup);
     this.scene.remove(this.buildPreviewGroup);
     this.scene.remove(this.blueprintGroup);
     this.scene.remove(this.harvestDesignationGroup);
+    this.scene.remove(this.logisticsGroup);
     if (this.buildingFillLight) this.scene.remove(this.buildingFillLight);
   }
 }
