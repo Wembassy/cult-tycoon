@@ -281,6 +281,7 @@ export class LogisticsSystem {
         const inventory = world.getComponent(job.requiredEntity, Inventory);
         const transform = world.getComponent(job.requiredEntity, Transform);
         if (inventory) this.removeInventory(inventory, kind, quantity);
+        this.stacks.delete(stackId);
         if (transform) this.addStack(kind, quantity, transform.x, transform.y);
       }
 
@@ -322,19 +323,34 @@ export class LogisticsSystem {
       }
 
       const taken = Math.min(quantity, stack.quantity);
-      this.addInventory(inventory, kind, taken);
-      stack.quantity -= taken;
       const sourceState = stack.reservedFrom ?? 'ground';
-      stack.reservedFrom = undefined;
-      stack.reservedJobId = undefined;
+      const originalQuantity = stack.quantity;
+      const originalStockpileId = stack.stockpileId;
 
-      if (stack.quantity <= 0) {
-        this.stacks.delete(stack.id);
-      } else {
-        stack.state = sourceState;
+      // Split excess back into its original location/state so only the exact
+      // requested amount enters the follower's inventory.
+      if (originalQuantity > taken) {
+        const remainder: ItemStack = {
+          id: `stack:${this.nextStackId++}`,
+          kind,
+          quantity: originalQuantity - taken,
+          x: stack.x,
+          y: stack.y,
+          state: sourceState,
+          stockpileId: sourceState === 'stockpiled' ? originalStockpileId : undefined,
+        };
+        this.stacks.set(remainder.id, remainder);
       }
 
+      this.addInventory(inventory, kind, taken);
+      stack.quantity = taken;
+      stack.state = 'carried';
+      stack.carriedBy = entity;
+      stack.stockpileId = undefined;
+      stack.reservedFrom = undefined;
+
       const deliveryJobId = `material:deliver:${requestId}:${stack.id}`;
+      stack.reservedJobId = deliveryJobId;
       this.jobSystem.postJob({
         id: deliveryJobId,
         type: 'haul',
@@ -352,6 +368,7 @@ export class LogisticsSystem {
           targetY,
         },
       });
+      this.ensureHaulJobs();
       return { handled: true, changed: true };
     }
 
@@ -363,6 +380,7 @@ export class LogisticsSystem {
         return { handled: true, changed: false };
       }
       this.removeInventory(inventory, kind, quantity);
+      this.stacks.delete(stack.id);
       return {
         handled: true,
         changed: true,
