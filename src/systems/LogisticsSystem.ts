@@ -90,6 +90,16 @@ export class LogisticsSystem {
     }));
   }
 
+  getStockpileAtCell(x: number, y: number): StockpileZone | null {
+    const key = this.cellKey(x, y);
+    for (const zone of this.stockpiles.values()) {
+      if (zone.cells.some(cell => this.cellKey(cell.x, cell.y) === key)) {
+        return this.cloneZone(zone);
+      }
+    }
+    return null;
+  }
+
   designateStockpile(
     cells: { x: number; y: number }[],
     filters: ItemKind[] = ['wood', 'stone', 'food', 'crop', 'meal'],
