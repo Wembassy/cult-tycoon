@@ -10,4 +10,6 @@ export class Needs implements Component {
   energy = 100;   // 0-100, 0 = exhausted (restored by sleep in bedroom)
   bladder = 100;  // 0-100, 0 = desperate (restored by bathroom/toilet)
   hygiene = 100;  // 0-100, 0 = filthy (restored by bathroom/shower)
+  comfort = 100;  // 0-100, affected by beds/rooms/furnishings
+  social = 100;   // 0-100, restored by social interactions (#67)
 }
