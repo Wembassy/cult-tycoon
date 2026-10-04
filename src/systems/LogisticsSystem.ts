@@ -100,6 +100,50 @@ export class LogisticsSystem {
     return null;
   }
 
+  findNearestEdible(from: { x: number; y: number }): { x: number; y: number } | null {
+    const edible = new Set<ItemKind>(['meal', 'food', 'crop']);
+    const candidates = Array.from(this.stacks.values())
+      .filter(stack =>
+        edible.has(stack.kind) &&
+        (stack.state === 'ground' || stack.state === 'stockpiled') &&
+        !stack.reservedJobId &&
+        stack.quantity > 0,
+      )
+      .sort((a, b) => {
+        const rank = (kind: ItemKind) => kind === 'meal' ? 0 : kind === 'food' ? 1 : 2;
+        const rankDiff = rank(a.kind) - rank(b.kind);
+        if (rankDiff !== 0) return rankDiff;
+        const da = Math.abs(a.x - from.x) + Math.abs(a.y - from.y);
+        const db = Math.abs(b.x - from.x) + Math.abs(b.y - from.y);
+        return da - db;
+      });
+    const best = candidates[0];
+    return best ? { x: best.x, y: best.y } : null;
+  }
+
+  consumeEdibleAt(target: { x: number; y: number }): { nutrition: number; kind: ItemKind } | null {
+    const candidates = Array.from(this.stacks.values())
+      .filter(stack =>
+        (stack.kind === 'meal' || stack.kind === 'food' || stack.kind === 'crop') &&
+        (stack.state === 'ground' || stack.state === 'stockpiled') &&
+        !stack.reservedJobId &&
+        stack.quantity > 0 &&
+        Math.abs(stack.x - target.x) < 0.35 &&
+        Math.abs(stack.y - target.y) < 0.35,
+      )
+      .sort((a, b) => {
+        const rank = (kind: ItemKind) => kind === 'meal' ? 0 : kind === 'food' ? 1 : 2;
+        return rank(a.kind) - rank(b.kind);
+      });
+    const stack = candidates[0];
+    if (!stack) return null;
+
+    const nutrition = stack.kind === 'meal' ? 55 : stack.kind === 'food' ? 35 : 25;
+    stack.quantity -= 1;
+    if (stack.quantity <= 0) this.stacks.delete(stack.id);
+    return { nutrition, kind: stack.kind };
+  }
+
   designateStockpile(
     cells: { x: number; y: number }[],
     filters: ItemKind[] = ['wood', 'stone', 'food', 'crop', 'meal'],
