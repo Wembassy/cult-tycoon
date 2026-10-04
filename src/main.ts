@@ -4258,6 +4258,10 @@ class CultTycoonGame {
 
     // Deserialize world entities
     this.saveSystem.deserializeWorld(data, this.world);
+    this.followerNames.clear();
+    for (const [id, name] of Object.entries(data.followerNames ?? {})) {
+      this.followerNames.set(Number(id), name);
+    }
 
     // Restore tile map in-place (same dimensions expected)
     // Update terrain and tile properties from save data
@@ -4534,6 +4538,7 @@ class CultTycoonGame {
         settlementPoint: { ...this.worldStartSelection.settlementPoint },
         ideologyFoundation: this.worldStartSelection.ideologyFoundation,
       } : undefined,
+      Object.fromEntries(Array.from(this.followerNames.entries()).map(([id, name]) => [String(id), name])),
     );
 
     const success = this.saveSystem.save(data);
