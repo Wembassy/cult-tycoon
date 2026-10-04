@@ -2294,9 +2294,10 @@ class CultTycoonGame {
     if (!room || room.source !== 'automatic') return;
 
     const placed = new Set(this.getObjectsInRoom(room.id));
+    const roomCellCount = room.constructionCells?.length ?? Math.max(1, Math.round(room.area));
     const candidates = DataManager.getRooms()
       .filter(def =>
-        room.area >= def.minSize &&
+        roomCellCount >= def.minSize &&
         def.requiredObjects.length > 0 &&
         def.requiredObjects.every(required => placed.has(required)),
       )
