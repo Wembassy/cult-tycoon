@@ -2716,6 +2716,17 @@ class CultTycoonGame {
     } else {
       // Select mode — pick the visible pawn under the mouse first, then
       // fall back to logical tile lookup for keyboard/test compatibility.
+      const outsiderEntity = event
+        ? this.findOutsiderAtScreen(event.clientX, event.clientY)
+        : null;
+      if (outsiderEntity !== null) {
+        this.selectedEntity = null;
+        this.sceneMgr.setSelectedFollower(outsiderEntity);
+        this.hud.hideInspector();
+        this.showOutsiderDialog(outsiderEntity);
+        return;
+      }
+
       const entity = event
         ? this.findFollowerAtScreen(event.clientX, event.clientY)
         : this.findFollowerAt(x, y);
@@ -3127,6 +3138,97 @@ class CultTycoonGame {
     }
 
     return bestEntity;
+  }
+
+  private findOutsiderAtScreen(clientX: number, clientY: number): number | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    let bestEntity: number | null = null;
+    let bestDistanceSq = 44 * 44;
+
+    for (const entity of this.world.query([Transform, Renderable, Outsider])) {
+      const renderable = this.world.getComponent(entity, Renderable)!;
+      if (!renderable.visible) continue;
+
+      const transform = this.world.getComponent(entity, Transform)!;
+      if (!this.fogOfWar.isVisible(Math.round(transform.x), Math.round(transform.y))) continue;
+
+      const displayOffset = this.sceneMgr.getFollowerDisplayOffset(entity);
+      const screen = this.renderer.camera.tileToScreen(
+        transform.x + displayOffset.x,
+        transform.y + displayOffset.y,
+      );
+      const dx = localX - screen.x;
+      const dy = localY - (screen.y - 18);
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq < bestDistanceSq) {
+        bestDistanceSq = distanceSq;
+        bestEntity = entity;
+      }
+    }
+    return bestEntity;
+  }
+
+  private showOutsiderDialog(entity: number): void {
+    const outsider = this.world.getComponent(entity, Outsider);
+    const belief = this.world.getComponent(entity, BeliefState);
+    const traits = this.world.getComponent(entity, Traits);
+    if (!outsider) return;
+
+    const recruiters = this.world.query([FollowerAI, Skills, SocialState])
+      .map(entityId => ({
+        entityId,
+        name: this.followerNames.get(entityId) ?? `Follower ${entityId}`,
+        social: this.world.getComponent(entityId, Skills)!.social,
+      }))
+      .sort((a, b) => b.social - a.social);
+
+    const buttons = outsider.state === 'visiting'
+      ? recruiters.slice(0, 8).map(recruiter => ({
+          label: `${recruiter.name} · Social ${recruiter.social}`,
+          style: 'success' as const,
+          onClick: () => {
+            const result = this.outsiderSystem.attemptRecruitment(
+              this.world,
+              entity,
+              recruiter.entityId,
+            );
+            this.hud.logEvent(
+              result.recruited
+                ? result.message
+                : `${outsider.name}: ${result.message} Progress ${Math.round(result.progress)}/100.`,
+              result.recruited ? 'success' : result.success ? 'info' : 'warning',
+            );
+            this.sceneMgr.syncEntities();
+            this.updateHUD();
+          },
+        }))
+      : [];
+
+    buttons.push({
+      label: 'Close',
+      style: 'default' as const,
+      onClick: () => {},
+    });
+
+    this.dialog.show({
+      title: `Visitor · ${outsider.name}`,
+      icon: '🚶',
+      body: [
+        `<p><b>Status:</b> ${outsider.state}</p>`,
+        `<p><b>Recruitment:</b> ${Math.round(outsider.recruitmentProgress)}/100</p>`,
+        `<p><b>Belief:</b> ${Math.round(belief?.strength ?? 0)}/100</p>`,
+        `<p><b>Traits:</b> ${traits?.traits.join(', ') || 'unknown'}</p>`,
+        outsider.state === 'visiting'
+          ? `<p><b>Time remaining:</b> ${Math.max(0, Math.ceil(outsider.stayRemaining))}s</p><p>Select a follower to make a recruitment attempt. Social skill, relationship, ideology compatibility, and cult mood all affect progress.</p>`
+          : '<p>This visitor is currently traveling and cannot be recruited yet.</p>',
+        outsider.recruitmentCooldown > 0
+          ? `<p style="color:#fbbf24;">Conversation cooldown: ${Math.ceil(outsider.recruitmentCooldown)}s</p>`
+          : '',
+      ].join(''),
+      buttons,
+    });
   }
 
   private selectFollower(entity: number): void {
