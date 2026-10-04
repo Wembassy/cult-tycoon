@@ -24,6 +24,7 @@ import { ALPHA_SPATIAL_CONFIG } from '../world/Spatial';
 import type { FarmingSnapshot } from './FarmingSystem';
 import type { IdeologySnapshot } from './IdeologySystem';
 import type { GlobalRegion } from '../world/GlobalWorld';
+import type { IdeologyFoundation } from '../game/Ideology';
 import { Outsider } from '../components/Outsider';
 import type { OutsiderSnapshot } from './OutsiderSystem';
 
@@ -46,6 +47,7 @@ export interface SaveData {
     globalSeed: number;
     region: GlobalRegion;
     settlementPoint: { x: number; y: number };
+    ideologyFoundation?: IdeologyFoundation;
   };
   spatial?: {
     constructionSubdivisions: number;
@@ -157,6 +159,7 @@ export class SaveSystem {
       globalSeed: number;
       region: GlobalRegion;
       settlementPoint: { x: number; y: number };
+      ideologyFoundation?: IdeologyFoundation;
     },
   ): SaveData {
     const entities = world.allEntities();
