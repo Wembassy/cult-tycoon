@@ -4,6 +4,7 @@
  */
 
 import { TileMap } from '../world/TileMap';
+import { NavigationGrid } from '../world/NavigationGrid';
 
 export type BuildType = 'wall' | 'floor' | 'door' | 'object';
 export type WallVariant = 'straight' | 'corner' | 'tjunction' | 'end';
@@ -71,10 +72,12 @@ export class BuildingSystem {
   private _floorTiles: Set<string> = new Set();
   private _dirty = false;
   private readonly constructionSubdivisions: number;
+  private readonly navigation: NavigationGrid | null;
 
-  constructor(map: TileMap, constructionSubdivisions: number = 1) {
+  constructor(map: TileMap, constructionSubdivisions: number = 1, navigation: NavigationGrid | null = null) {
     this.map = map;
     this.constructionSubdivisions = Math.max(1, Math.floor(constructionSubdivisions));
+    this.navigation = navigation;
   }
 
   get subdivisions(): number { return this.constructionSubdivisions; }
@@ -99,6 +102,10 @@ export class BuildingSystem {
       Array.from(this.objects.values()).some(obj => obj.x === x && obj.y === y);
   }
 
+  /**
+   * Legacy TileMap occupancy is retained only for old 1:1 systems that still
+   * inspect it. Navigation no longer reads TileMap.occupied.
+   */
   private refreshTerrainOccupancyForBuildCell(x: number, y: number): void {
     const terrain = this.toTerrainTile(x, y);
     const occupied =
@@ -120,6 +127,26 @@ export class BuildingSystem {
   }
 
   /**
+   * Until edge-based walls land, mirror 1:1 architecture into NavigationGrid.
+   * Fine construction cells intentionally never block an entire terrain cell.
+   */
+  private refreshLegacyNavigationForBuildCell(x: number, y: number): void {
+    if (!this.navigation || this.constructionSubdivisions !== 1) return;
+
+    const terrain = this.toTerrainTile(x, y);
+    const key = `${x},${y}`;
+    const hasWall = this._wallTiles.has(key);
+    const hasBlockingObject = Array.from(this.objects.values()).some(obj => obj.x === x && obj.y === y);
+
+    this.navigation.removeBlocker(terrain.x, terrain.y, 'legacy-building');
+    if (hasWall || hasBlockingObject) {
+      this.navigation.addBlocker(terrain.x, terrain.y, 'legacy-building');
+    }
+    // Doors are deliberately passable; their open/close animation and edge
+    // traversal rules are implemented by the edge-wall ticket.
+  }
+
+  /**
    * Place a wall on a tile
    */
   placeWall(x: number, y: number, _variant: WallVariant = 'straight'): BuildResult {
@@ -131,6 +158,7 @@ export class BuildingSystem {
     this._floorTiles.delete(`${x},${y}`);
     this._doorTiles.delete(`${x},${y}`);
     this.refreshTerrainOccupancyForBuildCell(x, y);
+    this.refreshLegacyNavigationForBuildCell(x, y);
     this._dirty = true;
     return { success: true, message: 'Wall placed', tilesAffected: [{ x, y }], cost: COSTS.wall };
   }
@@ -168,6 +196,7 @@ export class BuildingSystem {
     this._doorTiles.add(`${x},${y}`);
     this._wallTiles.delete(`${x},${y}`);
     this.refreshTerrainOccupancyForBuildCell(x, y);
+    this.refreshLegacyNavigationForBuildCell(x, y);
     this._dirty = true;
     return { success: true, message: 'Door placed', tilesAffected: [{ x, y }], cost: COSTS.door };
   }
@@ -184,6 +213,7 @@ export class BuildingSystem {
     const obj: PlacedObject = { id, objectId, x, y, rotation };
     this.objects.set(id, obj);
     this.refreshTerrainOccupancyForBuildCell(x, y);
+    this.refreshLegacyNavigationForBuildCell(x, y);
     this._dirty = true;
     return { success: true, message: 'Object placed', tilesAffected: [{ x, y }], cost: COSTS.object };
   }
@@ -214,6 +244,7 @@ export class BuildingSystem {
     this._doorTiles.delete(key);
     this._floorTiles.delete(key);
     this.refreshTerrainOccupancyForBuildCell(x, y);
+    this.refreshLegacyNavigationForBuildCell(x, y);
     this._dirty = true;
 
     // Legacy 1:1 grids used building cells as room tiles. Fine construction grids
@@ -522,6 +553,7 @@ export class BuildingSystem {
   restoreSnapshot(snapshot: BuildingSnapshot | undefined): void {
     this.objects.clear();
     this.rooms.clear();
+    this.navigation?.clearDynamicBlockers();
     this._wallTiles.clear();
     this._doorTiles.clear();
     this._floorTiles.clear();
@@ -553,6 +585,16 @@ export class BuildingSystem {
         this.refreshTerrainOccupancyForBuildCell(x, y);
       }
       for (const obj of this.objects.values()) this.refreshTerrainOccupancyForBuildCell(obj.x, obj.y);
+    }
+
+    if (this.navigation && this.constructionSubdivisions === 1) {
+      for (const key of this._wallTiles) {
+        const [x, y] = key.split(',').map(Number);
+        this.refreshLegacyNavigationForBuildCell(x, y);
+      }
+      for (const obj of this.objects.values()) {
+        this.refreshLegacyNavigationForBuildCell(obj.x, obj.y);
+      }
     }
 
     this.nextRoomId = snapshot.nextRoomId ?? 1;
