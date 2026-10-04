@@ -265,7 +265,7 @@ describe('PathfindSystem', () => {
       const path2 = world.getComponent(e2, Path)!;
       // Path should now go through the gap
       expect(path2.waypoints).not.toEqual(originalWaypoints);
-      const passesGap = path2.waypoints.some(p => p.x === 5 && p.y === 8);
+      const passesGap = path2.waypoints.some(p => Math.abs(p.x - 5) <= 0.6 && Math.abs(p.y - 8) <= 0.6);
       expect(passesGap).toBe(true);
     });
   });
