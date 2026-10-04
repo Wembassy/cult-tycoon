@@ -9,6 +9,13 @@ import { NavigationGrid } from '../world/NavigationGrid';
 export type BuildType = 'wall' | 'floor' | 'door' | 'object';
 export type WallVariant = 'straight' | 'corner' | 'tjunction' | 'end';
 export type FloorVariant = 'stone' | 'wood' | 'grass';
+export type ConstructionOrientation = 'horizontal' | 'vertical';
+
+export interface ConstructionEdge {
+  x: number;
+  y: number;
+  orientation: ConstructionOrientation;
+}
 export type RoomType =
   | 'lobby'
   | 'temple'
@@ -46,8 +53,12 @@ export interface Room {
 export interface BuildingSnapshot {
   objects: PlacedObject[];
   rooms: Room[];
+  /** Legacy cell-based architecture retained for save migration. */
   wallTiles: string[];
   doorTiles: string[];
+  /** Alpha edge-based architecture. */
+  wallEdges?: ConstructionEdge[];
+  doorEdges?: ConstructionEdge[];
   floorTiles: string[];
   nextRoomId: number;
   nextObjectId: number;
@@ -69,6 +80,8 @@ export class BuildingSystem {
   private nextObjectId = 1;
   private _wallTiles: Set<string> = new Set();
   private _doorTiles: Set<string> = new Set();
+  private _wallEdges: Map<string, ConstructionEdge> = new Map();
+  private _doorEdges: Map<string, ConstructionEdge> = new Map();
   private _floorTiles: Set<string> = new Set();
   private _dirty = false;
   private readonly constructionSubdivisions: number;
@@ -93,6 +106,76 @@ export class BuildingSystem {
   getTerrainTileForBuild(x: number, y: number) {
     const terrain = this.toTerrainTile(x, y);
     return this.map.getTile(terrain.x, terrain.y);
+  }
+
+  private edgeKey(x: number, y: number, orientation: ConstructionOrientation): string {
+    return `${x},${y},${orientation}`;
+  }
+
+  hasWallEdge(x: number, y: number, orientation: ConstructionOrientation): boolean {
+    return this._wallEdges.has(this.edgeKey(x, y, orientation));
+  }
+
+  hasDoorEdge(x: number, y: number, orientation: ConstructionOrientation): boolean {
+    return this._doorEdges.has(this.edgeKey(x, y, orientation));
+  }
+
+  private isEdgeInBounds(x: number, y: number, orientation: ConstructionOrientation): boolean {
+    const maxX = this.map.width * this.constructionSubdivisions;
+    const maxY = this.map.height * this.constructionSubdivisions;
+    if (orientation === 'horizontal') {
+      return x >= 0 && x < maxX && y >= 0 && y <= maxY;
+    }
+    return x >= 0 && x <= maxX && y >= 0 && y < maxY;
+  }
+
+  private edgeTouchesBuildableTerrain(x: number, y: number, orientation: ConstructionOrientation): boolean {
+    const candidates = orientation === 'horizontal'
+      ? [{ x, y: y - 1 }, { x, y }]
+      : [{ x: x - 1, y }, { x, y }];
+
+    return candidates.some(cell => {
+      if (cell.x < 0 || cell.y < 0) return false;
+      const tile = this.getTerrainTileForBuild(cell.x, cell.y);
+      return !!tile?.buildable;
+    });
+  }
+
+  placeWallEdge(x: number, y: number, orientation: ConstructionOrientation): BuildResult {
+    if (!this.isEdgeInBounds(x, y, orientation) || !this.edgeTouchesBuildableTerrain(x, y, orientation)) {
+      return { success: false, message: 'Edge not buildable', tilesAffected: [], cost: 0 };
+    }
+
+    const key = this.edgeKey(x, y, orientation);
+    if (this._wallEdges.has(key) || this._doorEdges.has(key)) {
+      return { success: false, message: 'Edge already occupied', tilesAffected: [], cost: 0 };
+    }
+
+    this._wallEdges.set(key, { x, y, orientation });
+    this._dirty = true;
+    return { success: true, message: 'Wall edge placed', tilesAffected: [{ x, y }], cost: COSTS.wall };
+  }
+
+  placeDoorEdge(x: number, y: number, orientation: ConstructionOrientation): BuildResult {
+    const key = this.edgeKey(x, y, orientation);
+    if (!this._wallEdges.has(key)) {
+      return { success: false, message: 'Door requires an existing wall edge', tilesAffected: [], cost: 0 };
+    }
+
+    this._wallEdges.delete(key);
+    this._doorEdges.set(key, { x, y, orientation });
+    this._dirty = true;
+    return { success: true, message: 'Door edge placed', tilesAffected: [{ x, y }], cost: COSTS.door };
+  }
+
+  demolishEdge(x: number, y: number, orientation: ConstructionOrientation): BuildResult {
+    const key = this.edgeKey(x, y, orientation);
+    const removed = this._wallEdges.delete(key) || this._doorEdges.delete(key);
+    if (!removed) {
+      return { success: false, message: 'Nothing to demolish on edge', tilesAffected: [], cost: 0 };
+    }
+    this._dirty = true;
+    return { success: true, message: 'Edge demolished', tilesAffected: [{ x, y }], cost: 1 };
   }
 
   private hasBlockingElementAt(x: number, y: number): boolean {
@@ -526,6 +609,12 @@ export class BuildingSystem {
   /** Set of "x,y" strings for door tiles. */
   get doorTiles(): Set<string> { return this._doorTiles; }
 
+  /** Edge-based Alpha walls. */
+  get wallEdges(): ConstructionEdge[] { return Array.from(this._wallEdges.values()); }
+
+  /** Edge-based Alpha doors. */
+  get doorEdges(): ConstructionEdge[] { return Array.from(this._doorEdges.values()); }
+
   /** Set of "x,y" strings for floor tiles. */
   get floorTiles(): Set<string> { return this._floorTiles; }
 
@@ -544,6 +633,8 @@ export class BuildingSystem {
       })),
       wallTiles: [...this._wallTiles],
       doorTiles: [...this._doorTiles],
+      wallEdges: this.wallEdges.map(edge => ({ ...edge })),
+      doorEdges: this.doorEdges.map(edge => ({ ...edge })),
       floorTiles: [...this._floorTiles],
       nextRoomId: this.nextRoomId,
       nextObjectId: this.nextObjectId,
@@ -556,6 +647,8 @@ export class BuildingSystem {
     this.navigation?.clearDynamicBlockers();
     this._wallTiles.clear();
     this._doorTiles.clear();
+    this._wallEdges.clear();
+    this._doorEdges.clear();
     this._floorTiles.clear();
 
     if (!snapshot) {
@@ -576,6 +669,8 @@ export class BuildingSystem {
     }
     for (const tile of snapshot.wallTiles ?? []) this._wallTiles.add(tile);
     for (const tile of snapshot.doorTiles ?? []) this._doorTiles.add(tile);
+    for (const edge of snapshot.wallEdges ?? []) this._wallEdges.set(this.edgeKey(edge.x, edge.y, edge.orientation), { ...edge });
+    for (const edge of snapshot.doorEdges ?? []) this._doorEdges.set(this.edgeKey(edge.x, edge.y, edge.orientation), { ...edge });
     for (const tile of snapshot.floorTiles ?? []) this._floorTiles.add(tile);
 
     if (this.constructionSubdivisions > 1) {
