@@ -121,7 +121,7 @@ export class LogisticsSystem {
     return best ? { x: best.x, y: best.y } : null;
   }
 
-  consumeEdibleAt(target: { x: number; y: number }): { nutrition: number; kind: ItemKind } | null {
+  consumeEdibleAt(target: { x: number; y: number }): { nutrition: number; kind: 'meal' | 'food' | 'crop' } | null {
     const candidates = Array.from(this.stacks.values())
       .filter(stack =>
         (stack.kind === 'meal' || stack.kind === 'food' || stack.kind === 'crop') &&
@@ -141,7 +141,7 @@ export class LogisticsSystem {
     const nutrition = stack.kind === 'meal' ? 55 : stack.kind === 'food' ? 35 : 25;
     stack.quantity -= 1;
     if (stack.quantity <= 0) this.stacks.delete(stack.id);
-    return { nutrition, kind: stack.kind };
+    return { nutrition, kind: stack.kind as 'meal' | 'food' | 'crop' };
   }
 
   getRawFoodQuantity(): number {
