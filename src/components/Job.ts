@@ -8,6 +8,7 @@ export type JobType =
   | 'build'
   | 'haul'
   | 'harvest'
+  | 'grow'
   | 'wander'
   | 'idle';
 
