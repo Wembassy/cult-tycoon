@@ -42,7 +42,7 @@ export interface BuildPanelEntry {
   label: string;
   icon: string;
   cost: number;
-  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure' | 'decor' | 'harvest';
+  category: 'walls' | 'floors' | 'objects' | 'rooms' | 'ritual' | 'demolish' | 'structure' | 'decor' | 'harvest' | 'zones';
 }
 
 export interface BuildCategory {
