@@ -42,6 +42,7 @@ import { TechTreeSystem } from './systems/TechTreeSystem';
 import { InvestigatorSystem } from './systems/InvestigatorSystem';
 import { CombatSystem } from './systems/CombatSystem';
 import { ResourceSystem } from './systems/ResourceSystem';
+import { LogisticsSystem, type ItemKind } from './systems/LogisticsSystem';
 import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
 import { MissionSystem } from './systems/MissionSystem';
@@ -94,6 +95,7 @@ class CultTycoonGame {
   private investigatorSystem: InvestigatorSystem;
   private combatSystem: CombatSystem;
   private resourceSystem: ResourceSystem;
+  private logisticsSystem: LogisticsSystem;
   private fogOfWar: FogOfWar;
   private fogSystem: FogSystem;
   private schedulingSystem: SchedulingSystem;
@@ -204,6 +206,7 @@ class CultTycoonGame {
     // Systems
     this.needsSystem = new NeedsSystem();
     this.jobSystem = new JobSystem();
+    this.logisticsSystem = new LogisticsSystem(ALPHA_SPATIAL_CONFIG.constructionSubdivisions, this.jobSystem);
     this.jobSystem.setCompletionHandler((posting, entity) => this.onJobCompleted(posting, entity));
     this.aiSystem = new AISystem(this.map, this.pathfinder);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
@@ -917,6 +920,7 @@ class CultTycoonGame {
       { id: 'rooms', label: 'Room Purpose', icon: '🏠' },
       { id: 'decor', label: 'Decor', icon: '🎨' },
       { id: 'harvest', label: 'Harvest', icon: '🪓' },
+      { id: 'zones', label: 'Zones', icon: '▦' },
       { id: 'demolish', label: 'Demolish', icon: '❌' },
     ];
     this.hud.setBuildCategories(categories);
@@ -930,6 +934,7 @@ class CultTycoonGame {
       { id: 'harvest:tree', label: 'Chop Trees', icon: '🌲', cost: 0, category: 'harvest' },
       { id: 'harvest:rock', label: 'Mine Rock', icon: '🪨', cost: 0, category: 'harvest' },
       { id: 'harvest:food', label: 'Gather Food', icon: '🫐', cost: 0, category: 'harvest' },
+      { id: 'zone:stockpile', label: 'Stockpile', icon: '▦', cost: 0, category: 'zones' as BuildPanelEntry['category'] },
       ...DataManager.getRooms().map(room => ({
         id: `room:${room.id}`,
         label: room.name,
@@ -1587,7 +1592,7 @@ class CultTycoonGame {
       return edge ? [edge] : [{ x: endX, y: endY, orientation: 'horizontal', space: 'construction' }];
     }
 
-    if (item === 'floor') {
+    if (item === 'floor' || item === 'zone:stockpile') {
       const minX = Math.min(startX, endX);
       const maxX = Math.max(startX, endX);
       const minY = Math.min(startY, endY);
@@ -1637,6 +1642,8 @@ class CultTycoonGame {
       return false;
     }
 
+    if (item === 'zone:stockpile') return tile.buildable;
+
     const existingBlueprint = this.getConstructionBlueprintAt(x, y, orientation);
     if (existingBlueprint && !(item === 'door' && existingBlueprint.kind === 'wall')) return false;
     if (!tile.buildable) return false;
@@ -1662,7 +1669,7 @@ class CultTycoonGame {
 
   private getPreviewKind(item: string): ConstructionVisualKind | 'room' {
     if (item.startsWith('room:')) return 'room';
-    if (item.startsWith('harvest:')) return 'floor';
+    if (item.startsWith('harvest:') || item === 'zone:stockpile') return 'floor';
     if (item === 'wall' || item === 'floor' || item === 'door') return item;
     return 'object';
   }
@@ -1685,8 +1692,9 @@ class CultTycoonGame {
     const validCount = preview.filter(pos => pos.valid).length;
     const invalidCount = preview.length - validCount;
     const isHarvest = item.startsWith('harvest:');
-    const unitCost = item.startsWith('room:') || isHarvest ? 0 : this.getBuildItemCost(item);
-    const unitMaterials = item.startsWith('room:') || isHarvest ? 0 : this.getBuildMaterialCost(item);
+    const isZone = item.startsWith('zone:');
+    const unitCost = item.startsWith('room:') || isHarvest || isZone ? 0 : this.getBuildItemCost(item);
+    const unitMaterials = item.startsWith('room:') || isHarvest || isZone ? 0 : this.getBuildMaterialCost(item);
     const totalCost = validCount * unitCost;
     const totalMaterials = validCount * unitMaterials;
     const affordable = totalCost <= this.getSpendableWealth() && totalMaterials <= this.getAvailableMaterials();
@@ -1696,6 +1704,7 @@ class CultTycoonGame {
       item === 'harvest:tree' ? 'Chop Trees' :
       item === 'harvest:rock' ? 'Mine Rock' :
       item === 'harvest:food' ? 'Gather Food' :
+      item === 'zone:stockpile' ? 'Stockpile' :
       item === 'wall' ? 'Wall' :
       item === 'floor' ? 'Floor' :
       item === 'door' ? 'Door' :
@@ -1934,26 +1943,36 @@ class CultTycoonGame {
 
     this.map.setDecor(order.x, order.y, 'none');
 
-    if (order.kind === 'food') {
-      const yieldAmount = 8;
-      this.gameInstanceState.resources.food += yieldAmount;
-      this.showFloatingText(`+${yieldAmount} Food`, order.x, order.y, '#84cc16');
-      this.hud.logEvent(`Gathered ${yieldAmount} Food from (${order.x}, ${order.y}).`, 'success');
-    } else {
-      const yieldAmount = order.kind === 'rock' ? 14 : 10;
-      this.gameInstanceState.resources.materials += yieldAmount;
-      this.showFloatingText(`+${yieldAmount} Materials`, order.x, order.y, '#cbd5e1');
-      this.hud.logEvent(
-        `${order.kind === 'rock' ? 'Mined rock' : 'Chopped tree'}: +${yieldAmount} Materials.`,
-        'success',
-      );
-    }
+    const kind: ItemKind = order.kind === 'food' ? 'food' : order.kind === 'rock' ? 'stone' : 'wood';
+    const yieldAmount = order.kind === 'food' ? 8 : order.kind === 'rock' ? 14 : 10;
+    this.logisticsSystem.addStack(kind, yieldAmount, order.x, order.y);
+    this.showFloatingText(`+${yieldAmount} ${kind}`, order.x, order.y, order.kind === 'food' ? '#84cc16' : '#cbd5e1');
+    this.hud.logEvent(
+      `${order.kind === 'rock' ? 'Mined rock' : order.kind === 'tree' ? 'Chopped tree' : 'Gathered food'}: ${yieldAmount} ${kind} dropped for hauling.`,
+      'success',
+    );
 
     this.sceneMgr.buildTiles();
+    this.refreshLogisticsVisuals();
     this.updateHUD();
   }
 
-  private onJobCompleted(posting: { id: string }, _entity: number): void {
+  private onJobCompleted(posting: { id: string; type?: string; metadata?: Record<string, string | number | boolean> }, entity: number): void {
+    const logisticsResult = this.logisticsSystem.handleJobCompleted(
+      posting as any,
+      entity,
+      this.world,
+      this.gameInstanceState.resources,
+    );
+    if (logisticsResult.handled) {
+      if (logisticsResult.message) this.hud.logEvent(logisticsResult.message, 'success');
+      if (logisticsResult.changed) {
+        this.refreshLogisticsVisuals();
+        this.updateHUD();
+      }
+      return;
+    }
+
     if (posting.id.startsWith('harvest:')) {
       this.completeHarvestOrder(posting.id);
       return;
@@ -2123,6 +2142,18 @@ class CultTycoonGame {
 
     if (item.startsWith('harvest:')) {
       this.designateHarvestArea(startX, startY, endX, endY, item.slice(8) as SerializedHarvestOrder['kind']);
+      return;
+    }
+
+    if (item === 'zone:stockpile') {
+      const cells = this.getBuildSelectionTiles(item, startX, startY, endX, endY)
+        .filter(pos => this.isBuildTileValid(item, pos.x, pos.y))
+        .map(pos => ({ x: pos.x, y: pos.y }));
+      const zone = this.logisticsSystem.designateStockpile(cells);
+      if (zone) {
+        this.hud.logEvent(`Created stockpile zone with ${zone.cells.length} cells.`, 'success');
+        this.refreshLogisticsVisuals();
+      }
       return;
     }
 
@@ -3506,6 +3537,8 @@ class CultTycoonGame {
     // Restore BuildingSystem's internal object/room collections after tile occupancy.
     this.buildingSystem.restoreSnapshot(data.building);
     this.jobSystem.clear();
+    this.logisticsSystem.restoreSnapshot(data.logistics);
+    this.refreshLogisticsVisuals();
 
     this.constructionBlueprints.clear();
     let highestConstructionId = 0;
@@ -3680,6 +3713,7 @@ class CultTycoonGame {
       this.buildingSystem.getSnapshot(),
       Array.from(this.constructionBlueprints.values()),
       Array.from(this.harvestOrders.values()),
+      this.logisticsSystem.getSnapshot(),
     );
 
     const success = this.saveSystem.save(data);
