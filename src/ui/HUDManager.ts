@@ -68,6 +68,8 @@ export interface InspectorData {
   memories?: { label: string; mood: number; remaining: number; stacks?: number }[];
   relationships?: { name: string; opinion: number; familiarity: number; romantic: boolean; family?: string }[];
   mentalBreak?: string;
+  beliefStrength?: number;
+  cultRole?: string;
 }
 
 export interface EventLogEntry {
@@ -122,6 +124,7 @@ export class HUDManager {
   onOpenSchedule?: () => void;
   onOpenRituals?: () => void;
   onOpenWork?: () => void;
+  onOpenIdeology?: () => void;
   onSetWorkRole?: (entityId: number, role: WorkRole) => void;
   onSetWorkPriority?: (entityId: number, job: WorkJobKey, priority: WorkPriority) => void;
   onAutoAssignWorkRoles?: () => void;
@@ -256,6 +259,7 @@ export class HUDManager {
         <button class="hud-top-btn" data-panel="techtree" title="Tech Tree (T)">🔬 Tech Tree</button>
         <button class="hud-top-btn" data-panel="missions" title="Missions (M)">🎯 Missions</button>
         <button class="hud-top-btn" data-panel="work" title="Roles & Work (J)">👥 Work</button>
+        <button class="hud-top-btn" data-panel="ideology" title="Cult Ideology">🕯️ Ideology</button>
         <button class="hud-top-btn" data-panel="schedule" title="Schedule">📅 Schedule</button>
         <button class="hud-top-btn" data-panel="rituals" title="Rituals (R)">🔮 Rituals</button>
       </div>
@@ -274,6 +278,7 @@ export class HUDManager {
           case 'techtree': if (this.onOpenTechTree) this.onOpenTechTree(); else this.toggleTechTreePanel(); break;
           case 'missions': if (this.onOpenMissions) this.onOpenMissions(); else this.toggleMissionPanel(); break;
           case 'work': if (this.onOpenWork) this.onOpenWork(); break;
+          case 'ideology': if (this.onOpenIdeology) this.onOpenIdeology(); break;
           case 'schedule': if (this.onOpenSchedule) this.onOpenSchedule(); else this.toggleSchedulePanel(); break;
           case 'rituals': if (this.onOpenRituals) this.onOpenRituals(); break;
         }
@@ -809,6 +814,8 @@ export class HUDManager {
           <div class="hud-pawn-section">
             <b>Mood</b>
             <div class="hud-inspector-list-row"><span>Current</span><b>${Math.round(data.mood)}/100</b></div>
+            ${data.beliefStrength !== undefined ? `<div class="hud-inspector-list-row"><span>Belief</span><b>${Math.round(data.beliefStrength)}/100</b></div>` : ''}
+            ${data.cultRole ? `<div class="hud-inspector-list-row"><span>Cult role</span><b>${data.cultRole.replaceAll('_',' ')}</b></div>` : ''}
             ${data.mentalBreak ? `<div class="hud-inspector-list-row"><span>Mental break</span><b>${data.mentalBreak.replaceAll('_',' ')}</b></div>` : ''}
           </div>
         ` : ''}
