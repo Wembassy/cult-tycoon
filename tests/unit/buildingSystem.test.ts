@@ -337,3 +337,53 @@ describe('BuildingSystem — Edge Architecture', () => {
     expect(restored.hasDoorEdge(25, 30, 'vertical')).toBe(true);
   });
 });
+
+
+describe('BuildingSystem — Automatic Fine Rooms', () => {
+  function encloseTwoByTwoRoom(bs: BuildingSystem): void {
+    // Fine-grid rectangle from local-world boundary (1,1) to (3,3).
+    for (let x = 10; x < 30; x++) {
+      bs.placeWallEdge(x, 10, 'horizontal');
+      bs.placeWallEdge(x, 30, 'horizontal');
+    }
+    for (let y = 10; y < 30; y++) {
+      bs.placeWallEdge(10, y, 'vertical');
+      bs.placeWallEdge(30, y, 'vertical');
+    }
+  }
+
+  it('detects an enclosed fine-grid room and derives a coarse footprint', () => {
+    const bs = new BuildingSystem(new TileMap(6, 6), 10);
+    encloseTwoByTwoRoom(bs);
+
+    const rooms = bs.getAllRooms();
+
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].source).toBe('automatic');
+    expect(rooms[0].roofed).toBe(true);
+    expect(rooms[0].area).toBeCloseTo(4, 5);
+    expect(rooms[0].constructionCells).toHaveLength(400);
+    expect(rooms[0].tiles.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('treats a door edge as a room boundary', () => {
+    const bs = new BuildingSystem(new TileMap(6, 6), 10);
+    encloseTwoByTwoRoom(bs);
+    expect(bs.placeDoorEdge(20, 30, 'horizontal').success).toBe(true);
+
+    const rooms = bs.getAllRooms();
+
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].roofed).toBe(true);
+  });
+
+  it('removes the automatic room when a wall opens to exterior', () => {
+    const bs = new BuildingSystem(new TileMap(6, 6), 10);
+    encloseTwoByTwoRoom(bs);
+    expect(bs.getAllRooms()).toHaveLength(1);
+
+    bs.demolishEdge(15, 10, 'horizontal');
+
+    expect(bs.getAllRooms()).toHaveLength(0);
+  });
+});
