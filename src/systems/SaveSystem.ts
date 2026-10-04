@@ -16,11 +16,13 @@ import { Inventory } from '../components/Inventory';
 import { Schedule } from '../components/Schedule';
 import { WorkPreferences } from '../components/WorkPreferences';
 import { SocialState } from '../components/SocialState';
+import { BeliefState } from '../components/BeliefState';
 import type { TileMap } from '../world/TileMap';
 import type { BuildingSnapshot } from './BuildingSystem';
 import type { LogisticsSnapshot } from './LogisticsSystem';
 import { ALPHA_SPATIAL_CONFIG } from '../world/Spatial';
 import type { FarmingSnapshot } from './FarmingSystem';
+import type { IdeologySnapshot } from './IdeologySystem';
 
 export interface SaveData {
   version: string;
@@ -35,6 +37,7 @@ export interface SaveData {
   harvestOrders?: SerializedHarvestOrder[];
   logistics?: LogisticsSnapshot;
   farming?: FarmingSnapshot;
+  ideology?: IdeologySnapshot;
   spatial?: {
     constructionSubdivisions: number;
     navigationSubdivisions: number;
@@ -139,6 +142,7 @@ export class SaveSystem {
     harvestOrders: SerializedHarvestOrder[] = [],
     logistics?: LogisticsSnapshot,
     farming?: FarmingSnapshot,
+    ideology?: IdeologySnapshot,
   ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
@@ -176,6 +180,14 @@ export class SaveSystem {
         sleepStartHour: schedule.sleepStartHour,
         sleepDuration: schedule.sleepDuration,
         hours: [...schedule.hours],
+      };
+
+      const beliefState = world.getComponent(entityId, BeliefState);
+      if (beliefState) components.BeliefState = {
+        strength: beliefState.strength,
+        values: { ...beliefState.values },
+        assignedRole: beliefState.assignedRole,
+        conversionProgress: beliefState.conversionProgress,
       };
 
       const socialState = world.getComponent(entityId, SocialState);
@@ -239,6 +251,7 @@ export class SaveSystem {
       harvestOrders: harvestOrders.map(order => ({ ...order })),
       logistics,
       farming,
+      ideology,
       spatial: {
         constructionSubdivisions: ALPHA_SPATIAL_CONFIG.constructionSubdivisions,
         navigationSubdivisions: ALPHA_SPATIAL_CONFIG.navigationSubdivisions,
@@ -427,6 +440,12 @@ export class SaveSystem {
         const schedule = new Schedule(entity);
         Object.assign(schedule, serialized.components.Schedule);
         world.addComponent(entity, schedule);
+      }
+
+      if (serialized.components.BeliefState) {
+        const belief = new BeliefState(entity);
+        Object.assign(belief, serialized.components.BeliefState);
+        world.addComponent(entity, belief);
       }
 
       if (serialized.components.SocialState) {
