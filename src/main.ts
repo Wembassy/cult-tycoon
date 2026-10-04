@@ -463,6 +463,7 @@ class CultTycoonGame {
     // resources. They can be hauled to a stockpile or directly to blueprints.
     this.logisticsSystem.addStack('wood', 25, mapCenterX + 2, mapCenterY);
     this.logisticsSystem.addStack('stone', 25, mapCenterX + 3, mapCenterY);
+    this.logisticsSystem.addStack('food', 18, mapCenterX + 1, mapCenterY + 1);
     this.refreshLogisticsVisuals();
 
     // Set up HUD
@@ -1926,6 +1927,7 @@ class CultTycoonGame {
   }
 
   private refreshLogisticsVisuals(): void {
+    this.gameInstanceState.resources.food = this.logisticsSystem.getEdibleUnitCount();
     this.sceneMgr.setLogisticsVisuals(
       this.logisticsSystem.getStacks(),
       this.logisticsSystem.getStockpiles(),
@@ -2052,6 +2054,7 @@ class CultTycoonGame {
       if (logisticsResult.changed) {
         this.refreshConstructionMaterialRequests();
         this.refreshLogisticsVisuals();
+        this.refreshCookingJobs();
         this.updateHUD();
       }
       return;
@@ -2059,8 +2062,23 @@ class CultTycoonGame {
 
     if (posting.id.startsWith('harvest:')) {
       this.completeHarvestOrder(posting.id);
+      this.refreshCookingJobs();
       return;
     }
+
+    if (posting.id.startsWith('station:') && posting.type === 'cook') {
+      const consumed = this.logisticsSystem.consumeRawFood(2);
+      if (consumed >= 2) {
+        const x = Number(posting.metadata?.stationX ?? posting.targetTile.x);
+        const y = Number(posting.metadata?.stationY ?? posting.targetTile.y);
+        this.logisticsSystem.addStack('meal', 1, x, y);
+        this.hud.logEvent('Cooked a simple meal from 2 raw food.', 'success');
+      }
+      this.refreshLogisticsVisuals();
+      this.refreshCookingJobs();
+      return;
+    }
+
     if (!posting.id.startsWith('construct:')) return;
     const blueprint = this.constructionBlueprints.get(posting.id);
     if (!blueprint) return;
@@ -2671,17 +2689,49 @@ class CultTycoonGame {
       return;
     }
 
-    this.jobSystem.cancelJob(`station:${x}:${y}`);
+    const jobId = `station:${x}:${y}`;
+    this.jobSystem.cancelJob(jobId);
+
+    if (station.type === 'cook') {
+      if (this.logisticsSystem.getRawFoodQuantity() < 2) return;
+      this.jobSystem.postJob({
+        id: jobId,
+        type: 'cook',
+        targetTile,
+        priority: station.priority,
+        duration: objectId === 'cauldron' ? 3.5 : 5,
+        requiredSkill: station.skill,
+        minSkillLevel: 1,
+        metadata: { stationX: x, stationY: y, objectId },
+      });
+      return;
+    }
+
     this.jobSystem.postJob({
-      id: `station:${x}:${y}`,
+      id: jobId,
       type: station.type,
       targetTile,
       priority: station.priority,
       duration: 100000,
       requiredSkill: station.skill,
       minSkillLevel: 1,
+      metadata: { stationX: x, stationY: y, objectId },
     });
     this.hud.logEvent(`Workstation ready: ${objectId.replaceAll('_', ' ')}`, 'success');
+  }
+
+  private refreshCookingJobs(): void {
+    if (this.logisticsSystem.getRawFoodQuantity() < 2) return;
+    const activeIds = new Set([
+      ...this.jobSystem.getPostedJobs().map(job => job.id),
+      ...this.jobSystem.getAssignedJobs().map(job => job.posting.id),
+    ]);
+    for (const obj of this.buildingSystem.getAllObjects()) {
+      if (obj.objectId !== 'cookpot' && obj.objectId !== 'cauldron') continue;
+      const local = this.buildingSystem.toTerrainTile(obj.x, obj.y);
+      const id = `station:${local.x}:${local.y}`;
+      if (!activeIds.has(id)) this.registerWorkstationJob(local.x, local.y, obj.objectId);
+    }
   }
 
   private findAdjacentWorkTile(x: number, y: number): { x: number; y: number } | null {
