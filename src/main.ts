@@ -25,7 +25,7 @@ import { Health } from './components/Health';
 import { Traits } from './components/Traits';
 import { Job } from './components/Job';
 import { Inventory } from './components/Inventory';
-import { Skills } from './components/Skills';
+import { Skills, type SkillKey } from './components/Skills';
 import { Schedule } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
 import { SocialState } from './components/SocialState';
@@ -2827,6 +2827,7 @@ class CultTycoonGame {
 
       this.gameInstanceState.resources.food = Math.max(0, this.gameInstanceState.resources.food - 1);
       this.refreshLogisticsVisuals();
+      this.ideologySystem.recordFoodEvent(this.world, entity, eaten.kind);
       const social = this.world.getComponent(entity, SocialState);
       if (eaten.kind !== 'meal') {
         const needs = this.world.getComponent(entity, Needs);
@@ -2896,7 +2897,7 @@ class CultTycoonGame {
   }
 
   private registerWorkstationJob(x: number, y: number, objectId: string): void {
-    const stationTypes: Record<string, { type: 'cook' | 'research' | 'pray' | 'haul'; skill: keyof Skills; priority: number }> = {
+    const stationTypes: Record<string, { type: 'cook' | 'research' | 'pray' | 'haul'; skill: SkillKey; priority: number }> = {
       cookpot: { type: 'cook', skill: 'cooking', priority: 7 },
       cauldron: { type: 'cook', skill: 'cooking', priority: 8 },
       garden_plot: { type: 'cook', skill: 'cooking', priority: 5 },
