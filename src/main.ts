@@ -64,7 +64,7 @@ import { FogOfWar } from './world/FogOfWar';
 import { GameState as GameInstanceState } from './game/GameState';
 import { DataManager } from './data/DataManager';
 import { HUDManager, ResourceBarData, BuildPanelEntry, BuildCategory, type TimeControlMode } from './ui/HUDManager';
-import { DialogSystem } from './ui/DialogSystem';
+import { DialogSystem, type DialogButton } from './ui/DialogSystem';
 import { StartMenu } from './ui/StartMenu';
 import { WorldStartPanel, type WorldStartSelection } from './ui/WorldStartPanel';
 import { PauseMenu } from './ui/PauseMenu';
@@ -3184,7 +3184,7 @@ class CultTycoonGame {
       }))
       .sort((a, b) => b.social - a.social);
 
-    const buttons = outsider.state === 'visiting'
+    const buttons: DialogButton[] = outsider.state === 'visiting'
       ? recruiters.slice(0, 8).map(recruiter => ({
           label: `${recruiter.name} · Social ${recruiter.social}`,
           style: 'success' as const,
@@ -4567,6 +4567,7 @@ class CultTycoonGame {
         globalSeed: this.worldStartSelection.globalSeed,
         region: { ...this.worldStartSelection.region },
         settlementPoint: { ...this.worldStartSelection.settlementPoint },
+        ideologyFoundation: this.worldStartSelection.ideologyFoundation,
       } : undefined,
     );
 
