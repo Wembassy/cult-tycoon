@@ -164,7 +164,7 @@ export class SocialSystem extends System {
   private isSociallyAvailable(ai: FollowerAI): boolean {
     if (ai.state === 'stuck' || ai.state === 'working') return false;
     if (ai.state === 'needs') {
-      return ai.needTarget === 'fun' || ai.needTarget === 'social' || ai.needTarget === 'hunger';
+      return ai.needTarget === 'fun' || ai.needTarget === 'hunger';
     }
     return ai.state === 'idle' || ai.state === 'done';
   }
