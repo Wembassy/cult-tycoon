@@ -50,6 +50,7 @@ import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
 import { SocialSystem } from './systems/SocialSystem';
 import { IdeologySystem } from './systems/IdeologySystem';
+import type { CultRoleKey, IdeologyFoundation } from './game/Ideology';
 import { MissionSystem } from './systems/MissionSystem';
 import { PrestigeSystem } from './systems/PrestigeSystem';
 import { HeatSystem } from './systems/HeatSystem';
@@ -450,6 +451,7 @@ class CultTycoonGame {
     this.hud.onOpenSchedule = () => this.openSchedulePanel();
     this.hud.onOpenRituals = () => this.showRitualMenu();
     this.hud.onOpenWork = () => this.openWorkPanel();
+    this.hud.onOpenIdeology = () => this.openIdeologyDialog();
     this.hud.onSetWorkRole = (entityId, role) => this.setWorkRole(entityId, role);
     this.hud.onSetWorkPriority = (entityId, job, priority) => this.setWorkPriority(entityId, job, priority);
     this.hud.onAutoAssignWorkRoles = () => this.autoAssignWorkRoles();
@@ -1305,6 +1307,95 @@ class CultTycoonGame {
     }
     this.hud.logEvent('Roles auto-assigned from follower skills.', 'success');
     this.openWorkPanel();
+  }
+
+  private openIdeologyDialog(): void {
+    const ideology = this.ideologySystem.getIdeology();
+    const roleLabel = (role: CultRoleKey): string => {
+      const entityId = ideology.roles[role];
+      return entityId === null ? 'Unassigned' : (this.followerNames.get(entityId) ?? `Follower ${entityId}`);
+    };
+
+    const precepts = Object.values(ideology.precepts)
+      .map(precept => `<li><b>${precept.label}</b> — ${precept.stance}</li>`)
+      .join('');
+
+    this.dialog.show({
+      title: `Ideology · ${ideology.name}`,
+      icon: '🕯️',
+      body: [
+        `<p><b>Core beliefs:</b> ${ideology.coreBeliefs.join(' · ')}</p>`,
+        '<p><b>Formal roles</b></p>',
+        `<p>Leader: <b>${roleLabel('leader')}</b><br>Evangelist: <b>${roleLabel('evangelist')}</b><br>Ritual Guide: <b>${roleLabel('ritual_guide')}</b><br>Enforcer: <b>${roleLabel('enforcer')}</b></p>`,
+        `<details><summary>Doctrine precepts</summary><ul>${precepts}</ul></details>`,
+        '<p style="color:#94a3b8;font-size:12px;">Switching foundation changes doctrine behavior but preserves current role assignments.</p>',
+      ].join(''),
+      buttons: [
+        {
+          label: 'Communal Path',
+          onClick: () => this.changeIdeologyFoundation('communal_devotion'),
+        },
+        {
+          label: 'Ascetic Order',
+          onClick: () => this.changeIdeologyFoundation('ascetic_order'),
+        },
+        {
+          label: 'Assign Leader',
+          onClick: () => this.openCultRoleAssignment('leader'),
+        },
+        {
+          label: 'Assign Evangelist',
+          onClick: () => this.openCultRoleAssignment('evangelist'),
+        },
+        {
+          label: 'Assign Ritual Guide',
+          onClick: () => this.openCultRoleAssignment('ritual_guide'),
+        },
+        {
+          label: 'Assign Enforcer',
+          onClick: () => this.openCultRoleAssignment('enforcer'),
+        },
+        { label: 'Close' },
+      ],
+    });
+  }
+
+  private changeIdeologyFoundation(foundation: IdeologyFoundation): void {
+    this.ideologySystem.setFoundation(foundation);
+    const ideology = this.ideologySystem.getIdeology();
+    this.hud.logEvent(`Cult ideology changed to ${ideology.name}.`, 'warning');
+    this.openIdeologyDialog();
+  }
+
+  private openCultRoleAssignment(role: CultRoleKey): void {
+    const followers = this.world.query([FollowerAI, BeliefState]);
+    const label = role.replaceAll('_', ' ');
+    const buttons = followers.map(entityId => ({
+      label: this.followerNames.get(entityId) ?? `Follower ${entityId}`,
+      onClick: () => {
+        this.ideologySystem.assignRole(role, entityId, this.world);
+        this.hud.logEvent(
+          `${this.followerNames.get(entityId) ?? 'Follower'} assigned cult role: ${label}.`,
+          'success',
+        );
+        this.openIdeologyDialog();
+      },
+    }));
+    buttons.push({
+      label: 'Unassign',
+      onClick: () => {
+        this.ideologySystem.assignRole(role, null, this.world);
+        this.hud.logEvent(`Cult role unassigned: ${label}.`, 'info');
+        this.openIdeologyDialog();
+      },
+    });
+
+    this.dialog.show({
+      title: `Assign ${label}`,
+      icon: '🕯️',
+      body: '<p>Select a follower for this formal cult role.</p>',
+      buttons,
+    });
   }
 
   private openMissionPanel(): void {
