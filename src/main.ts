@@ -1860,7 +1860,6 @@ class CultTycoonGame {
     const cost = this.getBuildItemCost(item);
     const materialCost = this.getBuildMaterialCost(item);
     const totalCost = cost * validTiles.length;
-    const totalMaterials = materialCost * validTiles.length;
     if (totalCost > this.getSpendableWealth()) {
       this.hud.logEvent(
         `Not enough available wealth. Need ${totalCost}g, have ${Math.floor(this.getSpendableWealth())}g after reservations.`,
