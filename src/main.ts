@@ -3867,6 +3867,7 @@ class CultTycoonGame {
     this.heatSystem.reset();
     this.socialSystem = new SocialSystem();
     this.ideologySystem = new IdeologySystem();
+    this.ideologySystem.setFoundation(selection.ideologyFoundation ?? 'communal_devotion');
     this.farmingSystem.setTemperatureC(selection.region.temperatureC);
 
     this.gameInstanceState = new GameInstanceState({
