@@ -1243,36 +1243,68 @@ export class SceneManager {
   showBuildPreview(tiles: BuildPreviewTile[], kind: ConstructionVisualKind | 'room'): void {
     this.clearBuildPreview();
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+    const bs = this.buildingSystem;
+    const cellSize = bs?.cellSize ?? 1;
 
-    for (const tile of tiles) {
-      const mapTile = this.map.getTile(tile.x, tile.y);
+    for (const pos of tiles) {
+      const constructionSpace = pos.space === 'construction' ||
+        (pos.space === undefined && kind !== 'room');
+      const terrainCoord = constructionSpace && bs
+        ? bs.toTerrainTile(pos.x, pos.y)
+        : { x: pos.x, y: pos.y };
+      const mapTile = this.map.getTile(terrainCoord.x, terrainCoord.y);
       if (!mapTile) continue;
+
       const terrainHeight = TERRAIN_HEIGHT[mapTile.terrain] ?? 0.3;
-      const color = tile.valid ? 0x4ade80 : 0xef4444;
+      const color = pos.valid ? 0x4ade80 : 0xef4444;
+      const orientation = pos.orientation ?? 'horizontal';
 
       let geometry: THREE.BufferGeometry;
+      let worldX: number;
+      let worldZ: number;
       let y = terrainHeight + 0.04;
-      if (kind === 'wall') {
-        geometry = new THREE.BoxGeometry(0.92, 1.25, 0.92);
-        y = terrainHeight + 0.625;
-      } else if (kind === 'door') {
-        geometry = new THREE.BoxGeometry(0.78, 1.0, 0.18);
-        y = terrainHeight + 0.5;
-      } else if (kind === 'object') {
-        geometry = new THREE.BoxGeometry(0.68, 0.55, 0.68);
-        y = terrainHeight + 0.275;
+
+      if (constructionSpace) {
+        if (kind === 'wall') {
+          const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.35));
+          geometry = orientation === 'horizontal'
+            ? new THREE.BoxGeometry(cellSize, 1.25, thickness)
+            : new THREE.BoxGeometry(thickness, 1.25, cellSize);
+          worldX = (orientation === 'horizontal' ? pos.x + 0.5 : pos.x) * cellSize + offset.x;
+          worldZ = (orientation === 'horizontal' ? pos.y : pos.y + 0.5) * cellSize + offset.z;
+          y = terrainHeight + 0.625;
+        } else if (kind === 'door') {
+          const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.42));
+          geometry = orientation === 'horizontal'
+            ? new THREE.BoxGeometry(cellSize, 1.0, thickness)
+            : new THREE.BoxGeometry(thickness, 1.0, cellSize);
+          worldX = (orientation === 'horizontal' ? pos.x + 0.5 : pos.x) * cellSize + offset.x;
+          worldZ = (orientation === 'horizontal' ? pos.y : pos.y + 0.5) * cellSize + offset.z;
+          y = terrainHeight + 0.5;
+        } else if (kind === 'object') {
+          geometry = new THREE.BoxGeometry(Math.max(0.2, cellSize * 2), 0.55, Math.max(0.2, cellSize * 2));
+          worldX = (pos.x + 0.5) * cellSize + offset.x;
+          worldZ = (pos.y + 0.5) * cellSize + offset.z;
+          y = terrainHeight + 0.275;
+        } else {
+          geometry = new THREE.BoxGeometry(cellSize * 0.96, 0.06, cellSize * 0.96);
+          worldX = (pos.x + 0.5) * cellSize + offset.x;
+          worldZ = (pos.y + 0.5) * cellSize + offset.z;
+        }
       } else {
         geometry = new THREE.BoxGeometry(0.92, 0.08, 0.92);
+        worldX = pos.x + offset.x + 0.5;
+        worldZ = pos.y + offset.z + 0.5;
       }
 
       const material = new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: tile.valid ? 0.42 : 0.5,
+        opacity: pos.valid ? 0.42 : 0.5,
         depthWrite: false,
       });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(tile.x + offset.x + 0.5, y, tile.y + offset.z + 0.5);
+      mesh.position.set(worldX, y, worldZ);
       this.buildPreviewGroup.add(mesh);
     }
   }
@@ -1280,25 +1312,55 @@ export class SceneManager {
   setConstructionBlueprints(blueprints: ConstructionBlueprintVisual[]): void {
     this.clearVisualGroup(this.blueprintGroup);
     const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+    const bs = this.buildingSystem;
+    const cellSize = bs?.cellSize ?? 1;
 
     for (const blueprint of blueprints) {
-      const mapTile = this.map.getTile(blueprint.x, blueprint.y);
+      const constructionSpace = blueprint.space === 'construction';
+      const terrainCoord = constructionSpace && bs
+        ? bs.toTerrainTile(blueprint.x, blueprint.y)
+        : { x: blueprint.x, y: blueprint.y };
+      const mapTile = this.map.getTile(terrainCoord.x, terrainCoord.y);
       if (!mapTile) continue;
       const terrainHeight = TERRAIN_HEIGHT[mapTile.terrain] ?? 0.3;
+      const orientation = blueprint.orientation ?? 'horizontal';
 
       let geometry: THREE.BufferGeometry;
+      let worldX: number;
+      let worldZ: number;
       let y = terrainHeight + 0.04;
-      if (blueprint.kind === 'wall') {
-        geometry = new THREE.BoxGeometry(0.88, 1.2, 0.88);
-        y = terrainHeight + 0.6;
-      } else if (blueprint.kind === 'door') {
-        geometry = new THREE.BoxGeometry(0.76, 0.95, 0.16);
-        y = terrainHeight + 0.475;
-      } else if (blueprint.kind === 'object') {
-        geometry = new THREE.BoxGeometry(0.62, 0.48, 0.62);
-        y = terrainHeight + 0.24;
+
+      if (constructionSpace) {
+        if (blueprint.kind === 'wall') {
+          const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.35));
+          geometry = orientation === 'horizontal'
+            ? new THREE.BoxGeometry(cellSize, 1.2, thickness)
+            : new THREE.BoxGeometry(thickness, 1.2, cellSize);
+          worldX = (orientation === 'horizontal' ? blueprint.x + 0.5 : blueprint.x) * cellSize + offset.x;
+          worldZ = (orientation === 'horizontal' ? blueprint.y : blueprint.y + 0.5) * cellSize + offset.z;
+          y = terrainHeight + 0.6;
+        } else if (blueprint.kind === 'door') {
+          const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.42));
+          geometry = orientation === 'horizontal'
+            ? new THREE.BoxGeometry(cellSize, 0.95, thickness)
+            : new THREE.BoxGeometry(thickness, 0.95, cellSize);
+          worldX = (orientation === 'horizontal' ? blueprint.x + 0.5 : blueprint.x) * cellSize + offset.x;
+          worldZ = (orientation === 'horizontal' ? blueprint.y : blueprint.y + 0.5) * cellSize + offset.z;
+          y = terrainHeight + 0.475;
+        } else if (blueprint.kind === 'object') {
+          geometry = new THREE.BoxGeometry(Math.max(0.2, cellSize * 2), 0.48, Math.max(0.2, cellSize * 2));
+          worldX = (blueprint.x + 0.5) * cellSize + offset.x;
+          worldZ = (blueprint.y + 0.5) * cellSize + offset.z;
+          y = terrainHeight + 0.24;
+        } else {
+          geometry = new THREE.BoxGeometry(cellSize * 0.96, 0.05, cellSize * 0.96);
+          worldX = (blueprint.x + 0.5) * cellSize + offset.x;
+          worldZ = (blueprint.y + 0.5) * cellSize + offset.z;
+        }
       } else {
         geometry = new THREE.BoxGeometry(0.9, 0.06, 0.9);
+        worldX = blueprint.x + offset.x + 0.5;
+        worldZ = blueprint.y + offset.z + 0.5;
       }
 
       const material = new THREE.MeshBasicMaterial({
@@ -1309,7 +1371,7 @@ export class SceneManager {
         depthWrite: false,
       });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(blueprint.x + offset.x + 0.5, y, blueprint.y + offset.z + 0.5);
+      mesh.position.set(worldX, y, worldZ);
       mesh.rotation.y = blueprint.rotation ?? 0;
       mesh.userData.blueprintId = blueprint.id;
       this.blueprintGroup.add(mesh);
