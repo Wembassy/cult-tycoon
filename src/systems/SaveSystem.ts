@@ -55,7 +55,11 @@ export interface SerializedConstructionBlueprint {
   objectId?: string;
   rotation?: number;
   cost: number;
+  /** Legacy aggregate material cost retained for older Alpha saves. */
   materialCost?: number;
+  materialKind?: 'wood' | 'stone';
+  requiredMaterials?: number;
+  deliveredMaterials?: number;
 }
 
 export interface SerializedWorld {
