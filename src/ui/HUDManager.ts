@@ -111,8 +111,8 @@ export class HUDManager {
   /** Callbacks for panel actions. */
   onTechTreeUnlock?: (techId: string) => void;
   onSendMission?: (templateId: string, cultistIds: number[]) => void;
-  onAssignShift?: (entityId: number, shift: 'morning' | 'afternoon' | 'night') => void;
-  onAutoAssignShifts?: () => void;
+  onSetScheduleHour?: (entityId: number, hour: number, activity: import('../components/Schedule').ScheduleActivity) => void;
+  onResetSchedules?: () => void;
   onOpenTechTree?: () => void;
   onOpenMissions?: () => void;
   onOpenSchedule?: () => void;
@@ -193,8 +193,8 @@ export class HUDManager {
     this.missionPanel.mount();
 
     this.schedulePanel = new SchedulePanel({
-      onAssignShift: (entityId: number, shift: 'morning' | 'afternoon' | 'night') => this.onAssignShift?.(entityId, shift),
-      onAutoAssign: () => this.onAutoAssignShifts?.(),
+      onSetHour: (entityId, hour, activity) => this.onSetScheduleHour?.(entityId, hour, activity),
+      onResetAll: () => this.onResetSchedules?.(),
       onClose: () => this.hideSchedulePanel(),
     });
     this.schedulePanel.mount();
