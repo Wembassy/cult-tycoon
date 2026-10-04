@@ -5,11 +5,12 @@
 
 import type { World } from '../ecs/World';
 import { Job, JobType } from '../components/Job';
-import { Skills } from '../components/Skills';
+import { Skills, type SkillKey } from '../components/Skills';
 import { FollowerAI } from '../components/FollowerAI';
 import { Transform } from '../components/Transform';
 import { Traits } from '../components/Traits';
 import { WorkPreferences } from '../components/WorkPreferences';
+import { Needs } from '../components/Needs';
 
 export interface JobPosting {
   id: string;
@@ -158,6 +159,20 @@ export class JobSystem {
     return true;
   }
 
+  private skillForJob(type: JobType): SkillKey | null {
+    switch (type) {
+      case 'cook': return 'cooking';
+      case 'research': return 'research';
+      case 'pray': return 'faith';
+      case 'build': return 'construction';
+      case 'harvest': return 'construction';
+      case 'grow': return 'growing';
+      case 'clean': return 'social';
+      case 'haul': return 'construction';
+      default: return null;
+    }
+  }
+
   private checkSkill(posting: JobPosting, skills: Skills): boolean {
     if (!posting.requiredSkill) return true;
     const level = skills[posting.requiredSkill];
@@ -186,11 +201,25 @@ export class JobSystem {
             ? traits.getWorkSpeedMult(job.type)
             : 1.0;
           const skills = world.getComponent(entity, Skills);
-          const skillMult = job.type === 'build'
-            ? 1 + Math.max(0, (skills?.construction ?? 1) - 1) * 0.06
+          const skillKey = this.skillForJob(job.type);
+          const skillLevel = skillKey && skills ? skills.getLevel(skillKey) : 1;
+          const skillMult = skillKey
+            ? 1 + Math.max(0, skillLevel - 1) * 0.04
             : 1;
 
           job.workProgress += dt * traitMult * skillMult;
+
+          if (skills && skillKey) {
+            skills.addExperience(skillKey, dt * 1.8);
+            const passion = skills.getPassion(skillKey);
+            if (passion !== 'none') {
+              const needs = world.getComponent(entity, Needs);
+              if (needs) {
+                const recreationGain = passion === 'major' ? 0.09 : 0.045;
+                needs.fun = Math.min(100, needs.fun + recreationGain * dt);
+              }
+            }
+          }
           if (job.workProgress >= assignment.posting.duration) {
             job.type = 'idle';
             job.jobId = null;
@@ -225,24 +254,45 @@ export class JobSystem {
     const ai = world.getComponent(entity, FollowerAI);
     const skills = world.getComponent(entity, Skills);
     if (!current || !ai || !skills) return false;
-    if (current.jobId || (current.type !== 'idle' && current.type !== 'wander')) return false;
 
     const posting = this.queue[idx];
     if (!this.checkSkill(posting, skills)) return false;
 
-    this.queue.splice(idx, 1);
-    this.assigned.set(posting.id, { posting, entity, assignedAt: this.tickCount });
+    // Direct player orders may safely preempt autonomous finite work by putting
+    // that posting back in the queue. Hauling is excluded because LogisticsSystem
+    // owns stack/destination reservations that require an explicit cancellation path.
+    if (current.jobId) {
+      const assigned = this.assigned.get(current.jobId);
+      if (!assigned || assigned.entity !== entity) return false;
+      if (assigned.posting.type === 'haul') return false;
 
-    current.jobId = posting.id;
-    current.type = posting.type;
-    current.targetTile = posting.targetTile;
+      this.assigned.delete(current.jobId);
+      if (!this.queue.some(job => job.id === assigned.posting.id)) {
+        this.queue.push(assigned.posting);
+      }
+    } else if (current.type !== 'idle' && current.type !== 'wander') {
+      return false;
+    }
+
+    const targetIndex = this.queue.findIndex(job => job.id === jobId);
+    if (targetIndex < 0) return false;
+    const target = this.queue.splice(targetIndex, 1)[0];
+    this.assigned.set(target.id, { posting: target, entity, assignedAt: this.tickCount });
+
+    current.jobId = target.id;
+    current.type = target.type;
+    current.targetTile = target.targetTile;
     current.workProgress = 0;
-    current.priority = posting.priority;
+    current.priority = target.priority;
 
     ai.path = [];
     ai.pathIndex = 0;
+    ai.needTarget = null;
+    ai.needTargetTile = null;
     ai.state = 'moving';
     ai.stateTimer = 0;
+
+    this.queue.sort((a, b) => b.priority - a.priority);
     return true;
   }
 
