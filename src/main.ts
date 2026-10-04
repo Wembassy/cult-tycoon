@@ -1246,6 +1246,16 @@ class CultTycoonGame {
           grow: skills.growing,
         },
         priorities: { ...prefs.priorities },
+        passions: {
+          cook: skills.passions.cooking,
+          research: skills.passions.research,
+          pray: skills.passions.faith,
+          build: skills.passions.construction,
+          clean: skills.passions.social,
+          haul: skills.passions.construction,
+          harvest: skills.passions.construction,
+          grow: skills.passions.growing,
+        },
       };
     });
     this.hud.showWorkPanel({ cultists });
@@ -2506,21 +2516,45 @@ class CultTycoonGame {
     return null;
   }
 
-  private tryDirectConstructionOrder(event: MouseEvent): boolean {
+  private tryDirectWorkOrder(event: MouseEvent, tileX: number, tileY: number): boolean {
     if (!event.shiftKey || this.selectedEntity === null) return false;
-    const blueprint = this.findConstructionBlueprintAtScreen(event);
-    if (!blueprint) return false;
 
-    const assigned = this.jobSystem.forceAssignQueuedJob(blueprint.id, this.selectedEntity, this.world);
     const name = this.followerNames.get(this.selectedEntity) ?? 'Follower';
-    if (assigned) {
-      this.hud.logEvent(`${name} ordered to prioritize this construction.`, 'success');
-    } else {
+
+    // Construction uses fine-grid picking, so resolve it explicitly first.
+    const blueprint = this.findConstructionBlueprintAtScreen(event);
+    if (blueprint) {
+      const assigned = this.jobSystem.forceAssignQueuedJob(blueprint.id, this.selectedEntity, this.world);
       this.hud.logEvent(
-        `${name} cannot take that construction order yet (finish the current finite job first).`,
-        'warning',
+        assigned
+          ? `${name} directly ordered to prioritize this construction.`
+          : `${name} cannot take that construction order right now.`,
+        assigned ? 'success' : 'warning',
       );
+      return true;
     }
+
+    // Other finite work is targeted in Local World Space. Choose the closest
+    // queued posting near the clicked tile; hauling is deliberately excluded
+    // because LogisticsSystem owns its source/destination reservations.
+    const candidate = this.jobSystem.getPostedJobs()
+      .filter(job => job.type !== 'haul')
+      .map(job => ({
+        job,
+        distance: Math.abs(job.targetTile.x - tileX) + Math.abs(job.targetTile.y - tileY),
+      }))
+      .filter(entry => entry.distance <= 1.5)
+      .sort((a, b) => a.distance - b.distance || b.job.priority - a.job.priority)[0]?.job;
+
+    if (!candidate) return false;
+
+    const assigned = this.jobSystem.forceAssignQueuedJob(candidate.id, this.selectedEntity, this.world);
+    this.hud.logEvent(
+      assigned
+        ? `${name} directly ordered to ${candidate.type} here.`
+        : `${name} cannot take that direct order right now.`,
+      assigned ? 'success' : 'warning',
+    );
     return true;
   }
 
@@ -2528,7 +2562,7 @@ class CultTycoonGame {
     const tile = this.map.getTile(x, y);
     if (!tile) return;
 
-    if (event && this.input.getMode() === 'select' && this.tryDirectConstructionOrder(event)) {
+    if (event && this.input.getMode() === 'select' && this.tryDirectWorkOrder(event, x, y)) {
       return;
     }
 
@@ -3877,6 +3911,18 @@ class CultTycoonGame {
     for (const entityId of this.world.query([Skills])) {
       const skills = this.world.getComponent(entityId, Skills)!;
       if (!Number.isFinite(skills.growing)) skills.growing = Math.max(1, skills.construction ?? 1);
+      skills.xp ??= {
+        cooking: 0, research: 0, construction: 0, growing: 0,
+        faith: 0, combat: 0, social: 0,
+      };
+      skills.passions ??= {
+        cooking: 'none', research: 'none', construction: 'none', growing: 'none',
+        faith: 'none', combat: 'none', social: 'none',
+      };
+      for (const skill of ['cooking','research','construction','growing','faith','combat','social'] as const) {
+        if (!Number.isFinite(skills.xp[skill])) skills.xp[skill] = 0;
+        if (!skills.passions[skill]) skills.passions[skill] = 'none';
+      }
     }
     for (const entityId of this.world.query([Needs])) {
       const needs = this.world.getComponent(entityId, Needs)!;
