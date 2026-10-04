@@ -178,7 +178,7 @@ export class BuildingSystem {
     return { success: true, message: 'Edge demolished', tilesAffected: [{ x, y }], cost: 1 };
   }
 
-  private hasBlockingElementAt(x: number, y: number): boolean {
+  hasBlockingElementAt(x: number, y: number): boolean {
     const key = `${x},${y}`;
     return this._wallTiles.has(key) ||
       this._doorTiles.has(key) ||
