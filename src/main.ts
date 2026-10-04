@@ -3942,6 +3942,10 @@ class CultTycoonGame {
     this.investigatorSystem.reset();
     this.combatSystem.reset();
     this.heatSystem.reset();
+    this.eventSystem.reset();
+    this.ritualSystem.reset();
+    this.techTree.reset();
+    this.schedulingSystem.setHour(6);
     this.socialSystem = new SocialSystem();
     this.ideologySystem = new IdeologySystem();
     this.ideologySystem.setFoundation(selection.ideologyFoundation ?? 'communal_devotion');
