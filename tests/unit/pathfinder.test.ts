@@ -69,8 +69,20 @@ describe('Pathfinder — Obstacles', () => {
     expect(result.success).toBe(true);
     expect(result.length).toBeGreaterThan(5);
     // Path should go through the gap
-    const passesGap = result.path.some(p => p.x === 5 && p.y === 8);
+    const passesGap = result.path.some(p => Math.abs(p.x - 5) <= 0.6 && Math.abs(p.y - 8) <= 0.6);
     expect(passesGap).toBe(true);
+  });
+
+  it('should respect a fine construction wall edge without blocking the whole terrain tile', () => {
+    // A horizontal wall segment across the middle of local tile (2,2).
+    navigation.addConstructionEdge(25, 25, 'horizontal', 10, 'fine-wall');
+    pf.invalidateCache();
+
+    const result = pf.findPath(2, 2, 2, 3);
+    expect(result.success).toBe(true);
+    // The pawn must route around the 0.1-unit segment rather than cross it directly.
+    expect(result.path.length).toBeGreaterThan(2);
+    expect(result.path.some(p => Math.abs(p.x - 2) > 0.05)).toBe(true);
   });
 
   it('should not path through water', () => {
@@ -95,7 +107,7 @@ describe('Pathfinder — Obstacles', () => {
 
     const result = pf.findPath(0, 0, 5, 5);
     expect(result.success).toBe(true);
-    const passesGap = result.path.some(p => p.x === 2 && p.y === 3);
+    const passesGap = result.path.some(p => Math.abs(p.x - 2) <= 0.6 && Math.abs(p.y - 3) <= 0.6);
     expect(passesGap).toBe(true);
   });
 });
