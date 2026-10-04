@@ -67,6 +67,7 @@ type GameState = 'menu' | 'loading' | 'playing' | 'paused';
 type ConstructionKind = 'wall' | 'floor' | 'door' | 'object';
 
 type ConstructionBlueprint = SerializedConstructionBlueprint;
+type BuildSelectionCoord = { x: number; y: number; orientation?: ConstructionOrientation; space?: 'local' | 'construction' };
 
 
 class CultTycoonGame {
@@ -1482,16 +1483,35 @@ class CultTycoonGame {
     return this.gameInstanceState.resources.materials - this.getReservedConstructionMaterials();
   }
 
-  private getConstructionBlueprintAt(x: number, y: number): ConstructionBlueprint | null {
+  private getConstructionBlueprintAt(
+    x: number,
+    y: number,
+    orientation?: ConstructionOrientation,
+  ): ConstructionBlueprint | null {
     for (const blueprint of this.constructionBlueprints.values()) {
-      if (blueprint.x === x && blueprint.y === y) return blueprint;
+      if (blueprint.x !== x || blueprint.y !== y) continue;
+      if (orientation !== undefined && blueprint.orientation !== orientation) continue;
+      return blueprint;
     }
     return null;
   }
 
-  private hasPlannedWall(x: number, y: number): boolean {
-    const planned = this.getConstructionBlueprintAt(x, y);
+  private hasPlannedWall(x: number, y: number, orientation: ConstructionOrientation): boolean {
+    const planned = this.getConstructionBlueprintAt(x, y, orientation);
     return planned?.kind === 'wall';
+  }
+
+  private findDoorEdgeAtCell(x: number, y: number): BuildSelectionCoord | null {
+    const candidates: BuildSelectionCoord[] = [
+      { x, y, orientation: 'horizontal', space: 'construction' },
+      { x, y: y + 1, orientation: 'horizontal', space: 'construction' },
+      { x, y, orientation: 'vertical', space: 'construction' },
+      { x: x + 1, y, orientation: 'vertical', space: 'construction' },
+    ];
+    return candidates.find(edge =>
+      this.buildingSystem.hasWallEdge(edge.x, edge.y, edge.orientation!) ||
+      this.hasPlannedWall(edge.x, edge.y, edge.orientation!)
+    ) ?? null;
   }
 
   private getBuildSelectionTiles(
@@ -1500,7 +1520,61 @@ class CultTycoonGame {
     startY: number,
     endX: number,
     endY: number,
-  ): { x: number; y: number }[] {
+  ): BuildSelectionCoord[] {
+    if (item === 'wall') {
+      const horizontal = Math.abs(endX - startX) >= Math.abs(endY - startY);
+      const orientation: ConstructionOrientation = horizontal ? 'horizontal' : 'vertical';
+      const cells: BuildSelectionCoord[] = [];
+
+      if (horizontal) {
+        const step = endX >= startX ? 1 : -1;
+        for (let x = startX; ; x += step) {
+          cells.push({ x, y: startY, orientation, space: 'construction' });
+          if (x === endX) break;
+        }
+      } else {
+        const step = endY >= startY ? 1 : -1;
+        for (let y = startY; ; y += step) {
+          cells.push({ x: startX, y, orientation, space: 'construction' });
+          if (y === endY) break;
+        }
+      }
+      return cells;
+    }
+
+    if (item === 'door') {
+      const edge = this.findDoorEdgeAtCell(endX, endY);
+      return edge ? [edge] : [{ x: endX, y: endY, orientation: 'horizontal', space: 'construction' }];
+    }
+
+    if (item === 'floor') {
+      const minX = Math.min(startX, endX);
+      const maxX = Math.max(startX, endX);
+      const minY = Math.min(startY, endY);
+      const maxY = Math.max(startY, endY);
+      const cells: BuildSelectionCoord[] = [];
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          cells.push({ x, y, space: 'construction' });
+        }
+      }
+      return cells;
+    }
+
+    if (item.startsWith('room:') || item.startsWith('harvest:')) {
+      const minX = Math.min(startX, endX);
+      const maxX = Math.max(startX, endX);
+      const minY = Math.min(startY, endY);
+      const maxY = Math.max(startY, endY);
+      const tiles: BuildSelectionCoord[] = [];
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) tiles.push({ x, y, space: 'local' });
+      }
+      return tiles;
+    }
+
+    return [{ x: endX, y: endY, space: 'construction' }];
+  }[] {
     if (item === 'wall') {
       const horizontal = Math.abs(endX - startX) >= Math.abs(endY - startY);
       const tiles: { x: number; y: number }[] = [];
@@ -1535,8 +1609,16 @@ class CultTycoonGame {
     return [{ x: endX, y: endY }];
   }
 
-  private isBuildTileValid(item: string, x: number, y: number): boolean {
-    const tile = this.map.getTile(x, y);
+  private isBuildTileValid(
+    item: string,
+    x: number,
+    y: number,
+    orientation?: ConstructionOrientation,
+  ): boolean {
+    const localTool = item.startsWith('room:') || item.startsWith('harvest:');
+    const tile = localTool
+      ? this.map.getTile(x, y)
+      : this.buildingSystem.getTerrainTileForBuild(x, y);
     if (!tile) return false;
 
     if (item === 'room:clear') return tile.roomId !== null;
@@ -1550,25 +1632,26 @@ class CultTycoonGame {
       return false;
     }
 
-    if (this.getConstructionBlueprintAt(x, y)) return false;
+    if (this.getConstructionBlueprintAt(x, y, orientation)) return false;
+    if (!tile.buildable) return false;
 
-    if (item === 'floor') {
-      return tile.buildable && !tile.occupied && !this.buildingSystem.floorTiles.has(`${x},${y}`);
+    if (item === 'wall') {
+      if (!orientation) return false;
+      return !this.buildingSystem.hasWallEdge(x, y, orientation) &&
+        !this.buildingSystem.hasDoorEdge(x, y, orientation);
     }
 
     if (item === 'door') {
-      if (!tile.buildable || tile.occupied) return false;
-      const neighbors = [
-        { x: x + 1, y }, { x: x - 1, y },
-        { x, y: y + 1 }, { x, y: y - 1 },
-      ];
-      return neighbors.some(n =>
-        this.buildingSystem.wallTiles.has(`${n.x},${n.y}`) ||
-        this.hasPlannedWall(n.x, n.y),
-      );
+      if (!orientation) return false;
+      return this.buildingSystem.hasWallEdge(x, y, orientation) ||
+        this.hasPlannedWall(x, y, orientation);
     }
 
-    return tile.buildable && !tile.occupied;
+    if (item === 'floor') {
+      return !this.buildingSystem.floorTiles.has(`${x},${y}`);
+    }
+
+    return !this.buildingSystem.hasBlockingElementAt(x, y);
   }
 
   private getPreviewKind(item: string): ConstructionVisualKind | 'room' {
@@ -1587,13 +1670,13 @@ class CultTycoonGame {
 
     const item = this.selectedBuildItem;
     const selected = this.getBuildSelectionTiles(item, startX, startY, endX, endY);
-    const preview: BuildPreviewTile[] = selected.map(tile => ({
-      ...tile,
-      valid: this.isBuildTileValid(item, tile.x, tile.y),
+    const preview: BuildPreviewTile[] = selected.map(pos => ({
+      ...pos,
+      valid: this.isBuildTileValid(item, pos.x, pos.y, pos.orientation),
     }));
     this.sceneMgr.showBuildPreview(preview, this.getPreviewKind(item));
 
-    const validCount = preview.filter(tile => tile.valid).length;
+    const validCount = preview.filter(pos => pos.valid).length;
     const invalidCount = preview.length - validCount;
     const isHarvest = item.startsWith('harvest:');
     const unitCost = item.startsWith('room:') || isHarvest ? 0 : this.getBuildItemCost(item);
@@ -1612,7 +1695,8 @@ class CultTycoonGame {
       item === 'door' ? 'Door' :
       DataManager.getObject(item)?.name ?? item;
 
-    const parts = [label, `${validCount} tile${validCount === 1 ? '' : 's'}`];
+    const noun = item === 'wall' || item === 'door' ? 'segment' : 'cell';
+    const parts = [label, `${validCount} ${noun}${validCount === 1 ? '' : 's'}`];
     if (unitCost > 0) parts.push(`${totalCost}g reserved`);
     if (unitMaterials > 0) parts.push(`${totalMaterials} Materials reserved`);
     if (invalidCount > 0) parts.push(`${invalidCount} blocked`);
@@ -1632,6 +1716,8 @@ class CultTycoonGame {
         kind: blueprint.kind,
         x: blueprint.x,
         y: blueprint.y,
+        orientation: blueprint.orientation,
+        space: blueprint.space,
         rotation: blueprint.rotation,
       })),
     );
