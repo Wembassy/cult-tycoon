@@ -4,6 +4,7 @@
  */
 
 import { TileMap } from '../world/TileMap';
+import { NavigationGrid } from './NavigationGrid';
 
 export interface PathNode {
   x: number;
@@ -32,12 +33,14 @@ const MAX_PATHFIND_ITERATIONS = 10000;
 
 export class Pathfinder {
   private map: TileMap;
+  private navigation: NavigationGrid;
   private cache: Map<string, PathResult> = new Map();
   private cacheVersion = 0;
   private lastCacheVersion = -1;
 
-  constructor(map: TileMap) {
+  constructor(map: TileMap, navigation: NavigationGrid = new NavigationGrid(map)) {
     this.map = map;
+    this.navigation = navigation;
   }
 
   /**
@@ -86,12 +89,12 @@ export class Pathfinder {
     }
 
     // If start is occupied (inside a wall), fail
-    if (startTile.occupied) {
+    if (!this.navigation.isWalkable(startX, startY)) {
       return { path: [], success: false, length: 0 };
     }
 
     // If goal is occupied (wall), try nearest accessible tile
-    if (goalTile.occupied) {
+    if (!this.navigation.isWalkable(goalX, goalY)) {
       const nearest = this.findNearestAccessible(goalX, goalY);
       if (!nearest || (nearest.x === startX && nearest.y === startY)) {
         return { path: [], success: false, length: 0 };
@@ -147,13 +150,7 @@ export class Pathfinder {
 
         const tile = this.map.getTile(nx, ny);
         if (!tile) continue; // out of bounds
-        if (tile.terrain === 'water') continue; // water is impassable
-        // Occupied tiles are walls/doors — doors are passable (higher cost),
-        // but we can't distinguish here, so we treat all occupied as passable with higher cost
-        // EXCEPT: walls block movement entirely
-        // For simplicity: occupied tiles are impassable unless they're doors
-        // Since we don't have a door flag yet, treat occupied as impassable
-        if (tile.occupied) continue;
+        if (!this.navigation.isWalkable(nx, ny)) continue;
 
         const cost = TILE_COST;
         const g = current.g + cost;
@@ -239,7 +236,7 @@ export class Pathfinder {
       if (dist > 10) break; // limit search radius
 
       const tile = this.map.getTile(cx, cy);
-      if (tile && !tile.occupied && tile.terrain !== 'water') {
+      if (tile && this.navigation.isWalkable(cx, cy)) {
         return { x: cx, y: cy };
       }
 
@@ -249,7 +246,7 @@ export class Pathfinder {
         const key = `${nx},${ny}`;
         if (!visited.has(key)) {
           const nTile = this.map.getTile(nx, ny);
-          if (nTile && nTile.terrain !== 'water') {
+          if (nTile && this.navigation.isWalkable(nx, ny)) {
             visited.add(key);
             queue.push({ x: nx, y: ny, dist: dist + 1 });
           }
