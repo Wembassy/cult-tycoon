@@ -24,7 +24,7 @@ type DragHandler = (start: TileCoord, end: TileCoord) => void;
 
 export class InputManager {
   private canvas: HTMLCanvasElement;
-  private screenToTile: (x: number, y: number) => TileCoord;
+  private resolveCoordinate: (x: number, y: number, mode: InputMode) => TileCoord;
   private state: InputState;
   private disposed = false;
 
@@ -43,9 +43,9 @@ export class InputManager {
   private boundKeyDown: (e: KeyboardEvent) => void;
   private boundContextMenu: (e: Event) => void;
 
-  constructor(canvas: HTMLCanvasElement, screenToTile: (x: number, y: number) => TileCoord) {
+  constructor(canvas: HTMLCanvasElement, resolveCoordinate: (x: number, y: number, mode: InputMode) => TileCoord) {
     this.canvas = canvas;
-    this.screenToTile = screenToTile;
+    this.resolveCoordinate = resolveCoordinate;
     this.state = {
       mode: 'select',
       hoveredTile: null,
@@ -76,7 +76,7 @@ export class InputManager {
 
   private handleMouseMove(e: MouseEvent): void {
     const rect = this.canvas.getBoundingClientRect();
-    const tile = this.screenToTile(e.clientX - rect.left, e.clientY - rect.top);
+    const tile = this.resolveCoordinate(e.clientX - rect.left, e.clientY - rect.top, this.state.mode);
     this.state.hoveredTile = tile;
     this.onTileHover?.(tile, e);
 
@@ -91,7 +91,7 @@ export class InputManager {
     if (e.button !== 0) return;
 
     const rect = this.canvas.getBoundingClientRect();
-    const tile = this.screenToTile(e.clientX - rect.left, e.clientY - rect.top);
+    const tile = this.resolveCoordinate(e.clientX - rect.left, e.clientY - rect.top, this.state.mode);
 
     // Left click
     this.state.selectedTile = tile;
