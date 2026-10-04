@@ -618,9 +618,21 @@ export class BuildingSystem {
    * Assign a room type
    */
   setRoomType(roomId: number, type: RoomType): boolean {
+    this.ensureAutomaticRooms();
     const room = this.rooms.get(roomId);
     if (!room) return false;
     room.type = type;
+    this._dirty = true;
+    return true;
+  }
+
+  setRoomDefinition(roomId: number, roomDefinitionId: string | undefined, type: RoomType): boolean {
+    this.ensureAutomaticRooms();
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+    room.roomDefinitionId = roomDefinitionId;
+    room.type = type;
+    this._dirty = true;
     return true;
   }
 
