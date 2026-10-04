@@ -19,6 +19,10 @@ export interface JobPosting {
   duration: number;       // ticks needed to complete
   requiredSkill?: keyof Skills;
   minSkillLevel?: number; // minimum skill to accept
+  /** Optional reservation: only this follower may claim the posting. */
+  requiredEntity?: number;
+  /** Optional opaque metadata for higher-level finite jobs such as hauling. */
+  metadata?: Record<string, string | number | boolean>;
 }
 
 interface AssignedJob {
@@ -99,6 +103,7 @@ export class JobSystem {
 
     for (let i = 0; i < this.queue.length; i++) {
       const posting = this.queue[i];
+      if (posting.requiredEntity !== undefined && posting.requiredEntity !== entity) continue;
       const skillMatch = this.checkSkill(posting, skills);
       if (!skillMatch) continue;
 
