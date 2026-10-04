@@ -99,6 +99,7 @@ export class FollowerFactory {
     skills.cooking = skillRoll();
     skills.research = skillRoll();
     skills.construction = skillRoll();
+    skills.growing = skillRoll();
     skills.faith = skillRoll();
     skills.combat = skillRoll();
     skills.social = skillRoll();
