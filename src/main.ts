@@ -124,6 +124,8 @@ class CultTycoonGame {
   private factory: FollowerFactory;
   private systems: System[] = [];
   private gameEnded = false;
+  private sandboxWarnings = new Set<string>();
+  private ascensionMilestoneShown = false;
   private lastTime = 0;
   private accumulator = 0;
   private readonly tickDuration = 1 / 30;
@@ -3779,24 +3781,20 @@ class CultTycoonGame {
     const entities = this.world.query([Needs, FollowerAI]);
     const pop = entities.length;
 
-    // Bankruptcy
     if (this.cultWealth < -50) {
       this.showLoseOverlay('bankruptcy');
-      return;
+    } else {
+      this.sandboxWarnings.delete('bankruptcy');
     }
 
-    // HeatSystem owns threat escalation: protests at 50, raids at 100,
-    // and a terminal crackdown at the critical heat threshold.
-
-    // Population zero tracking
+    // Population zero is a crisis signal, not a forced Alpha loss.
     if (pop <= 0) {
       if (!this._popZeroTimer) this._popZeroTimer = 0;
       this._popZeroTimer += this.tickDuration;
-      if (this._popZeroTimer >= 30) {
-        this.showLoseOverlay('abandoned');
-      }
+      if (this._popZeroTimer >= 30) this.showLoseOverlay('abandoned');
     } else {
       this._popZeroTimer = 0;
+      this.sandboxWarnings.delete('abandoned');
     }
   }
 
@@ -3806,16 +3804,16 @@ class CultTycoonGame {
    * Show the victory overlay.
    */
   private showWinOverlay(): void {
-    if (this.gameEnded) return;
-    this.gameEnded = true;
-    this.setTimeMode('pause');
+    if (this.ascensionMilestoneShown) return;
+    this.ascensionMilestoneShown = true;
 
     const stats = this.gatherStats();
     const overlay = this.createOverlay('win');
     overlay.innerHTML = `
       <div class="ov-card win">
         <div class="ov-icon">🌟</div>
-        <h1>Your cult has achieved Ascension!</h1>
+        <h1>Ascension Milestone Reached</h1>
+        <p class="ov-desc">Your cult has reached a major Alpha milestone. The sandbox continues with no formal victory state.</p>
         <div class="ov-stats">
           <div>Day: <b>${stats.day}</b></div>
           <div>Followers: <b>${stats.pop}</b></div>
@@ -3824,63 +3822,27 @@ class CultTycoonGame {
           <div>Notoriety: <b>${stats.notoriety}</b></div>
         </div>
         <div class="ov-buttons">
-          <button id="ov-continue" class="ov-btn">Continue Playing</button>
-          <button id="ov-newgame" class="ov-btn ov-btn-primary">New Game</button>
+          <button id="ov-continue" class="ov-btn ov-btn-primary">Continue Sandbox</button>
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
-
-    document.getElementById('ov-continue')?.addEventListener('click', () => {
-      overlay.remove();
-      this.gameEnded = false;
-      this.setTimeMode('speed1');
-    });
-    document.getElementById('ov-newgame')?.addEventListener('click', () => {
-      overlay.remove();
-      this.openWorldStartSelection();
-    });
+    document.getElementById('ov-continue')?.addEventListener('click', () => overlay.remove());
   }
 
   /**
    * Show the defeat overlay.
    */
   private showLoseOverlay(reason: 'abandoned' | 'bankruptcy' | 'busted'): void {
-    if (this.gameEnded) return;
-    this.gameEnded = true;
-    this.setTimeMode('pause');
+    if (this.sandboxWarnings.has(reason)) return;
+    this.sandboxWarnings.add(reason);
 
-    const reasons: Record<string, { icon: string; title: string; desc: string }> = {
-      abandoned: { icon: '👻', title: 'Your cult has been abandoned', desc: 'All your followers have left. The cult is no more.' },
-      bankruptcy: { icon: '💸', title: 'Your cult is bankrupt', desc: 'Wealth has dropped below -50g. The cult cannot sustain itself.' },
-      busted: { icon: '🚨', title: 'Your cult has been busted', desc: 'Heat reached a critical level. Authorities overwhelmed the compound and shut the cult down.' },
+    const messages: Record<typeof reason, string> = {
+      abandoned: 'The cult currently has no followers. Alpha sandbox play continues so recovery/debugging remains possible.',
+      bankruptcy: 'The cult is deeply in debt. Alpha sandbox play continues, but finances require attention.',
+      busted: 'Authority pressure reached a critical level. Alpha sandbox play continues; this is a crisis, not a game-over state.',
     };
-    const r = reasons[reason];
-    const stats = this.gatherStats();
-    const overlay = this.createOverlay('lose');
-    overlay.innerHTML = `
-      <div class="ov-card lose">
-        <div class="ov-icon">${r.icon}</div>
-        <h1>${r.title}</h1>
-        <p class="ov-desc">${r.desc}</p>
-        <div class="ov-stats">
-          <div>Day: <b>${stats.day}</b></div>
-          <div>Followers: <b>${stats.pop}</b></div>
-          <div>Influence: <b>${stats.influence}</b></div>
-          <div>Wealth: <b>${stats.wealth}</b></div>
-          <div>Notoriety: <b>${stats.notoriety}</b></div>
-        </div>
-        <div class="ov-buttons">
-          <button id="ov-newgame" class="ov-btn ov-btn-primary">New Game</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-
-    document.getElementById('ov-newgame')?.addEventListener('click', () => {
-      overlay.remove();
-      this.openWorldStartSelection();
-    });
+    this.hud.logEvent(`⚠️ Crisis: ${messages[reason]}`, 'danger');
   }
 
   private createOverlay(_type: 'win' | 'lose'): HTMLDivElement {
@@ -3955,6 +3917,8 @@ class CultTycoonGame {
     this.world.clear();
     this.gameEnded = false;
     this._popZeroTimer = 0;
+    this.sandboxWarnings.clear();
+    this.ascensionMilestoneShown = false;
     this.cultWealth = 200;
     this.cultInfluence = 50;
     this.cultNotoriety = 5;
