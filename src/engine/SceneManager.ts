@@ -76,6 +76,10 @@ export class SceneManager {
   private tileGroup: THREE.Group;
   private entityGroup: THREE.Group;
   private buildingGroup: THREE.Group;
+  private roofGroup: THREE.Group;
+  private wallVisuals: THREE.Object3D[] = [];
+  private wallsVisible = true;
+  private roofsVisible = true;
   private buildPreviewGroup: THREE.Group;
   private blueprintGroup: THREE.Group;
   private harvestDesignationGroup: THREE.Group;
@@ -126,6 +130,8 @@ export class SceneManager {
     this.entityGroup.add(this.selectionRing);
     this.buildingGroup = new THREE.Group();
     this.buildingGroup.name = 'buildings';
+    this.roofGroup = new THREE.Group();
+    this.roofGroup.name = 'roofs';
     this.buildPreviewGroup = new THREE.Group();
     this.buildPreviewGroup.name = 'build-preview';
     this.blueprintGroup = new THREE.Group();
@@ -135,6 +141,7 @@ export class SceneManager {
     this.scene.add(this.tileGroup);
     this.scene.add(this.entityGroup);
     this.scene.add(this.buildingGroup);
+    this.scene.add(this.roofGroup);
     this.scene.add(this.blueprintGroup);
     this.scene.add(this.harvestDesignationGroup);
     this.scene.add(this.buildPreviewGroup);
@@ -150,6 +157,16 @@ export class SceneManager {
   setFog(fog: FogOfWar): void { this.fog = fog; }
 
   setBuildingSystem(bs: BuildingSystem): void { this.buildingSystem = bs; }
+
+  setWallsVisible(visible: boolean): void {
+    this.wallsVisible = visible;
+    for (const visual of this.wallVisuals) visual.visible = visible;
+  }
+
+  setRoofsVisible(visible: boolean): void {
+    this.roofsVisible = visible;
+    this.roofGroup.visible = visible;
+  }
 
   setFollowerNames(names: Map<number, string>): void { this.followerNames = names; }
 
@@ -459,6 +476,8 @@ export class SceneManager {
    */
   syncBuildings(bs: BuildingSystem): void {
     // Clear existing building meshes
+    this.wallVisuals = [];
+    this.clearVisualGroup(this.roofGroup);
     while (this.buildingGroup.children.length > 0) {
       const child = this.buildingGroup.children[0];
       this.buildingGroup.remove(child);
@@ -501,6 +520,8 @@ export class SceneManager {
       wall.castShadow = true;
       wall.receiveShadow = true;
       wall.userData = { buildKind: 'wall-edge', ...edge };
+      wall.visible = this.wallsVisible;
+      this.wallVisuals.push(wall);
       this.buildingGroup.add(wall);
     }
 
@@ -531,6 +552,8 @@ export class SceneManager {
       door.position.set(localX + offset.x, height + 0.6, localZ + offset.z);
       door.castShadow = true;
       door.userData = { buildKind: 'door-edge', ...edge };
+      door.visible = this.wallsVisible;
+      this.wallVisuals.push(door);
       this.buildingGroup.add(door);
     }
 
@@ -556,6 +579,8 @@ export class SceneManager {
       wall.position.set(x + offset.x + 0.5, height + 0.8, y + offset.z + 0.5);
       wall.castShadow = true;
       wall.receiveShadow = true;
+      wall.visible = this.wallsVisible;
+      this.wallVisuals.push(wall);
       this.buildingGroup.add(wall);
     }
 
@@ -578,6 +603,8 @@ export class SceneManager {
       door.position.set(x + offset.x + 0.5, height + 0.6, y + offset.z + 0.5);
       door.castShadow = true;
       door.receiveShadow = true;
+      door.visible = this.wallsVisible;
+      this.wallVisuals.push(door);
       this.buildingGroup.add(door);
 
       // Door frame — two small posts
@@ -586,10 +613,14 @@ export class SceneManager {
       const post1 = new THREE.Mesh(postGeom, postMat);
       post1.position.set(x + offset.x + 0.5 - 0.4, height + 0.7, y + offset.z + 0.5);
       post1.castShadow = true;
+      post1.visible = this.wallsVisible;
+      this.wallVisuals.push(post1);
       this.buildingGroup.add(post1);
       const post2 = new THREE.Mesh(postGeom, postMat);
       post2.position.set(x + offset.x + 0.5 + 0.4, height + 0.7, y + offset.z + 0.5);
       post2.castShadow = true;
+      post2.visible = this.wallsVisible;
+      this.wallVisuals.push(post2);
       this.buildingGroup.add(post2);
     }
 
@@ -643,6 +674,17 @@ export class SceneManager {
       }
     }
 
+    // Automatic roofs are derived from fine enclosed room cells. Build one
+    // indexed geometry per room so even large rooms do not create thousands of meshes.
+    for (const room of bs.getAllRooms()) {
+      if (!room.roofed || !room.constructionCells?.length) continue;
+      const roof = this.createRoomRoofMesh(room.constructionCells, bs, offset);
+      if (!roof) continue;
+      roof.userData = { roomId: room.id, buildKind: 'roof' };
+      this.roofGroup.add(roof);
+    }
+    this.roofGroup.visible = this.roofsVisible;
+
     // Render room labels and work stations
     for (const room of bs.getAllRooms()) {
       if (room.tiles.length === 0) continue;
@@ -670,6 +712,59 @@ export class SceneManager {
         this.buildingGroup.add(station);
       }
     }
+  }
+
+  private createRoomRoofMesh(
+    cells: { x: number; y: number }[],
+    bs: BuildingSystem,
+    offset: { x: number; z: number },
+  ): THREE.Mesh | null {
+    if (cells.length === 0) return null;
+
+    const cellSize = bs.cellSize;
+    const positions: number[] = [];
+    const indices: number[] = [];
+    let vertex = 0;
+
+    for (const cell of cells) {
+      const terrain = bs.toTerrainTile(cell.x, cell.y);
+      const tile = this.map.getTile(terrain.x, terrain.y);
+      if (!tile) continue;
+      const terrainHeight = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+      const y = terrainHeight + 1.68;
+      const x0 = cell.x * cellSize + offset.x;
+      const x1 = (cell.x + 1) * cellSize + offset.x;
+      const z0 = cell.y * cellSize + offset.z;
+      const z1 = (cell.y + 1) * cellSize + offset.z;
+
+      positions.push(
+        x0, y, z0,
+        x1, y, z0,
+        x1, y, z1,
+        x0, y, z1,
+      );
+      indices.push(
+        vertex, vertex + 2, vertex + 1,
+        vertex, vertex + 3, vertex + 2,
+      );
+      vertex += 4;
+    }
+
+    if (positions.length === 0) return null;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x434955,
+      roughness: 0.9,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
   }
 
   /**
@@ -1462,6 +1557,8 @@ export class SceneManager {
     this.scene.remove(this.tileGroup);
     this.scene.remove(this.entityGroup);
     this.scene.remove(this.buildingGroup);
+    this.clearVisualGroup(this.roofGroup);
+    this.scene.remove(this.roofGroup);
     this.clearVisualGroup(this.buildPreviewGroup);
     this.clearVisualGroup(this.blueprintGroup);
     this.clearVisualGroup(this.harvestDesignationGroup);
