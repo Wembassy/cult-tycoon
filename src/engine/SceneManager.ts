@@ -98,6 +98,7 @@ export class SceneManager {
   private blueprintGroup: THREE.Group;
   private harvestDesignationGroup: THREE.Group;
   private logisticsGroup: THREE.Group;
+  private farmingGroup: THREE.Group;
   private highlightMesh: THREE.Mesh | null = null;
   private selectionRing: THREE.Mesh;
   private selectedFollower: number | null = null;
@@ -155,6 +156,8 @@ export class SceneManager {
     this.harvestDesignationGroup.name = 'harvest-designations';
     this.logisticsGroup = new THREE.Group();
     this.logisticsGroup.name = 'logistics';
+    this.farmingGroup = new THREE.Group();
+    this.farmingGroup.name = 'farming';
     this.scene.add(this.tileGroup);
     this.scene.add(this.entityGroup);
     this.scene.add(this.buildingGroup);
@@ -162,6 +165,7 @@ export class SceneManager {
     this.scene.add(this.blueprintGroup);
     this.scene.add(this.harvestDesignationGroup);
     this.scene.add(this.logisticsGroup);
+    this.scene.add(this.farmingGroup);
     this.scene.add(this.buildPreviewGroup);
 
     // Fill light to enhance isometric view — softens shadows from the front
@@ -1649,6 +1653,54 @@ export class SceneManager {
     }
   }
 
+  setFarmingVisuals(
+    plots: Array<{ x: number; y: number; crop: string; stage: string; growth: number; tended: boolean }>,
+    constructionSubdivisions: number,
+  ): void {
+    this.clearVisualGroup(this.farmingGroup);
+    const offset = { x: -this.map.width / 2, z: -this.map.height / 2 };
+    const cellSize = 1 / Math.max(1, constructionSubdivisions);
+
+    for (const plot of plots) {
+      const terrainX = Math.floor(plot.x / constructionSubdivisions);
+      const terrainY = Math.floor(plot.y / constructionSubdivisions);
+      const tile = this.map.getTile(terrainX, terrainY);
+      if (!tile) continue;
+      const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.3;
+
+      const zoneGeom = new THREE.PlaneGeometry(cellSize * 0.9, cellSize * 0.9);
+      const zoneMat = new THREE.MeshBasicMaterial({
+        color: plot.crop === 'fast_root' ? 0x6b8e45 : 0xb59a45,
+        transparent: true,
+        opacity: 0.24,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const zone = new THREE.Mesh(zoneGeom, zoneMat);
+      zone.rotation.x = -Math.PI / 2;
+      zone.position.set((plot.x + 0.5) * cellSize + offset.x, height + 0.03, (plot.y + 0.5) * cellSize + offset.z);
+      this.farmingGroup.add(zone);
+
+      if (plot.stage !== 'bare') {
+        const plantHeight = Math.max(0.035, cellSize * (0.3 + plot.growth * 1.8));
+        const plantGeom = new THREE.ConeGeometry(Math.max(0.018, cellSize * 0.16), plantHeight, 5);
+        const plantMat = new THREE.MeshStandardMaterial({
+          color: plot.stage === 'ready' ? 0xd6b54c : 0x4f8a3f,
+          roughness: 0.9,
+          flatShading: true,
+        });
+        const plant = new THREE.Mesh(plantGeom, plantMat);
+        plant.position.set(
+          (plot.x + 0.5) * cellSize + offset.x,
+          height + plantHeight / 2 + 0.035,
+          (plot.y + 0.5) * cellSize + offset.z,
+        );
+        plant.castShadow = false;
+        this.farmingGroup.add(plant);
+      }
+    }
+  }
+
   private clearVisualGroup(group: THREE.Group): void {
     while (group.children.length > 0) {
       const child = group.children[0];
@@ -1711,6 +1763,8 @@ export class SceneManager {
     this.scene.remove(this.buildingGroup);
     this.clearVisualGroup(this.roofGroup);
     this.scene.remove(this.roofGroup);
+    this.clearVisualGroup(this.farmingGroup);
+    this.scene.remove(this.farmingGroup);
     this.clearVisualGroup(this.buildPreviewGroup);
     this.clearVisualGroup(this.blueprintGroup);
     this.clearVisualGroup(this.harvestDesignationGroup);
