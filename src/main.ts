@@ -13,6 +13,7 @@ import { AssetLoader } from './engine/AssetLoader';
 import { TileMap } from './world/TileMap';
 import { WorldGen } from './world/WorldGen';
 import { Pathfinder } from './world/Pathfinder';
+import { NavigationGrid } from './world/NavigationGrid';
 import { World } from './ecs/World';
 import { System } from './ecs/System';
 import { Needs } from './components/Needs';
@@ -78,6 +79,7 @@ class CultTycoonGame {
   private world: World;
   private map: TileMap;
   private pathfinder: Pathfinder;
+  private navigation: NavigationGrid;
   private buildingSystem: BuildingSystem;
   private needsSystem: NeedsSystem;
   private jobSystem: JobSystem;
@@ -175,7 +177,8 @@ class CultTycoonGame {
     // World generation — 64x64 large world with fog of war
     const worldGen = new WorldGen(12345);
     this.map = worldGen.generate({ width: 64, height: 64, waterPools: 8, stonePatches: 10, dirtPatches: 12 });
-    this.pathfinder = new Pathfinder(this.map);
+    this.navigation = new NavigationGrid(this.map);
+    this.pathfinder = new Pathfinder(this.map, this.navigation);
 
     // Set map offset for raycaster-based tile picking
     this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
@@ -203,7 +206,7 @@ class CultTycoonGame {
     this.aiSystem = new AISystem(this.map, this.pathfinder);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
-    this.buildingSystem = new BuildingSystem(this.map);
+    this.buildingSystem = new BuildingSystem(this.map, 1, this.navigation);
     this.aiSystem.setNeedFacilityProvider((need, from) => this.findNeedFacility(need, from));
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.renderSystem.setBuildingSystem(this.buildingSystem);
