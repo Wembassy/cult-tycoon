@@ -35,7 +35,9 @@ export class IdeologySystem extends System {
   }
 
   setFoundation(foundation: IdeologyFoundation): void {
+    const roles = { ...this.ideology.roles };
     this.ideology = createIdeologyFoundation(foundation);
+    this.ideology.roles = roles;
   }
 
   getIdeology(): CultIdeology {
