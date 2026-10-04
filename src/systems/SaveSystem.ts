@@ -15,6 +15,7 @@ import { Renderable } from '../components/Renderable';
 import { Inventory } from '../components/Inventory';
 import { Schedule } from '../components/Schedule';
 import { WorkPreferences } from '../components/WorkPreferences';
+import { SocialState } from '../components/SocialState';
 import type { TileMap } from '../world/TileMap';
 import type { BuildingSnapshot } from './BuildingSystem';
 import type { LogisticsSnapshot } from './LogisticsSystem';
@@ -175,6 +176,18 @@ export class SaveSystem {
         sleepStartHour: schedule.sleepStartHour,
         sleepDuration: schedule.sleepDuration,
         hours: [...schedule.hours],
+      };
+
+      const socialState = world.getComponent(entityId, SocialState);
+      if (socialState) components.SocialState = {
+        mood: socialState.mood,
+        memories: socialState.memories.map(memory => ({ ...memory })),
+        relationships: Object.fromEntries(
+          Object.entries(socialState.relationships).map(([key, value]) => [key, { ...value }]),
+        ),
+        activeBreak: socialState.activeBreak ? { ...socialState.activeBreak } : null,
+        interactionCooldown: socialState.interactionCooldown,
+        breakCooldown: socialState.breakCooldown,
       };
 
       const workPreferences = world.getComponent(entityId, WorkPreferences);
@@ -414,6 +427,12 @@ export class SaveSystem {
         const schedule = new Schedule(entity);
         Object.assign(schedule, serialized.components.Schedule);
         world.addComponent(entity, schedule);
+      }
+
+      if (serialized.components.SocialState) {
+        const social = new SocialState(entity);
+        Object.assign(social, serialized.components.SocialState);
+        world.addComponent(entity, social);
       }
 
       if (serialized.components.WorkPreferences) {
