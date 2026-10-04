@@ -1514,6 +1514,44 @@ class CultTycoonGame {
     ) ?? null;
   }
 
+  private getEdgesAroundConstructionCell(x: number, y: number): BuildSelectionCoord[] {
+    return [
+      { x, y, orientation: 'horizontal', space: 'construction' },
+      { x, y: y + 1, orientation: 'horizontal', space: 'construction' },
+      { x, y, orientation: 'vertical', space: 'construction' },
+      { x: x + 1, y, orientation: 'vertical', space: 'construction' },
+    ];
+  }
+
+  private cancelConstructionAtCell(x: number, y: number): number {
+    const ids = new Set<string>();
+    const exact = this.getConstructionBlueprintAt(x, y);
+    if (exact) ids.add(exact.id);
+    for (const edge of this.getEdgesAroundConstructionCell(x, y)) {
+      const blueprint = this.getConstructionBlueprintAt(edge.x, edge.y, edge.orientation);
+      if (blueprint) ids.add(blueprint.id);
+    }
+
+    for (const id of ids) {
+      this.jobSystem.cancelJob(id);
+      this.constructionBlueprints.delete(id);
+    }
+    if (ids.size > 0) {
+      this.refreshConstructionBlueprintVisuals();
+      this.updateHUD();
+    }
+    return ids.size;
+  }
+
+  private demolishEdgesAtCell(x: number, y: number): number {
+    let removed = 0;
+    for (const edge of this.getEdgesAroundConstructionCell(x, y)) {
+      const result = this.buildingSystem.demolishEdge(edge.x, edge.y, edge.orientation!);
+      if (result.success) removed++;
+    }
+    return removed;
+  }
+
   private getBuildSelectionTiles(
     item: string,
     startX: number,
@@ -1632,7 +1670,8 @@ class CultTycoonGame {
       return false;
     }
 
-    if (this.getConstructionBlueprintAt(x, y, orientation)) return false;
+    const existingBlueprint = this.getConstructionBlueprintAt(x, y, orientation);
+    if (existingBlueprint && !(item === 'door' && existingBlueprint.kind === 'wall')) return false;
     if (!tile.buildable) return false;
 
     if (item === 'wall') {
@@ -1757,7 +1796,8 @@ class CultTycoonGame {
     orientation?: ConstructionOrientation,
     space: 'local' | 'construction' = 'construction',
   ): boolean {
-    if (this.getConstructionBlueprintAt(x, y, orientation)) return false;
+    const existing = this.getConstructionBlueprintAt(x, y, orientation);
+    if (existing && !(kind === 'door' && existing.kind === 'wall')) return false;
 
     const id = `construct:${this.nextConstructionBlueprintId++}`;
     const materialCost = this.getBuildMaterialCost(objectId ?? kind);
@@ -2159,13 +2199,16 @@ class CultTycoonGame {
 
   private canDemolishAt(x: number, y: number): boolean {
     if (this.getConstructionBlueprintAt(x, y)) return true;
-    const tile = this.map.getTile(x, y);
+    for (const edge of this.getEdgesAroundConstructionCell(x, y)) {
+      if (this.getConstructionBlueprintAt(edge.x, edge.y, edge.orientation)) return true;
+      if (this.buildingSystem.hasWallEdge(edge.x, edge.y, edge.orientation!)) return true;
+      if (this.buildingSystem.hasDoorEdge(edge.x, edge.y, edge.orientation!)) return true;
+    }
+    const tile = this.buildingSystem.getTerrainTileForBuild(x, y);
     if (!tile) return false;
     return (
-      tile.occupied ||
       this.buildingSystem.floorTiles.has(`${x},${y}`) ||
-      this.buildingSystem.wallTiles.has(`${x},${y}`) ||
-      this.buildingSystem.doorTiles.has(`${x},${y}`)
+      this.buildingSystem.hasBlockingElementAt(x, y)
     );
   }
 
@@ -2186,17 +2229,15 @@ class CultTycoonGame {
     let removed = 0;
     let cancelled = 0;
 
-    for (const tile of this.getRectangleTiles(startX, startY, endX, endY)) {
-      if (this.getConstructionBlueprintAt(tile.x, tile.y)) {
-        if (this.cancelConstructionBlueprintAt(tile.x, tile.y)) cancelled++;
-        continue;
-      }
+    for (const cell of this.getRectangleTiles(startX, startY, endX, endY)) {
+      cancelled += this.cancelConstructionAtCell(cell.x, cell.y);
 
-      const result = this.buildingSystem.demolish(tile.x, tile.y);
+      const result = this.buildingSystem.demolish(cell.x, cell.y);
       if (result.success) {
-        this.jobSystem.cancelJob(`station:${tile.x}:${tile.y}`);
+        this.jobSystem.cancelJob(`station:${cell.x}:${cell.y}`);
         removed++;
       }
+      removed += this.demolishEdgesAtCell(cell.x, cell.y);
     }
 
     if (removed > 0) {
@@ -2210,7 +2251,7 @@ class CultTycoonGame {
 
     if (removed > 0 || cancelled > 0) {
       this.hud.logEvent(
-        `Demolish order completed: ${removed} built tile${removed === 1 ? '' : 's'} removed, ${cancelled} blueprint${cancelled === 1 ? '' : 's'} cancelled.`,
+        `Demolish order completed: ${removed} built element${removed === 1 ? '' : 's'} removed, ${cancelled} blueprint${cancelled === 1 ? '' : 's'} cancelled.`,
         'info',
       );
       this.updateHUD();
