@@ -1592,9 +1592,7 @@ class CultTycoonGame {
       const maxY = Math.max(startY, endY);
       const cells: BuildSelectionCoord[] = [];
       for (let y = minY; y <= maxY; y++) {
-        for (let x = minX; x <= maxX; x++) {
-          cells.push({ x, y, space: 'construction' });
-        }
+        for (let x = minX; x <= maxX; x++) cells.push({ x, y, space: 'construction' });
       }
       return cells;
     }
@@ -1612,39 +1610,6 @@ class CultTycoonGame {
     }
 
     return [{ x: endX, y: endY, space: 'construction' }];
-  }[] {
-    if (item === 'wall') {
-      const horizontal = Math.abs(endX - startX) >= Math.abs(endY - startY);
-      const tiles: { x: number; y: number }[] = [];
-      if (horizontal) {
-        const step = endX >= startX ? 1 : -1;
-        for (let x = startX; ; x += step) {
-          tiles.push({ x, y: startY });
-          if (x === endX) break;
-        }
-      } else {
-        const step = endY >= startY ? 1 : -1;
-        for (let y = startY; ; y += step) {
-          tiles.push({ x: startX, y });
-          if (y === endY) break;
-        }
-      }
-      return tiles;
-    }
-
-    if (item === 'floor' || item.startsWith('room:') || item.startsWith('harvest:')) {
-      const minX = Math.min(startX, endX);
-      const maxX = Math.max(startX, endX);
-      const minY = Math.min(startY, endY);
-      const maxY = Math.max(startY, endY);
-      const tiles: { x: number; y: number }[] = [];
-      for (let y = minY; y <= maxY; y++) {
-        for (let x = minX; x <= maxX; x++) tiles.push({ x, y });
-      }
-      return tiles;
-    }
-
-    return [{ x: endX, y: endY }];
   }
 
   private isBuildTileValid(
