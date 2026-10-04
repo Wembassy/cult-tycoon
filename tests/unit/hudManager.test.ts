@@ -75,7 +75,7 @@ describe('HUDManager — Inspector', () => {
   it('should show inspector with follower data', () => {
     const data: InspectorData = {
       name: 'Alice', role: 'Follower', health: 90,
-      needs: { hunger: 60, faith: 80, fun: 70, sanity: 85, energy: 75, bladder: 80, hygiene: 70 },
+      needs: { hunger: 60, faith: 80, fun: 70, sanity: 85, energy: 75, bladder: 80, hygiene: 70, comfort: 72, social: 68 },
       job: 'cleaning', traits: ['zealous', 'hardy'],
     };
     hud.showInspector(data);
@@ -90,7 +90,7 @@ describe('HUDManager — Inspector', () => {
   it('should hide inspector', () => {
     const data: InspectorData = {
       name: 'Bob', role: 'Follower', health: 100,
-      needs: { hunger: 100, faith: 100, fun: 100, sanity: 100, energy: 100, bladder: 100, hygiene: 100 },
+      needs: { hunger: 100, faith: 100, fun: 100, sanity: 100, energy: 100, bladder: 100, hygiene: 100, comfort: 100, social: 100 },
       job: 'idle', traits: [],
     };
     hud.showInspector(data);
