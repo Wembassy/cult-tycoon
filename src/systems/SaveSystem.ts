@@ -43,6 +43,7 @@ export interface SaveData {
   farming?: FarmingSnapshot;
   ideology?: IdeologySnapshot;
   outsiders?: OutsiderSnapshot;
+  followerNames?: Record<string, string>;
   worldStart?: {
     globalSeed: number;
     region: GlobalRegion;
@@ -161,6 +162,7 @@ export class SaveSystem {
       settlementPoint: { x: number; y: number };
       ideologyFoundation?: IdeologyFoundation;
     },
+    followerNames?: Record<string, string>,
   ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
@@ -284,6 +286,7 @@ export class SaveSystem {
       ideology,
       outsiders,
       worldStart,
+      followerNames,
       spatial: {
         constructionSubdivisions: ALPHA_SPATIAL_CONFIG.constructionSubdivisions,
         navigationSubdivisions: ALPHA_SPATIAL_CONFIG.navigationSubdivisions,
@@ -504,6 +507,8 @@ export class SaveSystem {
         world.addComponent(entity, ai);
       }
     }
+
+    world.ensureNextEntityId(data.world.nextEntityId);
   }
 
   /**
