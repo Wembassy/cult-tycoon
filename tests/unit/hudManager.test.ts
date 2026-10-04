@@ -25,7 +25,7 @@ describe('HUDManager — Resource Bar', () => {
     expect(container.querySelector('.hud-menu-toggle')).not.toBeNull();
     expect(container.querySelector('.hud-management-menu')).not.toBeNull();
     expect(container.querySelector('.hud-minimap')).not.toBeNull();
-    expect(container.querySelector('.hud-build-version')?.textContent).toContain('ALPHA 7');
+    expect(container.querySelector('.hud-build-version')?.textContent).toContain('ALPHA 8');
   });
 
   it('should update resource bar with stats', () => {
@@ -82,6 +82,8 @@ describe('HUDManager — Inspector', () => {
     const inspector = container.querySelector('.hud-inspector');
     expect(inspector).not.toBeNull();
     expect(inspector!.textContent).toContain('Alice');
+    expect(inspector!.querySelector('[data-tab="traits"]')).not.toBeNull();
+    (inspector!.querySelector('[data-tab="traits"]') as HTMLButtonElement).click();
     expect(inspector!.textContent).toContain('zealous');
   });
 
