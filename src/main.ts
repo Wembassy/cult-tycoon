@@ -3887,6 +3887,10 @@ class CultTycoonGame {
       const schedule = this.world.getComponent(entityId, Schedule)!;
       if (!Array.isArray(schedule.hours) || schedule.hours.length !== 24) schedule.resetDefault();
     }
+    for (const entityId of this.world.query([WorkPreferences])) {
+      const prefs = this.world.getComponent(entityId, WorkPreferences)!;
+      if (prefs.priorities.grow === undefined) prefs.priorities.grow = 2;
+    }
 
     // Restore BuildingSystem's internal object/room collections after tile occupancy.
     this.buildingSystem.restoreSnapshot(data.building);
