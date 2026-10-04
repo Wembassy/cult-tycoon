@@ -46,6 +46,8 @@ export class FarmingSystem implements System {
   private plots = new Map<string, CropPlot>();
   private nextZoneId = 1;
   private temperatureC = 18;
+  private updateAccumulator = 0;
+  private readonly updateInterval = 0.5;
 
   constructor(
     private readonly constructionSubdivisions: number,
@@ -112,15 +114,28 @@ export class FarmingSystem implements System {
   }
 
   update(_world: World, dt: number): void {
+    this.updateAccumulator += dt;
+    if (this.updateAccumulator < this.updateInterval) return;
+
+    const elapsed = this.updateAccumulator;
+    this.updateAccumulator = 0;
+
     for (const plot of this.plots.values()) {
       if (plot.stage !== 'growing') continue;
       const crop = CROPS[plot.crop];
       const temperatureFactor = this.temperatureFactor(plot.crop);
       if (temperatureFactor <= 0) continue;
       const tendFactor = plot.tended ? 1.2 : 1;
-      plot.growth = Math.min(1, plot.growth + (dt / crop.growthSeconds) * temperatureFactor * tendFactor);
+      plot.growth = Math.min(
+        1,
+        plot.growth + (elapsed / crop.growthSeconds) * temperatureFactor * tendFactor,
+      );
       if (plot.growth >= 1) plot.stage = 'ready';
     }
+
+    // Job reconciliation is deliberately coarse. A 10x Construction Space can
+    // contain thousands of crop cells; scanning every plot at 30 simulation
+    // ticks/sec creates avoidable frame-time pressure.
     this.ensureJobs();
   }
 
@@ -166,12 +181,14 @@ export class FarmingSystem implements System {
     if (!snapshot) {
       this.nextZoneId = 1;
       this.temperatureC = 18;
+      this.updateAccumulator = 0;
       return;
     }
     for (const zone of snapshot.zones ?? []) this.zones.set(zone.id, this.cloneZone(zone));
     for (const plot of snapshot.plots ?? []) this.plots.set(this.cellKey(plot.x, plot.y), { ...plot });
     this.nextZoneId = snapshot.nextZoneId ?? 1;
     this.temperatureC = snapshot.temperatureC ?? 18;
+    this.updateAccumulator = 0;
     this.ensureJobs();
   }
 
