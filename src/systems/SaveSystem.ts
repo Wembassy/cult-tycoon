@@ -23,6 +23,7 @@ import type { LogisticsSnapshot } from './LogisticsSystem';
 import { ALPHA_SPATIAL_CONFIG } from '../world/Spatial';
 import type { FarmingSnapshot } from './FarmingSystem';
 import type { IdeologySnapshot } from './IdeologySystem';
+import type { GlobalRegion } from '../world/GlobalWorld';
 
 export interface SaveData {
   version: string;
@@ -38,6 +39,11 @@ export interface SaveData {
   logistics?: LogisticsSnapshot;
   farming?: FarmingSnapshot;
   ideology?: IdeologySnapshot;
+  worldStart?: {
+    globalSeed: number;
+    region: GlobalRegion;
+    settlementPoint: { x: number; y: number };
+  };
   spatial?: {
     constructionSubdivisions: number;
     navigationSubdivisions: number;
@@ -143,6 +149,11 @@ export class SaveSystem {
     logistics?: LogisticsSnapshot,
     farming?: FarmingSnapshot,
     ideology?: IdeologySnapshot,
+    worldStart?: {
+      globalSeed: number;
+      region: GlobalRegion;
+      settlementPoint: { x: number; y: number };
+    },
   ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
@@ -252,6 +263,7 @@ export class SaveSystem {
       logistics,
       farming,
       ideology,
+      worldStart,
       spatial: {
         constructionSubdivisions: ALPHA_SPATIAL_CONFIG.constructionSubdivisions,
         navigationSubdivisions: ALPHA_SPATIAL_CONFIG.navigationSubdivisions,
