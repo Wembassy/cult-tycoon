@@ -3,58 +3,97 @@
     {
       "id": "dormitory",
       "name": "Dormitory",
-      "minSize": 4,
-      "requiredObjects": ["bed"],
-      "effects": { "sleepQuality": 1.5, "populationCap": 2 }
+      "minSize": 12,
+      "requiredObjects": [
+        "bed"
+      ],
+      "effects": {
+        "sleepQuality": 1.5,
+        "populationCap": 2
+      }
     },
     {
       "id": "mess_hall",
       "name": "Mess Hall",
-      "minSize": 6,
-      "requiredObjects": ["cookpot"],
-      "effects": { "foodGen": 3, "hungerRestore": 40 }
+      "minSize": 24,
+      "requiredObjects": [
+        "cookpot"
+      ],
+      "effects": {
+        "foodGen": 3,
+        "hungerRestore": 40
+      }
     },
     {
       "id": "prayer_room",
       "name": "Prayer Room",
-      "minSize": 4,
-      "requiredObjects": ["altar"],
-      "effects": { "prayerBonus": 2, "faithRestore": 30 }
+      "minSize": 16,
+      "requiredObjects": [
+        "altar"
+      ],
+      "effects": {
+        "prayerBonus": 2,
+        "faithRestore": 30
+      }
     },
     {
       "id": "research_room",
       "name": "Research Room",
-      "minSize": 4,
-      "requiredObjects": ["research_desk"],
-      "effects": { "researchGen": 2, "skillGainBonus": 1.5 }
+      "minSize": 16,
+      "requiredObjects": [
+        "research_desk"
+      ],
+      "effects": {
+        "researchGen": 2,
+        "skillGainBonus": 1.5
+      }
     },
     {
       "id": "kitchen",
       "name": "Kitchen",
-      "minSize": 4,
-      "requiredObjects": ["cookpot", "storage_box"],
-      "effects": { "foodGen": 5 }
+      "minSize": 20,
+      "requiredObjects": [
+        "cookpot",
+        "storage_box"
+      ],
+      "effects": {
+        "foodGen": 5
+      }
     },
     {
       "id": "ritual_room",
       "name": "Ritual Room",
-      "minSize": 8,
-      "requiredObjects": ["altar", "offering_bowl"],
-      "effects": { "ritualPower": 2, "influenceGen": 1 }
+      "minSize": 32,
+      "requiredObjects": [
+        "altar",
+        "offering_bowl"
+      ],
+      "effects": {
+        "ritualPower": 2,
+        "influenceGen": 1
+      }
     },
     {
       "id": "storage",
       "name": "Storage",
-      "minSize": 2,
-      "requiredObjects": ["storage_box"],
-      "effects": { "storageCap": 50 }
+      "minSize": 8,
+      "requiredObjects": [
+        "storage_box"
+      ],
+      "effects": {
+        "storageCap": 50
+      }
     },
     {
       "id": "meditation_room",
       "name": "Meditation Room",
-      "minSize": 3,
-      "requiredObjects": ["meditation_mat"],
-      "effects": { "sanityRestore": 25 }
+      "minSize": 12,
+      "requiredObjects": [
+        "meditation_mat"
+      ],
+      "effects": {
+        "sanityRestore": 25
+      }
     }
   ]
 }
