@@ -26,6 +26,7 @@ export interface ItemStack {
   stockpileId?: string;
   reservedJobId?: string;
   carriedBy?: number;
+  reservedFrom?: 'ground' | 'stockpiled';
 }
 
 export interface StockpileZone {
@@ -47,6 +48,7 @@ export interface LogisticsJobResult {
   handled: boolean;
   changed: boolean;
   message?: string;
+  materialDelivery?: { requestId: string; kind: 'wood' | 'stone'; quantity: number };
 }
 
 export class LogisticsSystem {
@@ -174,6 +176,79 @@ export class LogisticsSystem {
     }
   }
 
+  /**
+   * Reserve exact quantities from physical wood/stone stacks for a blueprint.
+   * Returns the quantity newly scheduled. One source stack is reserved at a
+   * time so normal stockpile hauling cannot race the same physical resource.
+   */
+  ensureMaterialDelivery(
+    requestId: string,
+    kind: 'wood' | 'stone',
+    quantityNeeded: number,
+    target: { x: number; y: number },
+    priority = 14,
+  ): number {
+    const existingScheduled = [
+      ...this.jobSystem.getPostedJobs(),
+      ...this.jobSystem.getAssignedJobs().map(assigned => assigned.posting),
+    ].reduce((total, job) => {
+      if (job.metadata?.requestId !== requestId) return total;
+      if (job.metadata?.stage !== 'material-pickup' && job.metadata?.stage !== 'material-deliver') return total;
+      return total + Number(job.metadata?.quantity ?? 0);
+    }, 0);
+
+    let remaining = Math.max(0, Math.floor(quantityNeeded) - existingScheduled);
+    let scheduled = 0;
+    if (remaining <= 0) return 0;
+
+    const candidates = Array.from(this.stacks.values())
+      .filter(stack =>
+        stack.kind === kind &&
+        (stack.state === 'ground' || stack.state === 'stockpiled') &&
+        !stack.reservedJobId &&
+        stack.quantity > 0,
+      )
+      .sort((a, b) => {
+        const da = Math.abs(a.x - target.x) + Math.abs(a.y - target.y);
+        const db = Math.abs(b.x - target.x) + Math.abs(b.y - target.y);
+        return da - db;
+      });
+
+    let sequence = 0;
+    for (const stack of candidates) {
+      if (remaining <= 0) break;
+      const quantity = Math.min(remaining, stack.quantity);
+      const jobId = `material:pickup:${requestId}:${sequence++}:${stack.id}`;
+      const sourceState = stack.state as 'ground' | 'stockpiled';
+      stack.reservedFrom = sourceState;
+      stack.state = 'reserved';
+      stack.reservedJobId = jobId;
+
+      this.jobSystem.postJob({
+        id: jobId,
+        type: 'haul',
+        targetTile: { x: stack.x, y: stack.y },
+        priority,
+        duration: 0.35,
+        metadata: {
+          stage: 'material-pickup',
+          requestId,
+          stackId: stack.id,
+          kind,
+          quantity,
+          targetX: target.x,
+          targetY: target.y,
+          sourceState,
+        },
+      });
+
+      remaining -= quantity;
+      scheduled += quantity;
+    }
+
+    return scheduled;
+  }
+
   handleJobCompleted(
     posting: JobPosting,
     entity: number,
@@ -193,6 +268,68 @@ export class LogisticsSystem {
     }
 
     const stage = String(posting.metadata?.stage ?? '');
+
+    if (stage === 'material-pickup') {
+      const requestId = String(posting.metadata?.requestId ?? '');
+      const quantity = Math.max(0, Number(posting.metadata?.quantity ?? 0));
+      const targetX = Number(posting.metadata?.targetX);
+      const targetY = Number(posting.metadata?.targetY);
+      const kind = String(posting.metadata?.kind ?? '') as 'wood' | 'stone';
+      if (!requestId || quantity <= 0 || (kind !== 'wood' && kind !== 'stone')) {
+        this.releaseStackReservation(stack);
+        return { handled: true, changed: true };
+      }
+
+      const taken = Math.min(quantity, stack.quantity);
+      this.addInventory(inventory, kind, taken);
+      stack.quantity -= taken;
+      const sourceState = stack.reservedFrom ?? 'ground';
+      stack.reservedFrom = undefined;
+      stack.reservedJobId = undefined;
+
+      if (stack.quantity <= 0) {
+        this.stacks.delete(stack.id);
+      } else {
+        stack.state = sourceState;
+      }
+
+      const deliveryJobId = `material:deliver:${requestId}:${stack.id}`;
+      this.jobSystem.postJob({
+        id: deliveryJobId,
+        type: 'haul',
+        targetTile: { x: targetX, y: targetY },
+        priority: 16,
+        duration: 0.35,
+        requiredEntity: entity,
+        metadata: {
+          stage: 'material-deliver',
+          requestId,
+          stackId: stack.id,
+          kind,
+          quantity: taken,
+          targetX,
+          targetY,
+        },
+      });
+      return { handled: true, changed: true };
+    }
+
+    if (stage === 'material-deliver') {
+      const requestId = String(posting.metadata?.requestId ?? '');
+      const quantity = Math.max(0, Number(posting.metadata?.quantity ?? 0));
+      const kind = String(posting.metadata?.kind ?? '') as 'wood' | 'stone';
+      if (!requestId || quantity <= 0 || (kind !== 'wood' && kind !== 'stone')) {
+        return { handled: true, changed: false };
+      }
+      this.removeInventory(inventory, kind, quantity);
+      return {
+        handled: true,
+        changed: true,
+        materialDelivery: { requestId, kind, quantity },
+        message: `Delivered ${quantity} ${kind} to construction.`,
+      };
+    }
+
     if (stage === 'pickup') {
       const destinationX = Number(posting.metadata?.destinationX);
       const destinationY = Number(posting.metadata?.destinationY);
@@ -253,9 +390,7 @@ export class LogisticsSystem {
         this.destinationKey(stockpileId, destinationX, destinationY),
       );
 
-      if (stack.kind === 'wood' || stack.kind === 'stone') {
-        resources.materials += stack.quantity;
-      } else {
+      if (stack.kind !== 'wood' && stack.kind !== 'stone') {
         resources.food += stack.quantity;
       }
 
@@ -306,6 +441,7 @@ export class LogisticsSystem {
         state: saved.state === 'stockpiled' ? 'stockpiled' : 'ground',
         reservedJobId: undefined,
         carriedBy: undefined,
+        reservedFrom: undefined,
       };
       this.stacks.set(stack.id, stack);
     }
@@ -363,6 +499,7 @@ export class LogisticsSystem {
     stack.reservedJobId = undefined;
     stack.stockpileId = undefined;
     stack.carriedBy = undefined;
+    stack.reservedFrom = undefined;
   }
 
   private addInventory(inventory: Inventory, kind: ItemKind, quantity: number): void {
