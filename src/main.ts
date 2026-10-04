@@ -26,7 +26,7 @@ import { Traits } from './components/Traits';
 import { Job } from './components/Job';
 import { Inventory } from './components/Inventory';
 import { Skills } from './components/Skills';
-import { Schedule, type Shift } from './components/Schedule';
+import { Schedule, type ScheduleActivity } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
 import type { WorkJobKey } from './ui/WorkPanel';
 import { NeedsSystem } from './systems/NeedsSystem';
@@ -450,12 +450,14 @@ class CultTycoonGame {
     this.hud.onRoofsVisibilityChange = (visible) => this.sceneMgr.setRoofsVisible(visible);
     this.hud.onTechTreeUnlock = (techId) => this.unlockTechFromPanel(techId);
     this.hud.onSendMission = (templateId, cultistIds) => this.startMissionFromPanel(templateId, cultistIds);
-    this.hud.onAssignShift = (entityId, shift) => {
-      this.schedulingSystem.assignShift(this.world, entityId, shift);
+    this.hud.onSetScheduleHour = (entityId, hour, activity) => {
+      this.schedulingSystem.setActivity(this.world, entityId, hour, activity);
       this.openSchedulePanel();
     };
-    this.hud.onAutoAssignShifts = () => {
-      this.schedulingSystem.autoAssignShifts(this.world);
+    this.hud.onResetSchedules = () => {
+      for (const entityId of this.world.query([FollowerAI])) {
+        this.schedulingSystem.resetSchedule(this.world, entityId);
+      }
       this.openSchedulePanel();
     };
 
@@ -1352,20 +1354,21 @@ class CultTycoonGame {
     const entities = this.world.query([FollowerAI]);
     const cultists = entities.map((entityId) => {
       const ai = this.world.getComponent(entityId, FollowerAI)!;
-      const schedule = this.world.getComponent(entityId, Schedule);
+      const schedule = this.world.getComponent(entityId, Schedule) ?? new Schedule(entityId);
+      if (!this.world.getComponent(entityId, Schedule)) this.world.addComponent(entityId, schedule);
       const health = this.world.getComponent(entityId, Health);
       const activity: 'working' | 'eating' | 'free' | 'sleeping' =
         ai.state === 'working' ? 'working' :
-        ai.state === 'sleeping' ? 'sleeping' :
-        ai.state === 'needs' ? 'eating' : 'free';
+        ai.state === 'sleeping' || ai.needTarget === 'energy' ? 'sleeping' :
+        ai.needTarget === 'hunger' ? 'eating' : 'free';
 
       return {
         id: entityId,
         name: this.followerNames.get(entityId) ?? `Cultist ${entityId}`,
         tier: ai.tier,
-        shift: (schedule?.shift ?? 'morning') as Shift,
         activity,
         health: health?.hp ?? 100,
+        hours: [...schedule.hours],
       };
     });
 
@@ -2932,7 +2935,7 @@ class CultTycoonGame {
       role: work?.role ?? 'Follower',
       tier: ai?.tier,
       aiState: ai?.state,
-      schedule: schedule?.shift,
+      schedule: schedule?.getActivity(this.currentHour),
       health: health?.hp ?? 100,
       needs: {
         hunger: needs.hunger,
@@ -3842,6 +3845,21 @@ class CultTycoonGame {
           if (tile) tile.buildable = saved.buildable;
         }
       }
+    }
+
+    // Backfill newly introduced Alpha fields when loading same-version saves.
+    for (const entityId of this.world.query([Skills])) {
+      const skills = this.world.getComponent(entityId, Skills)!;
+      if (!Number.isFinite(skills.growing)) skills.growing = Math.max(1, skills.construction ?? 1);
+    }
+    for (const entityId of this.world.query([Needs])) {
+      const needs = this.world.getComponent(entityId, Needs)!;
+      if (!Number.isFinite(needs.comfort)) needs.comfort = 80;
+      if (!Number.isFinite(needs.social)) needs.social = 80;
+    }
+    for (const entityId of this.world.query([Schedule])) {
+      const schedule = this.world.getComponent(entityId, Schedule)!;
+      if (!Array.isArray(schedule.hours) || schedule.hours.length !== 24) schedule.resetDefault();
     }
 
     // Restore BuildingSystem's internal object/room collections after tile occupancy.
