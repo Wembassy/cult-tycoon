@@ -17,6 +17,7 @@ import { Schedule } from '../components/Schedule';
 import { WorkPreferences } from '../components/WorkPreferences';
 import type { TileMap } from '../world/TileMap';
 import type { BuildingSnapshot } from './BuildingSystem';
+import type { LogisticsSnapshot } from './LogisticsSystem';
 
 export interface SaveData {
   version: string;
@@ -29,6 +30,7 @@ export interface SaveData {
   building?: BuildingSnapshot;
   construction?: SerializedConstructionBlueprint[];
   harvestOrders?: SerializedHarvestOrder[];
+  logistics?: LogisticsSnapshot;
 }
 
 export interface SerializedHarvestOrder {
@@ -94,7 +96,7 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.7.0';
+const SAVE_VERSION = '0.8.0';
 const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
 const AUTOSAVE_KEY = 'cult_tycoon_autosave';
 const MAX_SLOTS = 6;
@@ -123,6 +125,7 @@ export class SaveSystem {
     building?: BuildingSnapshot,
     construction: SerializedConstructionBlueprint[] = [],
     harvestOrders: SerializedHarvestOrder[] = [],
+    logistics?: LogisticsSnapshot,
   ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
@@ -208,6 +211,7 @@ export class SaveSystem {
       building,
       construction: construction.map(blueprint => ({ ...blueprint })),
       harvestOrders: harvestOrders.map(order => ({ ...order })),
+      logistics,
     };
   }
 
