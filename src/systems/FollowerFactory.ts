@@ -8,7 +8,7 @@ import { Transform } from '../components/Transform';
 import { Renderable } from '../components/Renderable';
 import { Needs } from '../components/Needs';
 import { Job } from '../components/Job';
-import { Skills } from '../components/Skills';
+import { Skills, SKILL_KEYS, type PassionLevel } from '../components/Skills';
 import { Traits, TraitType, ALL_TRAITS } from '../components/Traits';
 import { Health } from '../components/Health';
 import { Inventory } from '../components/Inventory';
@@ -103,6 +103,16 @@ export class FollowerFactory {
     skills.faith = skillRoll();
     skills.combat = skillRoll();
     skills.social = skillRoll();
+
+    // Passions are sparse by design: most followers have 1-3 interests.
+    const passionCount = 1 + Math.floor(this.rng() * 3);
+    const shuffledSkills = [...SKILL_KEYS].sort(() => this.rng() - 0.5);
+    for (let i = 0; i < passionCount; i++) {
+      const skill = shuffledSkills[i];
+      const level: PassionLevel = this.rng() < 0.28 ? 'major' : 'minor';
+      skills.passions[skill] = level;
+    }
+
     world.addComponent(entity, skills);
 
     // Traits — 1-3 random traits
