@@ -182,11 +182,15 @@ export class JobSystem {
         if (job) {
           // Apply trait-based work speed multiplier
           const traits = world.getComponent(entity, Traits);
-          const workMult = traits
+          const traitMult = traits
             ? traits.getWorkSpeedMult(job.type)
             : 1.0;
+          const skills = world.getComponent(entity, Skills);
+          const skillMult = job.type === 'build'
+            ? 1 + Math.max(0, (skills?.construction ?? 1) - 1) * 0.06
+            : 1;
 
-          job.workProgress += dt * workMult;
+          job.workProgress += dt * traitMult * skillMult;
           if (job.workProgress >= assignment.posting.duration) {
             job.type = 'idle';
             job.jobId = null;
@@ -205,6 +209,41 @@ export class JobSystem {
     for (const id of toRemove) {
       this.assigned.delete(id);
     }
+  }
+
+  /**
+   * Direct player order for a queued job. To protect higher-level reservation
+   * systems (especially hauling/material delivery), Alpha only interrupts idle,
+   * wander, or unassigned followers. Active finite jobs must finish/cancel
+   * through their owning system.
+   */
+  forceAssignQueuedJob(jobId: string, entity: number, world: World): boolean {
+    const idx = this.queue.findIndex(posting => posting.id === jobId);
+    if (idx < 0) return false;
+
+    const current = world.getComponent(entity, Job);
+    const ai = world.getComponent(entity, FollowerAI);
+    const skills = world.getComponent(entity, Skills);
+    if (!current || !ai || !skills) return false;
+    if (current.jobId || (current.type !== 'idle' && current.type !== 'wander')) return false;
+
+    const posting = this.queue[idx];
+    if (!this.checkSkill(posting, skills)) return false;
+
+    this.queue.splice(idx, 1);
+    this.assigned.set(posting.id, { posting, entity, assignedAt: this.tickCount });
+
+    current.jobId = posting.id;
+    current.type = posting.type;
+    current.targetTile = posting.targetTile;
+    current.workProgress = 0;
+    current.priority = posting.priority;
+
+    ai.path = [];
+    ai.pathIndex = 0;
+    ai.state = 'moving';
+    ai.stateTimer = 0;
+    return true;
   }
 
   getPostedJobs(): JobPosting[] {
