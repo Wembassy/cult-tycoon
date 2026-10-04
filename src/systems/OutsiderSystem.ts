@@ -33,6 +33,7 @@ export interface OutsiderSnapshot {
   nextVisitIn: number;
   visitorSerial: number;
   settlementPoint: { x: number; y: number };
+  rngState: number;
 }
 
 export interface RecruitmentResult {
@@ -180,6 +181,7 @@ export class OutsiderSystem extends System {
       nextVisitIn: this.nextVisitIn,
       visitorSerial: this.visitorSerial,
       settlementPoint: { ...this.settlementPoint },
+      rngState: this.rngState,
     };
   }
 
@@ -189,6 +191,7 @@ export class OutsiderSystem extends System {
     this.nextVisitIn = snapshot.nextVisitIn;
     this.visitorSerial = snapshot.visitorSerial;
     this.settlementPoint = { ...snapshot.settlementPoint };
+    this.rngState = snapshot.rngState ?? this.rngState;
   }
 
   private spawnVisitor(world: World): void {
