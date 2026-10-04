@@ -16,6 +16,7 @@ import { FollowerAI } from '../components/FollowerAI';
 import { QualityTier, ALL_TIERS, TIER_SKILL_RANGE } from '../components/CultistTier';
 import { WorkPreferences } from '../components/WorkPreferences';
 import { SocialState } from '../components/SocialState';
+import { BeliefState } from '../components/BeliefState';
 
 const NAMES = [
   'Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank', 'Grace', 'Henry',
@@ -126,6 +127,29 @@ export class FollowerFactory {
       traits.traits = shuffled.slice(0, numTraits);
     }
     world.addComponent(entity, traits);
+
+    // Individual belief strength and personal values.
+    const belief = new BeliefState(entity);
+    belief.strength = 35 + this.rng() * 40;
+    belief.values.work_ethic = traits.hasTrait('lazy') ? -0.8 : traits.hasTrait('hardy') ? 0.5 : this.rng() * 0.4 - 0.2;
+    belief.values.spirituality =
+      traits.hasTrait('doubter') ? -0.9 :
+      (traits.hasTrait('zealous') || traits.hasTrait('devoted')) ? 0.9 :
+      this.rng() * 0.5 - 0.25;
+    belief.values.outsiders =
+      traits.hasTrait('paranoid') ? -0.8 :
+      traits.hasTrait('charismatic') ? 0.6 :
+      this.rng() * 0.5 - 0.25;
+    belief.values.community = this.rng() * 0.8 - 0.2;
+    belief.values.authority = this.rng() * 1.2 - 0.6;
+    belief.values.comfort = this.rng() * 1.2 - 0.6;
+    belief.values.violence = this.rng() * 1.2 - 0.6;
+    belief.values.wealth = this.rng() * 1.2 - 0.6;
+    belief.values.food = this.rng() * 0.8 - 0.4;
+    belief.values.relationships = this.rng() * 1.2 - 0.6;
+    belief.values.nature = this.rng() * 1.0 - 0.5;
+    belief.values.ritual = belief.values.spirituality;
+    world.addComponent(entity, belief);
 
     // Health
     const health = new Health(entity);
