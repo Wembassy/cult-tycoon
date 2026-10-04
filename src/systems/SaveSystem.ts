@@ -19,6 +19,7 @@ import type { TileMap } from '../world/TileMap';
 import type { BuildingSnapshot } from './BuildingSystem';
 import type { LogisticsSnapshot } from './LogisticsSystem';
 import { ALPHA_SPATIAL_CONFIG } from '../world/Spatial';
+import type { FarmingSnapshot } from './FarmingSystem';
 
 export interface SaveData {
   version: string;
@@ -32,6 +33,7 @@ export interface SaveData {
   construction?: SerializedConstructionBlueprint[];
   harvestOrders?: SerializedHarvestOrder[];
   logistics?: LogisticsSnapshot;
+  farming?: FarmingSnapshot;
   spatial?: {
     constructionSubdivisions: number;
     navigationSubdivisions: number;
@@ -135,6 +137,7 @@ export class SaveSystem {
     construction: SerializedConstructionBlueprint[] = [],
     harvestOrders: SerializedHarvestOrder[] = [],
     logistics?: LogisticsSnapshot,
+    farming?: FarmingSnapshot,
   ): SaveData {
     const entities = world.allEntities();
     const serializedEntities: SerializedEntity[] = [];
@@ -155,7 +158,7 @@ export class SaveSystem {
       if (job) components.Job = { jobId: job.jobId, type: job.type, priority: job.priority, targetTile: job.targetTile, workProgress: job.workProgress };
 
       const skills = world.getComponent(entityId, Skills);
-      if (skills) components.Skills = { cooking: skills.cooking, research: skills.research, construction: skills.construction, faith: skills.faith, combat: skills.combat, social: skills.social };
+      if (skills) components.Skills = { cooking: skills.cooking, research: skills.research, construction: skills.construction, growing: skills.growing, faith: skills.faith, combat: skills.combat, social: skills.social };
 
       const traits = world.getComponent(entityId, Traits);
       if (traits) components.Traits = { traits: traits.traits };
@@ -221,6 +224,7 @@ export class SaveSystem {
       construction: construction.map(blueprint => ({ ...blueprint })),
       harvestOrders: harvestOrders.map(order => ({ ...order })),
       logistics,
+      farming,
       spatial: {
         constructionSubdivisions: ALPHA_SPATIAL_CONFIG.constructionSubdivisions,
         navigationSubdivisions: ALPHA_SPATIAL_CONFIG.navigationSubdivisions,
