@@ -19,6 +19,12 @@ import { TileMap } from '../world/TileMap';
 export type NeedKind = 'hunger' | 'faith' | 'fun' | 'sanity' | 'energy' | 'bladder' | 'hygiene';
 export interface NeedFacilityTarget { x: number; y: number; }
 export type NeedFacilityProvider = (need: NeedKind, from: { x: number; y: number }) => NeedFacilityTarget | null;
+export type NeedRecoveryProvider = (
+  need: NeedKind,
+  entity: number,
+  target: NeedFacilityTarget | null,
+  dt: number,
+) => number | null;
 
 export interface AISystemConfig {
   moveSpeed: number;       // tiles per tick
@@ -40,6 +46,7 @@ export class AISystem {
   private config: AISystemConfig;
   private pathfinder: Pathfinder;
   private needFacilityProvider: NeedFacilityProvider | null = null;
+  private needRecoveryProvider: NeedRecoveryProvider | null = null;
 
   constructor(_map: TileMap, pathfinder: Pathfinder, config: Partial<AISystemConfig> = {}) {
     this.pathfinder = pathfinder;
@@ -48,6 +55,10 @@ export class AISystem {
 
   setNeedFacilityProvider(provider: NeedFacilityProvider): void {
     this.needFacilityProvider = provider;
+  }
+
+  setNeedRecoveryProvider(provider: NeedRecoveryProvider): void {
+    this.needRecoveryProvider = provider;
   }
 
   /**
@@ -236,7 +247,19 @@ export class AISystem {
     if (!ai.needTargetTile) {
       const facility = this.needFacilityProvider?.(need, { x: transform.x, y: transform.y }) ?? null;
       if (!facility) {
-        // No appropriate facility exists. Stay needy so the player feels the consequence.
+        // Energy is the one survival need with a valid no-facility fallback:
+        // sleeping on the ground is slow and uncomfortable but avoids an AI deadlock.
+        if (need === 'energy') {
+          needs.energy = clamp(needs.energy + 9 * dt, 0, 100);
+          needs.comfort = clamp(needs.comfort - 0.35 * dt, 0, 100);
+          if (needs.energy >= 80) {
+            this.finishNeedAndResumeJob(world, entity, ai);
+            return 1;
+          }
+          return 0;
+        }
+
+        // Other needs remain unresolved until an actual resource/facility exists.
         ai.stateTimer = Math.min(ai.stateTimer, this.config.needsCooldown);
         return 0;
       }
@@ -261,9 +284,11 @@ export class AISystem {
       }
     }
 
-    // At the facility: restore only the need this facility is intended to satisfy.
-    const recoveryRate = this.getNeedRecoveryRate(need);
-    needs[need] = clamp(needs[need] + recoveryRate * dt, 0, 100);
+    // At the destination: the game layer may provide resource-backed recovery
+    // (e.g. consume one physical meal) instead of infinite facility regeneration.
+    const providedRecovery = this.needRecoveryProvider?.(need, entity, ai.needTargetTile, dt) ?? null;
+    const recovery = providedRecovery ?? this.getNeedRecoveryRate(need) * dt;
+    needs[need] = clamp(needs[need] + recovery, 0, 100);
 
     if (needs[need] >= 80) {
       this.finishNeedAndResumeJob(world, entity, ai);
