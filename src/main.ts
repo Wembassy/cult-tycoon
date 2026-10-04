@@ -43,6 +43,7 @@ import { InvestigatorSystem } from './systems/InvestigatorSystem';
 import { CombatSystem } from './systems/CombatSystem';
 import { ResourceSystem } from './systems/ResourceSystem';
 import { LogisticsSystem, type ItemKind } from './systems/LogisticsSystem';
+import { FarmingSystem, type CropType } from './systems/FarmingSystem';
 import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
 import { MissionSystem } from './systems/MissionSystem';
@@ -96,6 +97,7 @@ class CultTycoonGame {
   private combatSystem: CombatSystem;
   private resourceSystem: ResourceSystem;
   private logisticsSystem: LogisticsSystem;
+  private farmingSystem: FarmingSystem;
   private fogOfWar: FogOfWar;
   private fogSystem: FogSystem;
   private schedulingSystem: SchedulingSystem;
@@ -207,6 +209,7 @@ class CultTycoonGame {
     this.needsSystem = new NeedsSystem();
     this.jobSystem = new JobSystem();
     this.logisticsSystem = new LogisticsSystem(ALPHA_SPATIAL_CONFIG.constructionSubdivisions, this.jobSystem);
+    this.farmingSystem = new FarmingSystem(ALPHA_SPATIAL_CONFIG.constructionSubdivisions, this.jobSystem, this.logisticsSystem);
     this.jobSystem.setCompletionHandler((posting, entity) => this.onJobCompleted(posting, entity));
     this.aiSystem = new AISystem(this.map, this.pathfinder);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
@@ -387,7 +390,7 @@ class CultTycoonGame {
     // Room graph for room detection (used by prestige system)
     this.roomGraph = new RoomGraph(this.map);
 
-    this.systems = [this.needsSystem, this.schedulingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
+    this.systems = [this.needsSystem, this.schedulingSystem, this.farmingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
     // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
     // in simulate() because they don't extend the System base class.
     // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
@@ -948,6 +951,8 @@ class CultTycoonGame {
       { id: 'harvest:rock', label: 'Mine Rock', icon: '🪨', cost: 0, category: 'harvest' },
       { id: 'harvest:food', label: 'Gather Food', icon: '🫐', cost: 0, category: 'harvest' },
       { id: 'zone:stockpile', label: 'Stockpile', icon: '▦', cost: 0, category: 'zones' as BuildPanelEntry['category'] },
+      { id: 'zone:grow:fast_root', label: 'Grow · Fast Root', icon: '🥕', cost: 0, category: 'zones' as BuildPanelEntry['category'] },
+      { id: 'zone:grow:hearty_grain', label: 'Grow · Hearty Grain', icon: '🌾', cost: 0, category: 'zones' as BuildPanelEntry['category'] },
       ...allObjects.map(obj => ({
         id: obj.id,
         label: obj.name,
@@ -1236,6 +1241,7 @@ class CultTycoonGame {
           clean: Math.max(1, Math.round((skills.construction + skills.social) / 2)),
           haul: skills.construction,
           harvest: skills.construction,
+          grow: skills.growing,
         },
         priorities: { ...prefs.priorities },
       };
@@ -1593,7 +1599,7 @@ class CultTycoonGame {
       return edge ? [edge] : [{ x: endX, y: endY, orientation: 'horizontal', space: 'construction' }];
     }
 
-    if (item === 'floor' || item === 'zone:stockpile') {
+    if (item === 'floor' || item.startsWith('zone:')) {
       const minX = Math.min(startX, endX);
       const maxX = Math.max(startX, endX);
       const minY = Math.min(startY, endY);
@@ -1643,7 +1649,7 @@ class CultTycoonGame {
       return false;
     }
 
-    if (item === 'zone:stockpile') return tile.buildable;
+    if (item.startsWith('zone:')) return tile.buildable;
 
     const existingBlueprint = this.getConstructionBlueprintAt(x, y, orientation);
     if (existingBlueprint && !(item === 'door' && existingBlueprint.kind === 'wall')) return false;
@@ -1926,6 +1932,13 @@ class CultTycoonGame {
     this.sceneMgr.setHarvestDesignations(Array.from(this.harvestOrders.values()));
   }
 
+  private refreshFarmingVisuals(): void {
+    this.sceneMgr.setFarmingVisuals(
+      this.farmingSystem.getPlots(),
+      this.buildingSystem.subdivisions,
+    );
+  }
+
   private refreshLogisticsVisuals(): void {
     this.gameInstanceState.resources.food = this.logisticsSystem.getEdibleUnitCount();
     this.sceneMgr.setLogisticsVisuals(
@@ -2027,6 +2040,14 @@ class CultTycoonGame {
   }
 
   private onJobCompleted(posting: JobPosting, entity: number): void {
+    if (this.farmingSystem.handleJobCompleted(posting)) {
+      this.refreshFarmingVisuals();
+      this.refreshLogisticsVisuals();
+      this.refreshCookingJobs();
+      this.updateHUD();
+      return;
+    }
+
     const logisticsResult = this.logisticsSystem.handleJobCompleted(
       posting,
       entity,
@@ -2253,6 +2274,22 @@ class CultTycoonGame {
       if (zone) {
         this.hud.logEvent(`Created stockpile zone with ${zone.cells.length} cells.`, 'success');
         this.refreshLogisticsVisuals();
+      }
+      return;
+    }
+
+    if (item.startsWith('zone:grow:')) {
+      const crop = item.slice('zone:grow:'.length) as CropType;
+      const cells = this.getBuildSelectionTiles(item, startX, startY, endX, endY)
+        .filter(pos => this.isBuildTileValid(item, pos.x, pos.y))
+        .map(pos => ({ x: pos.x, y: pos.y }));
+      const zone = this.farmingSystem.designateZone(cells, crop);
+      if (zone) {
+        this.hud.logEvent(
+          `Created ${crop === 'fast_root' ? 'Fast Root' : 'Hearty Grain'} grow zone with ${zone.cells.length} cells.`,
+          'success',
+        );
+        this.refreshFarmingVisuals();
       }
       return;
     }
@@ -2597,6 +2634,11 @@ class CultTycoonGame {
       this.refreshLogisticsVisuals();
       return;
     }
+    if (item.startsWith('zone:grow:')) {
+      this.farmingSystem.designateZone([{ x, y }], item.slice('zone:grow:'.length) as CropType);
+      this.refreshFarmingVisuals();
+      return;
+    }
     this.queueConstructionSelection(item, [{ x, y }]);
   }
 
@@ -2909,6 +2951,7 @@ class CultTycoonGame {
         cooking: skills.cooking,
         research: skills.research,
         construction: skills.construction,
+        growing: skills.growing,
         faith: skills.faith,
         combat: skills.combat,
         social: skills.social,
@@ -3805,7 +3848,9 @@ class CultTycoonGame {
     this.buildingSystem.restoreSnapshot(data.building);
     this.jobSystem.clear();
     this.logisticsSystem.restoreSnapshot(data.logistics, this.world);
+    this.farmingSystem.restoreSnapshot(data.farming);
     this.refreshLogisticsVisuals();
+    this.refreshFarmingVisuals();
 
     this.constructionBlueprints.clear();
     let highestConstructionId = 0;
@@ -3985,6 +4030,7 @@ class CultTycoonGame {
       Array.from(this.constructionBlueprints.values()),
       Array.from(this.harvestOrders.values()),
       this.logisticsSystem.getSnapshot(),
+      this.farmingSystem.getSnapshot(),
     );
 
     const success = this.saveSystem.save(data);
