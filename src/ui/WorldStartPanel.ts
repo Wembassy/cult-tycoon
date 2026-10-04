@@ -13,11 +13,13 @@ import {
   type GlobalWorld,
 } from '../world/GlobalWorld';
 import type { TileMap } from '../world/TileMap';
+import type { IdeologyFoundation } from '../game/Ideology';
 
 export interface WorldStartSelection {
   globalSeed: number;
   region: GlobalRegion;
   settlementPoint: { x: number; y: number };
+  ideologyFoundation?: IdeologyFoundation;
 }
 
 export interface WorldStartPanelCallbacks {
@@ -32,6 +34,7 @@ export class WorldStartPanel {
   private selectedRegion: GlobalRegion | null = null;
   private previewMap: TileMap | null = null;
   private settlementPoint: { x: number; y: number } | null = null;
+  private ideologyFoundation: IdeologyFoundation = 'communal_devotion';
   private previewCanvas: HTMLCanvasElement | null = null;
   private _visible = false;
 
@@ -110,6 +113,19 @@ export class WorldStartPanel {
             <div class="world-start-selection-text">
               ${this.settlementPoint ? `Settlement point: <b>${this.settlementPoint.x}, ${this.settlementPoint.y}</b>` : 'Select a valid point on the preview.'}
             </div>
+            <div class="world-ideology-choice">
+              <b>3. Choose ideology foundation</b>
+              <div class="world-ideology-buttons">
+                <button class="world-ideology-btn ${this.ideologyFoundation === 'communal_devotion' ? 'selected' : ''}" data-ideology="communal_devotion">
+                  Communal Path
+                  <small>Community · devotion · shared purpose</small>
+                </button>
+                <button class="world-ideology-btn ${this.ideologyFoundation === 'ascetic_order' ? 'selected' : ''}" data-ideology="ascetic_order">
+                  Ascetic Order
+                  <small>Discipline · sacrifice · hierarchy</small>
+                </button>
+              </div>
+            </div>
           ` : `
             <div class="world-start-placeholder">
               Select a region to inspect its local terrain and settlement conditions.
@@ -132,6 +148,7 @@ export class WorldStartPanel {
         globalSeed: this.world.seed,
         region: { ...this.selectedRegion },
         settlementPoint: { ...this.settlementPoint },
+        ideologyFoundation: this.ideologyFoundation,
       });
     });
 
@@ -147,7 +164,14 @@ export class WorldStartPanel {
       });
     });
 
-    this.previewCanvas = this.panel.querySelector<HTMLCanvasElement>('.world-local-preview');
+    this.panel.querySelectorAll<HTMLButtonElement>('.world-ideology-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        this.ideologyFoundation = button.dataset.ideology as IdeologyFoundation;
+        this.render();
+      });
+    });
+
+        this.previewCanvas = this.panel.querySelector<HTMLCanvasElement>('.world-local-preview');
     if (this.previewCanvas && selected && this.previewMap) {
       this.drawPreview();
       this.previewCanvas.addEventListener('click', event => this.chooseSettlementPoint(event));
@@ -244,6 +268,10 @@ export class WorldStartPanel {
       .world-region-stats span{color:#cbd5e1}.world-start-help,.world-start-selection-text{font-size:11px;color:#94a3b8}
       .world-local-preview{width:min(100%,384px);aspect-ratio:1;display:block;margin:10px auto;border:1px solid rgba(148,163,184,.35);image-rendering:pixelated;cursor:crosshair;background:#111827}
       .world-start-placeholder{height:100%;display:flex;align-items:center;justify-content:center;text-align:center;color:#64748b;padding:30px}
+      .world-ideology-choice{margin-top:12px;padding-top:10px;border-top:1px solid rgba(100,145,205,.18);font-size:11px}
+      .world-ideology-buttons{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
+      .world-ideology-btn{display:flex;flex-direction:column;gap:3px;text-align:left;padding:8px;border:1px solid rgba(100,145,205,.25);border-radius:5px;background:rgba(20,32,50,.75);color:#dbeafe;cursor:pointer}
+      .world-ideology-btn small{color:#94a3b8}.world-ideology-btn.selected{border-color:#fbbf24;background:rgba(83,65,22,.32)}
       @media(max-width:900px){.world-start-body{grid-template-columns:1fr}.world-region-grid{grid-template-columns:repeat(8,1fr)}}
     `;
     document.head.appendChild(style);
