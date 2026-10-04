@@ -2728,12 +2728,27 @@ class CultTycoonGame {
 
       this.gameInstanceState.resources.food = Math.max(0, this.gameInstanceState.resources.food - 1);
       this.refreshLogisticsVisuals();
+      const social = this.world.getComponent(entity, SocialState);
       if (eaten.kind !== 'meal') {
         const needs = this.world.getComponent(entity, Needs);
         if (needs) needs.comfort = Math.max(0, needs.comfort - 3);
+        social?.addMemory({
+          id: `raw-food:${Math.floor(this.tickCount)}`,
+          label: 'Ate raw food',
+          mood: -4,
+          duration: 40,
+          stackKey: 'ate_raw_food',
+        });
       } else {
         const needs = this.world.getComponent(entity, Needs);
         if (needs) needs.comfort = Math.min(100, needs.comfort + 4);
+        social?.addMemory({
+          id: `meal:${Math.floor(this.tickCount)}`,
+          label: 'Ate a proper meal',
+          mood: 4,
+          duration: 45,
+          stackKey: 'ate_meal',
+        });
       }
       return eaten.nutrition;
     }
@@ -2761,6 +2776,19 @@ class CultTycoonGame {
 
       if (needs) {
         needs.comfort = Math.min(100, needs.comfort + (sheltered ? 10 : 5) * dt);
+      }
+      const social = this.world.getComponent(entity, SocialState);
+      if (social) {
+        const stackKey = sheltered ? 'slept_sheltered' : 'slept_exposed';
+        if (!social.memories.some(memory => memory.stackKey === stackKey)) {
+          social.addMemory({
+            id: `${stackKey}:${Math.floor(this.tickCount)}`,
+            label: sheltered ? 'Slept in a sheltered room' : 'Slept exposed or without proper shelter',
+            mood: sheltered ? 3 : -5,
+            duration: 55,
+            stackKey,
+          });
+        }
       }
       return (sheltered ? 28 : 22) * dt;
     }
@@ -3022,6 +3050,7 @@ class CultTycoonGame {
       priorities: work ? { ...work.priorities } : undefined,
       inventory: inventory?.items ?? [],
       mood: social?.mood,
+      mentalBreak: social?.activeBreak?.type,
       memories: social?.memories
         .slice()
         .sort((a, b) => Math.abs(b.mood) - Math.abs(a.mood))
