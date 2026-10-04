@@ -923,7 +923,6 @@ class CultTycoonGame {
       { id: 'structure', label: 'Build', icon: '🧱' },
       { id: 'objects', label: 'Objects', icon: '📦' },
       { id: 'ritual', label: 'Ritual', icon: '🔮' },
-      { id: 'rooms', label: 'Room Purpose', icon: '🏠' },
       { id: 'decor', label: 'Decor', icon: '🎨' },
       { id: 'harvest', label: 'Harvest', icon: '🪓' },
       { id: 'zones', label: 'Zones', icon: '▦' },
@@ -941,20 +940,6 @@ class CultTycoonGame {
       { id: 'harvest:rock', label: 'Mine Rock', icon: '🪨', cost: 0, category: 'harvest' },
       { id: 'harvest:food', label: 'Gather Food', icon: '🫐', cost: 0, category: 'harvest' },
       { id: 'zone:stockpile', label: 'Stockpile', icon: '▦', cost: 0, category: 'zones' as BuildPanelEntry['category'] },
-      ...DataManager.getRooms().map(room => ({
-        id: `room:${room.id}`,
-        label: room.name,
-        icon: '🏠',
-        cost: 0,
-        category: 'rooms' as BuildPanelEntry['category'],
-      })),
-      {
-        id: 'room:clear',
-        label: 'Clear Purpose',
-        icon: '🧽',
-        cost: 0,
-        category: 'rooms' as BuildPanelEntry['category'],
-      },
       ...allObjects.map(obj => ({
         id: obj.id,
         label: obj.name,
@@ -2425,7 +2410,8 @@ class CultTycoonGame {
 
     const placedIds = new Set(this.getObjectsInRoom(roomId));
     const missing = def.requiredObjects.filter(required => !placedIds.has(required));
-    return { complete: room.area >= def.minSize && missing.length === 0, missing };
+    const cellCount = room.constructionCells?.length ?? Math.max(1, Math.round(room.area));
+    return { complete: cellCount >= def.minSize && missing.length === 0, missing };
   }
 
   private refreshRoomRequirementAt(x: number, y: number): void {
@@ -2479,7 +2465,7 @@ class CultTycoonGame {
           if (room && def) {
             const status = this.getRoomRequirementStatus(room.id);
             this.hud.logEvent(
-              `${def.name}: ${status.complete ? 'complete' : `missing ${status.missing.join(', ')}`} · ${room.area} tiles`,
+              `${def.name}: ${status.complete ? 'complete' : `missing ${status.missing.join(', ')}`} · ${room.constructionCells?.length ?? Math.round(room.area)} construction cells`,
               status.complete ? 'success' : 'info',
             );
           }
