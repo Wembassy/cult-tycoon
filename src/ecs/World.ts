@@ -37,6 +37,12 @@ export class World {
     return this.nextEntityId;
   }
 
+  ensureNextEntityId(nextId: number): void {
+    if (Number.isFinite(nextId)) {
+      this.nextEntityId = Math.max(this.nextEntityId, Math.floor(nextId));
+    }
+  }
+
   /**
    * Remove an entity and all its components
    */
