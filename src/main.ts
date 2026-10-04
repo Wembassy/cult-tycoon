@@ -213,6 +213,8 @@ class CultTycoonGame {
     this.pathfindSystem.bindWorld(this.world);
     this.buildingSystem = new BuildingSystem(this.map, ALPHA_SPATIAL_CONFIG.constructionSubdivisions, this.navigation);
     this.aiSystem.setNeedFacilityProvider((need, from) => this.findNeedFacility(need, from));
+    this.aiSystem.setNeedRecoveryProvider((need, entity, target, dt) =>
+      this.recoverFollowerNeed(need, entity, target, dt));
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.renderSystem.setBuildingSystem(this.buildingSystem);
     this.renderSystem.setFollowerNames(this.followerNames);
@@ -297,7 +299,12 @@ class CultTycoonGame {
     // Resource system — generates and consumes resources each tick
     this.resourceSystem = new ResourceSystem(
       this.gameInstanceState,
-      {},
+      {
+        // Food is physical in Alpha: harvesting/farming/cooking/eating own the
+        // food loop. ResourceSystem must not duplicate it with passive counters.
+        cookFoodRate: 0,
+        foodConsumptionPerFollower: 0,
+      },
       (event) => {
         const logType = event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
         this.hud.logEvent(event.message, logType as any);
@@ -2576,8 +2583,10 @@ class CultTycoonGame {
   }
 
   private findNeedFacility(need: NeedKind, from: { x: number; y: number }): { x: number; y: number } | null {
+    if (need === 'hunger') return this.logisticsSystem.findNearestEdible(from);
+
     const facilitiesByNeed: Record<NeedKind, string[]> = {
-      hunger: ['cookpot', 'cauldron', 'garden_plot', 'farm_plot'],
+      hunger: [],
       faith: ['altar', 'sacrificial_altar', 'offering_bowl', 'incense_burner', 'prayer_beads', 'statue'],
       fun: ['bonfire', 'zen_garden', 'meditation_mat'],
       sanity: ['meditation_mat', 'zen_garden', 'bonfire'],
@@ -2590,8 +2599,8 @@ class CultTycoonGame {
     const candidates = this.buildingSystem.getAllObjects()
       .filter(obj => validIds.has(obj.objectId))
       .map(obj => {
-        const workTile = this.findAdjacentWorkTile(obj.x, obj.y);
-        if (!workTile) return null;
+        const local = this.buildingSystem.toTerrainTile(obj.x, obj.y);
+        const workTile = this.findAdjacentWorkTile(local.x, local.y) ?? local;
         const distance = Math.abs(workTile.x - from.x) + Math.abs(workTile.y - from.y);
         return { tile: workTile, distance };
       })
@@ -2599,6 +2608,42 @@ class CultTycoonGame {
       .sort((a, b) => a.distance - b.distance);
 
     return candidates[0]?.tile ?? null;
+  }
+
+  private recoverFollowerNeed(
+    need: NeedKind,
+    entity: number,
+    target: { x: number; y: number } | null,
+    dt: number,
+  ): number | null {
+    if (need === 'hunger') {
+      if (!target) return 0;
+      const eaten = this.logisticsSystem.consumeEdibleAt(target);
+      if (!eaten) {
+        const ai = this.world.getComponent(entity, FollowerAI);
+        if (ai) ai.needTargetTile = null;
+        return 0;
+      }
+
+      this.gameInstanceState.resources.food = Math.max(0, this.gameInstanceState.resources.food - 1);
+      this.refreshLogisticsVisuals();
+      if (eaten.kind !== 'meal') {
+        const needs = this.world.getComponent(entity, Needs);
+        if (needs) needs.comfort = Math.max(0, needs.comfort - 3);
+      } else {
+        const needs = this.world.getComponent(entity, Needs);
+        if (needs) needs.comfort = Math.min(100, needs.comfort + 4);
+      }
+      return eaten.nutrition;
+    }
+
+    if (need === 'energy') {
+      const needs = this.world.getComponent(entity, Needs);
+      if (needs) needs.comfort = Math.min(100, needs.comfort + 7 * dt);
+      return 24 * dt;
+    }
+
+    return null;
   }
 
   private registerWorkstationJob(x: number, y: number, objectId: string): void {
@@ -2805,6 +2850,8 @@ class CultTycoonGame {
         energy: needs.energy,
         bladder: needs.bladder,
         hygiene: needs.hygiene,
+        comfort: needs.comfort,
+        social: needs.social,
       },
       job: job?.type ?? 'idle',
       traits: traits?.traits ?? [],
