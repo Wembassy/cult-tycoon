@@ -31,6 +31,7 @@ import { Schedule } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
 import { SocialState } from './components/SocialState';
 import { BeliefState } from './components/BeliefState';
+import { Outsider } from './components/Outsider';
 import type { WorkJobKey } from './ui/WorkPanel';
 import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem, type JobPosting } from './systems/JobSystem';
@@ -51,6 +52,7 @@ import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
 import { SocialSystem } from './systems/SocialSystem';
 import { IdeologySystem } from './systems/IdeologySystem';
+import { OutsiderSystem } from './systems/OutsiderSystem';
 import type { CultRoleKey, IdeologyFoundation } from './game/Ideology';
 import { MissionSystem } from './systems/MissionSystem';
 import { PrestigeSystem } from './systems/PrestigeSystem';
@@ -110,6 +112,7 @@ class CultTycoonGame {
   private schedulingSystem: SchedulingSystem;
   private socialSystem: SocialSystem;
   private ideologySystem: IdeologySystem;
+  private outsiderSystem: OutsiderSystem;
   private missionSystem: MissionSystem;
   private prestigeSystem: PrestigeSystem;
   private heatSystem: HeatSystem;
@@ -332,6 +335,7 @@ class CultTycoonGame {
     this.schedulingSystem = new SchedulingSystem();
     this.socialSystem = new SocialSystem();
     this.ideologySystem = new IdeologySystem();
+    this.outsiderSystem = this.createOutsiderSystem();
 
     // Mission system — sends cultists on external missions for rewards
     this.missionSystem = new MissionSystem(
@@ -403,7 +407,7 @@ class CultTycoonGame {
     // Room graph for room detection (used by prestige system)
     this.roomGraph = new RoomGraph(this.map);
 
-    this.systems = [this.needsSystem, this.schedulingSystem, this.socialSystem, this.ideologySystem, this.farmingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
+    this.systems = [this.needsSystem, this.schedulingSystem, this.socialSystem, this.ideologySystem, this.outsiderSystem, this.farmingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
     // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
     // in simulate() because they don't extend the System base class.
     // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
@@ -1311,6 +1315,28 @@ class CultTycoonGame {
     }
     this.hud.logEvent('Roles auto-assigned from follower skills.', 'success');
     this.openWorkPanel();
+  }
+
+  private createOutsiderSystem(): OutsiderSystem {
+    return new OutsiderSystem(
+      this.map,
+      this.pathfinder,
+      () => this.ideologySystem.getIdeology(),
+      {
+        onArrive: (_entity, name) => {
+          this.hud.logEvent(`Visitor arrived: ${name}. Click them to attempt recruitment.`, 'info');
+        },
+        onLeave: (_entity, name) => {
+          this.hud.logEvent(`${name} left the area without joining.`, 'info');
+        },
+        onRecruit: (entity, name) => {
+          this.followerNames.set(entity, name);
+          this.hud.logEvent(`${name} has joined the cult!`, 'success');
+          this.sceneMgr.syncEntities();
+          this.updateHUD();
+        },
+      },
+    );
   }
 
   private openIdeologyDialog(): void {
@@ -3868,6 +3894,12 @@ class CultTycoonGame {
     this.socialSystem = new SocialSystem();
     this.ideologySystem = new IdeologySystem();
     this.ideologySystem.setFoundation(selection.ideologyFoundation ?? 'communal_devotion');
+    this.outsiderSystem = this.createOutsiderSystem();
+    this.outsiderSystem.configure(
+      selection.region.outsiderTraffic,
+      selection.settlementPoint,
+      selection.region.localSeed,
+    );
     this.farmingSystem.setTemperatureC(selection.region.temperatureC);
 
     this.gameInstanceState = new GameInstanceState({
@@ -3939,6 +3971,7 @@ class CultTycoonGame {
       this.schedulingSystem,
       this.socialSystem,
       this.ideologySystem,
+      this.outsiderSystem,
       this.farmingSystem,
       this.jobSystem,
       this.aiSystem,
@@ -4229,6 +4262,14 @@ class CultTycoonGame {
       this.farmingSystem.setTemperatureC(this.worldStartSelection.region.temperatureC);
     }
     this.ideologySystem.restoreSnapshot(data.ideology);
+    if (this.worldStartSelection) {
+      this.outsiderSystem.configure(
+        this.worldStartSelection.region.outsiderTraffic,
+        this.worldStartSelection.settlementPoint,
+        this.worldStartSelection.region.localSeed,
+      );
+    }
+    this.outsiderSystem.restoreSnapshot(data.outsiders);
     this.refreshLogisticsVisuals();
     this.refreshFarmingVisuals();
 
@@ -4419,6 +4460,7 @@ class CultTycoonGame {
       this.logisticsSystem.getSnapshot(),
       this.farmingSystem.getSnapshot(),
       this.ideologySystem.getSnapshot(),
+      this.outsiderSystem.getSnapshot(),
       this.worldStartSelection ? {
         globalSeed: this.worldStartSelection.globalSeed,
         region: { ...this.worldStartSelection.region },
