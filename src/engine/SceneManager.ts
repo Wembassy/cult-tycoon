@@ -36,6 +36,14 @@ const TERRAIN_HEIGHT: Record<string, number> = {
 
 const TILE_SIZE = 0.9;
 
+// Fine Construction Space uses 10 cells per legacy terrain unit in Alpha.
+// Keep architectural dimensions proportional to that fine lattice instead of
+// reusing the old 1x1-tile wall heights.
+const constructionWallHeight = (cellSize: number) => Math.max(0.22, cellSize * 2.4);
+const constructionDoorHeight = (cellSize: number) => Math.max(0.19, cellSize * 2.05);
+const constructionRoofLift = (cellSize: number) => constructionWallHeight(cellSize) + Math.max(0.015, cellSize * 0.2);
+const constructionObjectScale = (cellSize: number) => Math.max(0.22, cellSize * 2.5);
+
 export type ConstructionVisualKind = 'wall' | 'floor' | 'door' | 'object';
 
 export interface ConstructionBlueprintVisual {
@@ -504,9 +512,10 @@ export class SceneManager {
       if (!tile) continue;
       const model = getBuildingModel('generic');
       const length = constructionCellSize;
+      const wallHeight = constructionWallHeight(constructionCellSize);
       const wallGeom = edge.orientation === 'horizontal'
-        ? new THREE.BoxGeometry(length, 1.6, edgeThickness)
-        : new THREE.BoxGeometry(edgeThickness, 1.6, length);
+        ? new THREE.BoxGeometry(length, wallHeight, edgeThickness)
+        : new THREE.BoxGeometry(edgeThickness, wallHeight, length);
       const wallMat = new THREE.MeshStandardMaterial({
         color: model.color,
         flatShading: true,
@@ -520,7 +529,7 @@ export class SceneManager {
       const localZ = edge.orientation === 'horizontal'
         ? edge.y * constructionCellSize
         : (edge.y + 0.5) * constructionCellSize;
-      wall.position.set(localX + offset.x, height + 0.8, localZ + offset.z);
+      wall.position.set(localX + offset.x, height + wallHeight / 2, localZ + offset.z);
       wall.castShadow = true;
       wall.receiveShadow = true;
       wall.userData = { buildKind: 'wall-edge', ...edge };
@@ -537,9 +546,10 @@ export class SceneManager {
       const tile = this.map.getTile(terrain.x, terrain.y);
       if (!tile) continue;
       const length = constructionCellSize;
+      const doorHeight = constructionDoorHeight(constructionCellSize);
       const doorGeom = edge.orientation === 'horizontal'
-        ? new THREE.BoxGeometry(length, 1.2, edgeThickness * 1.25)
-        : new THREE.BoxGeometry(edgeThickness * 1.25, 1.2, length);
+        ? new THREE.BoxGeometry(length, doorHeight, edgeThickness * 1.25)
+        : new THREE.BoxGeometry(edgeThickness * 1.25, doorHeight, length);
       const doorMat = new THREE.MeshStandardMaterial({
         color: 0x5a3a2a,
         flatShading: true,
@@ -553,7 +563,7 @@ export class SceneManager {
       const localZ = edge.orientation === 'horizontal'
         ? edge.y * constructionCellSize
         : (edge.y + 0.5) * constructionCellSize;
-      door.position.set(localX + offset.x, height + 0.6, localZ + offset.z);
+      door.position.set(localX + offset.x, height + doorHeight / 2, localZ + offset.z);
       door.castShadow = true;
       door.userData = { buildKind: 'door-edge', ...edge };
       door.visible = this.wallsVisible;
@@ -668,6 +678,7 @@ export class SceneManager {
       const objMesh = this.createObjectMesh(obj.objectId);
       if (objMesh) {
         const height = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
+        objMesh.scale.multiplyScalar(constructionObjectScale(bs.cellSize));
         objMesh.position.set(
           (obj.x + 0.5) * bs.cellSize + offset.x,
           height,
@@ -735,7 +746,7 @@ export class SceneManager {
       const tile = this.map.getTile(terrain.x, terrain.y);
       if (!tile) continue;
       const terrainHeight = TERRAIN_HEIGHT[tile.terrain] ?? 0.5;
-      const y = terrainHeight + 1.68;
+      const y = terrainHeight + constructionRoofLift(cellSize);
       const x0 = cell.x * cellSize + offset.x;
       const x1 = (cell.x + 1) * cellSize + offset.x;
       const z0 = cell.y * cellSize + offset.z;
@@ -1366,25 +1377,28 @@ export class SceneManager {
       if (constructionSpace) {
         if (kind === 'wall') {
           const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.35));
+          const wallHeight = constructionWallHeight(cellSize);
           geometry = orientation === 'horizontal'
-            ? new THREE.BoxGeometry(cellSize, 1.25, thickness)
-            : new THREE.BoxGeometry(thickness, 1.25, cellSize);
+            ? new THREE.BoxGeometry(cellSize, wallHeight, thickness)
+            : new THREE.BoxGeometry(thickness, wallHeight, cellSize);
           worldX = (orientation === 'horizontal' ? pos.x + 0.5 : pos.x) * cellSize + offset.x;
           worldZ = (orientation === 'horizontal' ? pos.y : pos.y + 0.5) * cellSize + offset.z;
-          y = terrainHeight + 0.625;
+          y = terrainHeight + constructionWallHeight(cellSize) / 2;
         } else if (kind === 'door') {
           const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.42));
+          const doorHeight = constructionDoorHeight(cellSize);
           geometry = orientation === 'horizontal'
-            ? new THREE.BoxGeometry(cellSize, 1.0, thickness)
-            : new THREE.BoxGeometry(thickness, 1.0, cellSize);
+            ? new THREE.BoxGeometry(cellSize, doorHeight, thickness)
+            : new THREE.BoxGeometry(thickness, doorHeight, cellSize);
           worldX = (orientation === 'horizontal' ? pos.x + 0.5 : pos.x) * cellSize + offset.x;
           worldZ = (orientation === 'horizontal' ? pos.y : pos.y + 0.5) * cellSize + offset.z;
-          y = terrainHeight + 0.5;
+          y = terrainHeight + constructionDoorHeight(cellSize) / 2;
         } else if (kind === 'object') {
-          geometry = new THREE.BoxGeometry(Math.max(0.2, cellSize * 2), 0.55, Math.max(0.2, cellSize * 2));
+          const objectSize = constructionObjectScale(cellSize);
+          geometry = new THREE.BoxGeometry(objectSize, objectSize * 0.7, objectSize);
           worldX = (pos.x + 0.5) * cellSize + offset.x;
           worldZ = (pos.y + 0.5) * cellSize + offset.z;
-          y = terrainHeight + 0.275;
+          y = terrainHeight + constructionObjectScale(cellSize) * 0.35;
         } else {
           geometry = new THREE.BoxGeometry(cellSize * 0.96, 0.06, cellSize * 0.96);
           worldX = (pos.x + 0.5) * cellSize + offset.x;
@@ -1432,25 +1446,28 @@ export class SceneManager {
       if (constructionSpace) {
         if (blueprint.kind === 'wall') {
           const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.35));
+          const wallHeight = constructionWallHeight(cellSize);
           geometry = orientation === 'horizontal'
-            ? new THREE.BoxGeometry(cellSize, 1.2, thickness)
-            : new THREE.BoxGeometry(thickness, 1.2, cellSize);
+            ? new THREE.BoxGeometry(cellSize, wallHeight, thickness)
+            : new THREE.BoxGeometry(thickness, wallHeight, cellSize);
           worldX = (orientation === 'horizontal' ? blueprint.x + 0.5 : blueprint.x) * cellSize + offset.x;
           worldZ = (orientation === 'horizontal' ? blueprint.y : blueprint.y + 0.5) * cellSize + offset.z;
-          y = terrainHeight + 0.6;
+          y = terrainHeight + constructionWallHeight(cellSize) / 2;
         } else if (blueprint.kind === 'door') {
           const thickness = Math.max(0.025, Math.min(0.08, cellSize * 0.42));
+          const doorHeight = constructionDoorHeight(cellSize);
           geometry = orientation === 'horizontal'
-            ? new THREE.BoxGeometry(cellSize, 0.95, thickness)
-            : new THREE.BoxGeometry(thickness, 0.95, cellSize);
+            ? new THREE.BoxGeometry(cellSize, doorHeight, thickness)
+            : new THREE.BoxGeometry(thickness, doorHeight, cellSize);
           worldX = (orientation === 'horizontal' ? blueprint.x + 0.5 : blueprint.x) * cellSize + offset.x;
           worldZ = (orientation === 'horizontal' ? blueprint.y : blueprint.y + 0.5) * cellSize + offset.z;
-          y = terrainHeight + 0.475;
+          y = terrainHeight + constructionDoorHeight(cellSize) / 2;
         } else if (blueprint.kind === 'object') {
-          geometry = new THREE.BoxGeometry(Math.max(0.2, cellSize * 2), 0.48, Math.max(0.2, cellSize * 2));
+          const objectSize = constructionObjectScale(cellSize);
+          geometry = new THREE.BoxGeometry(objectSize, objectSize * 0.7, objectSize);
           worldX = (blueprint.x + 0.5) * cellSize + offset.x;
           worldZ = (blueprint.y + 0.5) * cellSize + offset.z;
-          y = terrainHeight + 0.24;
+          y = terrainHeight + constructionObjectScale(cellSize) * 0.35;
         } else {
           geometry = new THREE.BoxGeometry(cellSize * 0.96, 0.05, cellSize * 0.96);
           worldX = (blueprint.x + 0.5) * cellSize + offset.x;
