@@ -481,19 +481,9 @@ class CultTycoonGame {
       this.openSchedulePanel();
     };
 
-    // Spawn initial followers at map center
-    this.spawnFollowers(6);
-    const initialFollowers = this.world.query([FollowerAI, BeliefState]);
-    if (initialFollowers.length > 0) {
-      this.ideologySystem.assignRole('leader', initialFollowers[0], this.world);
-    }
-
-    // The legacy 50 starting Materials are now represented by real loose
-    // resources. They can be hauled to a stockpile or directly to blueprints.
-    this.logisticsSystem.addStack('wood', 25, mapCenterX + 2, mapCenterY);
-    this.logisticsSystem.addStack('stone', 25, mapCenterX + 3, mapCenterY);
-    this.logisticsSystem.addStack('food', 18, mapCenterX + 1, mapCenterY + 1);
-    this.refreshLogisticsVisuals();
+    // Followers and starter supplies are intentionally not created here.
+    // Alpha starts in Global World Space; a roster only exists after the player
+    // confirms a region + local settlement point or loads a save.
 
     // Set up HUD
     this.updateHUD();
