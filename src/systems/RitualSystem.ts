@@ -211,4 +211,12 @@ export class RitualSystem {
     if (!ritual) return 0;
     return ritual.progress / ritual.def.duration;
   }
+
+  reset(unlockedTech: string[] = ['basic_rituals']): void {
+    this.activeRituals = [];
+    this.completedRituals = [];
+    this.unlockedTech.clear();
+    for (const techId of unlockedTech) this.unlockedTech.add(techId);
+    this.tickCount = 0;
+  }
 }
