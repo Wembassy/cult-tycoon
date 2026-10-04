@@ -3681,7 +3681,8 @@ class CultTycoonGame {
       this.postHarvestJob(order);
     }
     for (const obj of this.buildingSystem.getAllObjects()) {
-      this.registerWorkstationJob(obj.x, obj.y, obj.objectId);
+      const local = this.buildingSystem.toTerrainTile(obj.x, obj.y);
+      this.registerWorkstationJob(local.x, local.y, obj.objectId);
     }
 
     // Existing pathfinder references use the same TileMap instance; invalidate caches
