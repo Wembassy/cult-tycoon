@@ -26,7 +26,7 @@ import { Traits } from './components/Traits';
 import { Job } from './components/Job';
 import { Inventory } from './components/Inventory';
 import { Skills } from './components/Skills';
-import { Schedule, type ScheduleActivity } from './components/Schedule';
+import { Schedule } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
 import type { WorkJobKey } from './ui/WorkPanel';
 import { NeedsSystem } from './systems/NeedsSystem';
@@ -2969,12 +2969,16 @@ class CultTycoonGame {
     let totalFaith = 0;
     let totalFun = 0;
     let totalSanity = 0;
+    let totalComfort = 0;
+    let totalSocial = 0;
 
     for (const e of entities) {
       const n = this.world.getComponent(e, Needs)!;
       totalFaith += n.faith;
       totalFun += n.fun;
       totalSanity += n.sanity;
+      totalComfort += n.comfort;
+      totalSocial += n.social;
     }
 
     const pop = entities.length;
@@ -2985,7 +2989,7 @@ class CultTycoonGame {
       wealth: Math.floor(this.getSpendableWealth()),
       notoriety: Math.floor(this.cultNotoriety),
       faith: pop > 0 ? totalFaith / pop : 100,
-      morale: pop > 0 ? (totalFun + totalSanity) / (2 * pop) : 100,
+      morale: pop > 0 ? (totalFun + totalSanity + totalComfort + totalSocial) / (4 * pop) : 100,
       materials: Math.floor(this.getAvailableMaterials()),
       food: Math.floor(this.gameInstanceState.resources.food),
       population: pop,
@@ -3376,6 +3380,7 @@ class CultTycoonGame {
     const hudSecond = Math.floor(this.tickCount);
     if (hudSecond !== this.lastHudUpdateSecond) {
       this.lastHudUpdateSecond = hudSecond;
+      this.refreshFarmingVisuals();
       this.updateHUD();
     }
 
