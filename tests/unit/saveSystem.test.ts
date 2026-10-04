@@ -344,14 +344,12 @@ describe('SaveSystem — Corrupted Data', () => {
     expect(loaded).toBeNull();
   });
 
-  it('should return null for save data with wrong structure', () => {
-    // Valid JSON but missing expected fields — should still return the parsed object
-    // since load() only checks version, not structure. But version mismatch is warned.
+  it('should reject save data with the wrong structure/version', () => {
+    // Alpha spatial/save migrations are explicit. Valid JSON that does not
+    // declare the current compatible save version must not be loaded.
     mockStorage['cult_tycoon_save_0'] = JSON.stringify({ foo: 'bar' });
     const loaded = save.load();
-    // load() parses and returns it (version check is just a warning, not a failure)
-    expect(loaded).not.toBeNull();
-    expect((loaded as any).foo).toBe('bar');
+    expect(loaded).toBeNull();
   });
 
   it('should handle localStorage errors gracefully on save', () => {
