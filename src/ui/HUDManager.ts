@@ -55,7 +55,7 @@ export interface InspectorData {
   name: string;
   role: string;
   health: number;
-  needs: { hunger: number; faith: number; fun: number; sanity: number; energy: number; bladder: number; hygiene: number };
+  needs: { hunger: number; faith: number; fun: number; sanity: number; energy: number; bladder: number; hygiene: number; comfort: number; social: number };
   job: string;
   traits: string[];
   tier?: string;
@@ -740,6 +740,8 @@ export class HUDManager {
       energy: { icon: 'scifi_icon_energy', fallback: '⚡' },
       bladder: { icon: 'scifi_icon_thirst', fallback: '🚽' },
       hygiene: { icon: 'scifi_icon_clean', fallback: '🧼' },
+      comfort: { icon: 'scifi_icon_morale', fallback: '🛋️' },
+      social: { icon: 'scifi_icon_morale', fallback: '💬' },
     };
     const needsHtml = Object.entries(data.needs).map(([key, val]) => {
       const { icon, fallback } = needIcons[key] || { icon: 'scifi_icon_health', fallback: '❓' };
