@@ -418,7 +418,7 @@ export class LogisticsSystem {
     posting: JobPosting,
     entity: number,
     world: World,
-    resources: GameState['resources'],
+    _resources: GameState['resources'],
   ): LogisticsJobResult {
     if (!posting.id.startsWith('haul:') && !posting.id.startsWith('material:')) {
       return { handled: false, changed: false };
