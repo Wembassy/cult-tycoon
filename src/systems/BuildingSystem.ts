@@ -820,7 +820,10 @@ export class BuildingSystem {
 
     const detected: Array<{ cells: { x: number; y: number }[]; keys: Set<string> }> = [];
     const index = (x: number, y: number) => y * width + x;
-    const minRoomCells = s * s; // Ignore enclosures smaller than one local square unit.
+    // Fine construction is intentionally much smaller than the legacy terrain grid.
+    // A 2x2 fine-cell enclosure is the smallest valid room; requiring s*s cells
+    // recreated the old oversized-room problem at 10x subdivisions.
+    const minRoomCells = 4;
 
     for (let startY = 0; startY < height; startY++) {
       for (let startX = 0; startX < width; startX++) {
