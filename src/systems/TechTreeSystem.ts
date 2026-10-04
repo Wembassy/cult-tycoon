@@ -187,4 +187,16 @@ export class TechTreeSystem {
   getBranches(): Record<TechBranch, TechNode[]> {
     return getTechBranches();
   }
+
+  reset(): void {
+    this.nodes = TECH_TREE_NODES.map(node => ({ ...node, effects: { ...node.effects } }));
+    this.effects = {
+      maxPopulationBonus: 0,
+      recruitmentBonus: 0,
+      heatReductionRate: 0,
+      unlockedRooms: [],
+      unlockedObjects: [],
+      ideology: null,
+    };
+  }
 }
