@@ -914,7 +914,7 @@ class CultTycoonGame {
       { id: 'structure', label: 'Build', icon: '🧱' },
       { id: 'objects', label: 'Objects', icon: '📦' },
       { id: 'ritual', label: 'Ritual', icon: '🔮' },
-      { id: 'rooms', label: 'Rooms', icon: '🏠' },
+      { id: 'rooms', label: 'Room Purpose', icon: '🏠' },
       { id: 'decor', label: 'Decor', icon: '🎨' },
       { id: 'harvest', label: 'Harvest', icon: '🪓' },
       { id: 'demolish', label: 'Demolish', icon: '❌' },
@@ -939,7 +939,7 @@ class CultTycoonGame {
       })),
       {
         id: 'room:clear',
-        label: 'Clear Room',
+        label: 'Clear Purpose',
         icon: '🧽',
         cost: 0,
         category: 'rooms' as BuildPanelEntry['category'],
@@ -1066,8 +1066,8 @@ class CultTycoonGame {
           this.selectedBuildItem = id;
           const label = item.querySelector('.hud-build-item-label')?.textContent ?? id;
           if (id === 'room:clear') {
-            this.hud.logEvent('Clear Room: drag over designated room tiles to remove the designation.', 'info');
-            this.hud.setBuildStatus('Drag over designated room tiles to clear the room zone.', 'info');
+            this.hud.logEvent('Clear Purpose: drag over an enclosed room to remove its optional room-purpose override.', 'info');
+            this.hud.setBuildStatus('Drag over an enclosed room to clear its purpose override.', 'info');
           } else if (id.startsWith('harvest:')) {
             const harvestLabel =
               id === 'harvest:tree' ? 'trees for Materials' :
@@ -1078,11 +1078,11 @@ class CultTycoonGame {
           } else if (id.startsWith('room:')) {
             const roomDef = DataManager.getRoom(id.slice(5));
             this.hud.logEvent(
-              `Room designation: ${label}. Drag an area at least ${roomDef?.minSize ?? 1} tiles, then place required objects.`,
+              `Optional room-purpose override: ${label}. Rooms are created automatically by enclosed walls/doors and normally infer purpose from furnishings.`,
               'info',
             );
             this.hud.setBuildStatus(
-              `Drag a rectangle to designate ${label} (minimum ${roomDef?.minSize ?? 1} tiles).`,
+              `Drag over an enclosed room to assign ${label} (minimum ${roomDef?.minSize ?? 1} square units).`,
               'info',
             );
           } else {
@@ -2722,20 +2722,25 @@ class CultTycoonGame {
     const activeMissions = this.missionSystem.getActiveMissions().length;
     const heat = this.heatSystem.getHeat();
 
-    if (!rooms.some(room => room.roomDefinitionId === 'dormitory')) {
+    if (rooms.length === 0) {
       this.hud.setObjective(
-        'Designate a Dormitory',
-        'Open Build → Rooms → Dormitory, then drag a room area of at least 4 tiles near your starting clearing.',
+        'Build your first enclosed room',
+        'Use fine-grid walls and a door to enclose at least 4 square units. The room and roof are detected automatically.',
+      );
+    } else if (!rooms.some(room => room.roomDefinitionId === 'dormitory')) {
+      this.hud.setObjective(
+        'Furnish a sleeping room',
+        'Place a Bed inside an enclosed room of at least 4 square units. It will be recognized as a Dormitory automatically.',
       );
     } else if (!completeRoomIds.has('dormitory')) {
       this.hud.setObjective(
         'Complete the Dormitory',
-        'Place a Bed inside the designated Dormitory. A room becomes functional when its required objects are inside it.',
+        'Add the missing Dormitory furnishings shown by the room inspector/status.',
       );
     } else if (!rooms.some(room => room.roomDefinitionId === 'kitchen')) {
       this.hud.setObjective(
-        'Designate a Kitchen',
-        'Create a Kitchen of at least 4 tiles so your cult has a dependable food-work area.',
+        'Create a Kitchen',
+        'Enclose a room of at least 4 square units and place a Cookpot plus Storage Box inside. Its purpose is inferred automatically.',
       );
     } else if (!completeRoomIds.has('kitchen')) {
       const kitchen = rooms.find(room => room.roomDefinitionId === 'kitchen');
@@ -2767,7 +2772,7 @@ class CultTycoonGame {
     } else {
       this.hud.setObjective(
         'Grow without losing control',
-        'Expand rooms, keep needs stable, improve work priorities, research, run missions and prepare for rising heat.',
+        'Expand enclosed rooms, keep needs stable, improve work priorities, research, recruit and prepare for rising pressure.',
       );
     }
   }
