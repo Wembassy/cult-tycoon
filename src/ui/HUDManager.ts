@@ -67,6 +67,7 @@ export interface InspectorData {
   mood?: number;
   memories?: { label: string; mood: number; remaining: number; stacks?: number }[];
   relationships?: { name: string; opinion: number; familiarity: number; romantic: boolean; family?: string }[];
+  mentalBreak?: string;
 }
 
 export interface EventLogEntry {
@@ -805,7 +806,11 @@ export class HUDManager {
           <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${data.health}%;background:#ef4444;"></div></div>
         </div>
         ${data.mood !== undefined ? `
-          <div class="hud-pawn-section"><b>Mood</b><div class="hud-inspector-list-row"><span>Current</span><b>${Math.round(data.mood)}/100</b></div></div>
+          <div class="hud-pawn-section">
+            <b>Mood</b>
+            <div class="hud-inspector-list-row"><span>Current</span><b>${Math.round(data.mood)}/100</b></div>
+            ${data.mentalBreak ? `<div class="hud-inspector-list-row"><span>Mental break</span><b>${data.mentalBreak.replaceAll('_',' ')}</b></div>` : ''}
+          </div>
         ` : ''}
         <div class="hud-inspector-needs">${needsHtml}</div>
         <div class="hud-pawn-section"><b>Thoughts</b>${memoriesHtml}</div>
