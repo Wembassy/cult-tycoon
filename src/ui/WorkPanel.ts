@@ -3,6 +3,7 @@
  */
 
 import type { WorkPriority, WorkRole } from '../components/WorkPreferences';
+import type { PassionLevel } from '../components/Skills';
 
 export type WorkJobKey = 'cook' | 'research' | 'pray' | 'build' | 'clean' | 'haul' | 'harvest' | 'grow';
 
@@ -13,6 +14,7 @@ export interface WorkCultistInfo {
   role: WorkRole;
   skills: Record<WorkJobKey, number>;
   priorities: Record<WorkJobKey, WorkPriority>;
+  passions: Record<WorkJobKey, PassionLevel>;
 }
 
 export interface WorkPanelData {
@@ -165,9 +167,11 @@ export class WorkPanel {
       const cells = JOBS.map(job => {
         const priority = cultist.priorities[job.key];
         const skill = cultist.skills[job.key];
+        const passion = cultist.passions[job.key] ?? 'none';
+        const passionMark = passion === 'major' ? '🔥🔥' : passion === 'minor' ? '🔥' : '';
         return `<div class="work-cell">
           <button class="work-priority" data-entity="${cultist.id}" data-job="${job.key}" data-priority="${priority}" title="1 = highest, 4 = lowest, X = disabled">${priority === 0 ? '×' : priority}</button>
-          <span class="work-skill" title="Skill">${skill}</span>
+          <span class="work-skill" title="Skill ${skill} · ${passion} passion">${skill}${passionMark ? ` <small>${passionMark}</small>` : ''}</span>
         </div>`;
       }).join('');
       return `<div class="work-row">
