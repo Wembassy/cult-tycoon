@@ -147,4 +147,10 @@ export class EventSystem {
   clearHistory(): void {
     this.firedEvents = [];
   }
+
+  reset(): void {
+    this.firedEvents = [];
+    this.tickCount = 0;
+    this.dayCount = 1;
+  }
 }
