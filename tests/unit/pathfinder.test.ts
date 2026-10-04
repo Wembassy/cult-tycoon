@@ -1,14 +1,17 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TileMap } from '@world/TileMap';
 import { Pathfinder } from '@world/Pathfinder';
+import { NavigationGrid } from '@world/NavigationGrid';
 
 describe('Pathfinder — Basic Pathfinding', () => {
   let map: TileMap;
   let pf: Pathfinder;
+  let navigation: NavigationGrid;
 
   beforeEach(() => {
     map = new TileMap(16, 16);
-    pf = new Pathfinder(map);
+    navigation = new NavigationGrid(map);
+    pf = new Pathfinder(map, navigation);
   });
 
   it('should find path on open grid', () => {
@@ -46,19 +49,21 @@ describe('Pathfinder — Basic Pathfinding', () => {
 describe('Pathfinder — Obstacles', () => {
   let map: TileMap;
   let pf: Pathfinder;
+  let navigation: NavigationGrid;
 
   beforeEach(() => {
     map = new TileMap(16, 16);
-    pf = new Pathfinder(map);
+    navigation = new NavigationGrid(map);
+    pf = new Pathfinder(map, navigation);
   });
 
   it('should path around walls', () => {
     // Build a vertical wall
     for (let y = 0; y < 16; y++) {
-      map.setOccupied(5, y, true);
+      navigation.addBlocker(5, y, 'test-wall');
     }
     // Leave a gap at y=8
-    map.setOccupied(5, 8, false);
+    navigation.removeBlocker(5, 8, 'test-wall');
 
     const result = pf.findPath(0, 0, 10, 0);
     expect(result.success).toBe(true);
@@ -81,12 +86,12 @@ describe('Pathfinder — Obstacles', () => {
 
   it('should handle maze-like obstacles', () => {
     // Create a simple maze
-    map.setOccupied(2, 0, true);
-    map.setOccupied(2, 1, true);
-    map.setOccupied(2, 2, true);
+    navigation.addBlocker(2, 0, 'maze');
+    navigation.addBlocker(2, 1, 'maze');
+    navigation.addBlocker(2, 2, 'maze');
     // gap at y=3
-    map.setOccupied(2, 4, true);
-    map.setOccupied(2, 5, true);
+    navigation.addBlocker(2, 4, 'maze');
+    navigation.addBlocker(2, 5, 'maze');
 
     const result = pf.findPath(0, 0, 5, 5);
     expect(result.success).toBe(true);
@@ -98,10 +103,12 @@ describe('Pathfinder — Obstacles', () => {
 describe('Pathfinder — Path Smoothing', () => {
   let map: TileMap;
   let pf: Pathfinder;
+  let navigation: NavigationGrid;
 
   beforeEach(() => {
     map = new TileMap(16, 16);
-    pf = new Pathfinder(map);
+    navigation = new NavigationGrid(map);
+    pf = new Pathfinder(map, navigation);
   });
 
   it('should smooth straight line paths', () => {
@@ -115,7 +122,7 @@ describe('Pathfinder — Path Smoothing', () => {
   it('should preserve corners in paths', () => {
     // Create an L-shaped obstacle to force a corner
     for (let i = 0; i <= 5; i++) {
-      map.setOccupied(3, i, true);
+      navigation.addBlocker(3, i, 'l-wall');
     }
     const result = pf.findPath(0, 0, 8, 8);
     expect(result.success).toBe(true);
@@ -139,10 +146,12 @@ describe('Pathfinder — Path Smoothing', () => {
 describe('Pathfinder — Cache', () => {
   let map: TileMap;
   let pf: Pathfinder;
+  let navigation: NavigationGrid;
 
   beforeEach(() => {
     map = new TileMap(16, 16);
-    pf = new Pathfinder(map);
+    navigation = new NavigationGrid(map);
+    pf = new Pathfinder(map, navigation);
   });
 
   it('should cache paths', () => {
@@ -158,7 +167,7 @@ describe('Pathfinder — Cache', () => {
 
     // Add walls that block the original path — create a wall line
     for (let y = 0; y < 16; y++) {
-      map.setOccupied(5, y, true);
+      navigation.addBlocker(5, y, 'cache-wall');
     }
     pf.invalidateCache();
 
