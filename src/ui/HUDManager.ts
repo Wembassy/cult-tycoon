@@ -64,6 +64,9 @@ export interface InspectorData {
   skills?: Record<string, number>;
   priorities?: Record<string, number>;
   inventory?: { id: string; quantity: number }[];
+  mood?: number;
+  memories?: { label: string; mood: number; remaining: number; stacks?: number }[];
+  relationships?: { name: string; opinion: number; familiarity: number; romantic: boolean; family?: string }[];
 }
 
 export interface EventLogEntry {
@@ -772,6 +775,17 @@ export class HUDManager {
       ? data.traits.map(trait => `<span class="hud-pawn-chip">${trait.replaceAll('_', ' ')}</span>`).join('')
       : '<div class="hud-inspector-empty">No traits.</div>';
 
+    const memoriesHtml = data.memories?.length
+      ? data.memories.slice(0, 6).map(memory =>
+          `<div class="hud-inspector-list-row"><span>${memory.label}${(memory.stacks ?? 1) > 1 ? ` ×${memory.stacks}` : ''}</span><b>${memory.mood >= 0 ? '+' : ''}${memory.mood}</b></div>`
+        ).join('')
+      : '<div class="hud-inspector-empty">No active thoughts.</div>';
+    const relationshipsHtml = data.relationships?.length
+      ? data.relationships.slice(0, 5).map(rel =>
+          `<div class="hud-inspector-list-row"><span>${rel.name}${rel.romantic ? ' ❤️' : ''}${rel.family ? ` · ${rel.family}` : ''}</span><b>${Math.round(rel.opinion)}</b></div>`
+        ).join('')
+      : '<div class="hud-inspector-empty">No established relationships.</div>';
+
     const tabBody =
       this._inspectorTab === 'job' ? `
         <div class="hud-pawn-section"><b>Current job</b><div class="hud-inspector-job-name">${data.job}</div></div>
@@ -790,7 +804,12 @@ export class HUDManager {
           <span>HP: ${data.health}/100</span>
           <div class="hud-need-bar"><div class="hud-need-bar-fill" style="width:${data.health}%;background:#ef4444;"></div></div>
         </div>
+        ${data.mood !== undefined ? `
+          <div class="hud-pawn-section"><b>Mood</b><div class="hud-inspector-list-row"><span>Current</span><b>${Math.round(data.mood)}/100</b></div></div>
+        ` : ''}
         <div class="hud-inspector-needs">${needsHtml}</div>
+        <div class="hud-pawn-section"><b>Thoughts</b>${memoriesHtml}</div>
+        <div class="hud-pawn-section"><b>Relationships</b>${relationshipsHtml}</div>
       `;
 
     const tabs: { id: InspectorTab; label: string }[] = [
