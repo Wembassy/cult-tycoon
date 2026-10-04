@@ -11,6 +11,7 @@ import { Transform } from '../components/Transform';
 import { Traits } from '../components/Traits';
 import { WorkPreferences } from '../components/WorkPreferences';
 import { Needs } from '../components/Needs';
+import { SocialState } from '../components/SocialState';
 
 export interface JobPosting {
   id: string;
@@ -96,7 +97,8 @@ export class JobSystem {
       .filter(entity => {
         const job = world.getComponent(entity, Job)!;
         const ai = world.getComponent(entity, FollowerAI)!;
-        return job.type === 'idle' && ai.state === 'idle';
+        const social = world.getComponent(entity, SocialState);
+        return job.type === 'idle' && ai.state === 'idle' && !social?.activeBreak;
       });
 
     for (const entity of idleFollowers) {
@@ -128,6 +130,11 @@ export class JobSystem {
 
       const playerPriority = preferences?.getPriority(posting.type) ?? 3;
       if (playerPriority === 0) continue;
+
+      const social = world.getComponent(entity, SocialState);
+      // Very-low morale followers ignore low-priority autonomous work and
+      // naturally spend more time recovering/recreating.
+      if ((social?.mood ?? 100) < 30 && playerPriority > 2) continue;
 
       const dist = Math.abs(posting.targetTile.x - transform.x) +
                    Math.abs(posting.targetTile.y - transform.y);
@@ -207,7 +214,12 @@ export class JobSystem {
             ? 1 + Math.max(0, skillLevel - 1) * 0.04
             : 1;
 
-          job.workProgress += dt * traitMult * skillMult;
+          const social = world.getComponent(entity, SocialState);
+          const moraleMult =
+            (social?.mood ?? 100) < 25 ? 0.6 :
+            (social?.mood ?? 100) < 40 ? 0.8 : 1;
+
+          job.workProgress += dt * traitMult * skillMult * moraleMult;
 
           if (skills && skillKey) {
             skills.addExperience(skillKey, dt * 1.8);
