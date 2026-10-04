@@ -10,6 +10,7 @@
 
 import type { World } from '../ecs/World';
 import { Inventory } from '../components/Inventory';
+import { Transform } from '../components/Transform';
 import type { JobPosting, JobSystem } from './JobSystem';
 import type { GameState } from '../game/GameState';
 
@@ -247,6 +248,46 @@ export class LogisticsSystem {
     }
 
     return scheduled;
+  }
+
+  cancelMaterialRequest(requestId: string, world: World): void {
+    const jobs = [
+      ...this.jobSystem.getPostedJobs(),
+      ...this.jobSystem.getAssignedJobs().map(assigned => assigned.posting),
+    ].filter(job =>
+      job.metadata?.requestId === requestId &&
+      (job.metadata?.stage === 'material-pickup' || job.metadata?.stage === 'material-deliver'),
+    );
+
+    const cancelled = new Set<string>();
+    for (const job of jobs) {
+      if (cancelled.has(job.id)) continue;
+      cancelled.add(job.id);
+
+      const stage = String(job.metadata?.stage ?? '');
+      const stackId = String(job.metadata?.stackId ?? '');
+      const quantity = Math.max(0, Number(job.metadata?.quantity ?? 0));
+      const kind = String(job.metadata?.kind ?? '') as 'wood' | 'stone';
+
+      if (stage === 'material-pickup') {
+        const stack = this.stacks.get(stackId);
+        if (stack?.reservedJobId === job.id) {
+          const source = stack.reservedFrom ?? 'ground';
+          stack.state = source;
+          stack.reservedFrom = undefined;
+          stack.reservedJobId = undefined;
+        }
+      } else if (stage === 'material-deliver' && job.requiredEntity !== undefined && quantity > 0) {
+        const inventory = world.getComponent(job.requiredEntity, Inventory);
+        const transform = world.getComponent(job.requiredEntity, Transform);
+        if (inventory) this.removeInventory(inventory, kind, quantity);
+        if (transform) this.addStack(kind, quantity, transform.x, transform.y);
+      }
+
+      this.jobSystem.cancelJob(job.id, world);
+    }
+
+    this.ensureHaulJobs();
   }
 
   handleJobCompleted(
