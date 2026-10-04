@@ -156,6 +156,16 @@ export class LogisticsSystem {
     return total;
   }
 
+  getEdibleUnitCount(): number {
+    let total = 0;
+    for (const stack of this.stacks.values()) {
+      if (stack.kind === 'food' || stack.kind === 'crop' || stack.kind === 'meal') {
+        total += stack.quantity;
+      }
+    }
+    return total;
+  }
+
   consumeRawFood(quantity: number): number {
     let remaining = Math.max(0, Math.floor(quantity));
     let consumed = 0;
@@ -563,10 +573,6 @@ export class LogisticsSystem {
       this.reservedDestinationCells.delete(
         this.destinationKey(stockpileId, destinationX, destinationY),
       );
-
-      if (stack.kind !== 'wood' && stack.kind !== 'stone') {
-        resources.food += stack.quantity;
-      }
 
       return {
         handled: true,
