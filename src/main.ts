@@ -14,6 +14,7 @@ import { TileMap } from './world/TileMap';
 import { WorldGen } from './world/WorldGen';
 import { Pathfinder } from './world/Pathfinder';
 import { NavigationGrid } from './world/NavigationGrid';
+import { ALPHA_SPATIAL_CONFIG } from './world/Spatial';
 import { World } from './ecs/World';
 import { System } from './ecs/System';
 import { Needs } from './components/Needs';
@@ -32,7 +33,7 @@ import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem } from './systems/JobSystem';
 import { AISystem, type NeedKind } from './systems/AISystem';
 import { PathfindSystem } from './systems/PathfindSystem';
-import { BuildingSystem, type RoomType } from './systems/BuildingSystem';
+import { BuildingSystem, type RoomType, type ConstructionOrientation } from './systems/BuildingSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { FollowerFactory } from './systems/FollowerFactory';
 import { EventSystem } from './systems/EventSystem';
@@ -206,7 +207,7 @@ class CultTycoonGame {
     this.aiSystem = new AISystem(this.map, this.pathfinder);
     this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
     this.pathfindSystem.bindWorld(this.world);
-    this.buildingSystem = new BuildingSystem(this.map, 1, this.navigation);
+    this.buildingSystem = new BuildingSystem(this.map, ALPHA_SPATIAL_CONFIG.constructionSubdivisions, this.navigation);
     this.aiSystem.setNeedFacilityProvider((need, from) => this.findNeedFacility(need, from));
     this.renderSystem = new RenderSystem(this.sceneMgr);
     this.renderSystem.setBuildingSystem(this.buildingSystem);
@@ -382,7 +383,19 @@ class CultTycoonGame {
     //        Ritual → Investigator → Combat → Fog, then Prestige → Heat → Mission
 
     // Input
-    this.input = new InputManager(canvas, (x, y) => this.renderer.camera.screenToTile(x, y));
+    this.input = new InputManager(canvas, (x, y, mode) => {
+      if (mode === 'build') {
+        const item = this.selectedBuildItem;
+        if (item?.startsWith('room:') || item?.startsWith('harvest:')) {
+          return this.renderer.camera.screenToTile(x, y);
+        }
+        return this.renderer.camera.screenToGrid(x, y, this.buildingSystem.subdivisions);
+      }
+      if (mode === 'demolish') {
+        return this.renderer.camera.screenToGrid(x, y, this.buildingSystem.subdivisions);
+      }
+      return this.renderer.camera.screenToTile(x, y);
+    });
 
     // Initialize audio on first user interaction (browser autoplay policy)
     const initAudio = () => {
@@ -2227,8 +2240,16 @@ class CultTycoonGame {
   }
 
   private onTileHover(x: number, y: number): void {
-    this.sceneMgr.highlightTile(x, y);
     const state = this.input.getState();
+    const usesConstructionSpace =
+      state.mode === 'demolish' ||
+      (state.mode === 'build' && !!this.selectedBuildItem &&
+        !this.selectedBuildItem.startsWith('room:') &&
+        !this.selectedBuildItem.startsWith('harvest:'));
+    const highlight = usesConstructionSpace
+      ? this.buildingSystem.toTerrainTile(x, y)
+      : { x, y };
+    this.sceneMgr.highlightTile(highlight.x, highlight.y);
     if (state.mode === 'build' && this.selectedBuildItem && !state.isDragging) {
       this.updateBuildPreview(x, y, x, y);
     } else if (state.mode !== 'build') {
