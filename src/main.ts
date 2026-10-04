@@ -1661,11 +1661,6 @@ class CultTycoonGame {
     return null;
   }
 
-  private hasPlannedWall(x: number, y: number, orientation: ConstructionOrientation): boolean {
-    const planned = this.getConstructionBlueprintAt(x, y, orientation);
-    return planned?.kind === 'wall';
-  }
-
   private findDoorEdgeAtCell(x: number, y: number): BuildSelectionCoord | null {
     const candidates: BuildSelectionCoord[] = [
       { x, y, orientation: 'horizontal', space: 'construction' },
