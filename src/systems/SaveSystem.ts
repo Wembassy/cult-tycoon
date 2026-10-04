@@ -174,6 +174,7 @@ export class SaveSystem {
         shift: schedule.shift,
         sleepStartHour: schedule.sleepStartHour,
         sleepDuration: schedule.sleepDuration,
+        hours: [...schedule.hours],
       };
 
       const workPreferences = world.getComponent(entityId, WorkPreferences);
