@@ -18,7 +18,7 @@ export interface JobPosting {
   targetTile: { x: number; y: number };
   priority: number;
   duration: number;       // ticks needed to complete
-  requiredSkill?: keyof Skills;
+  requiredSkill?: SkillKey;
   minSkillLevel?: number; // minimum skill to accept
   /** Optional reservation: only this follower may claim the posting. */
   requiredEntity?: number;
