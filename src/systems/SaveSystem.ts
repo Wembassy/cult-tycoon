@@ -149,7 +149,7 @@ export class SaveSystem {
       if (renderable) components.Renderable = { meshId: renderable.meshId, visible: renderable.visible, tint: renderable.tint };
 
       const needs = world.getComponent(entityId, Needs);
-      if (needs) components.Needs = { hunger: needs.hunger, faith: needs.faith, fun: needs.fun, health: needs.health, sanity: needs.sanity, energy: needs.energy, bladder: needs.bladder, hygiene: needs.hygiene };
+      if (needs) components.Needs = { hunger: needs.hunger, faith: needs.faith, fun: needs.fun, health: needs.health, sanity: needs.sanity, energy: needs.energy, bladder: needs.bladder, hygiene: needs.hygiene, comfort: needs.comfort, social: needs.social };
 
       const job = world.getComponent(entityId, Job);
       if (job) components.Job = { jobId: job.jobId, type: job.type, priority: job.priority, targetTile: job.targetTile, workProgress: job.workProgress };
