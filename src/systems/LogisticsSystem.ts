@@ -278,7 +278,7 @@ export class LogisticsSystem {
     };
   }
 
-  restoreSnapshot(snapshot: LogisticsSnapshot | undefined): void {
+  restoreSnapshot(snapshot: LogisticsSnapshot | undefined, world?: World): void {
     this.stacks.clear();
     this.stockpiles.clear();
     this.reservedDestinationCells.clear();
@@ -296,6 +296,11 @@ export class LogisticsSystem {
     // Assigned jobs are not restored directly. Any in-flight resource returns
     // to the ground and receives a fresh reservation after load.
     for (const saved of snapshot.stacks ?? []) {
+      if (saved.state === 'carried' && saved.carriedBy !== undefined && world) {
+        const inventory = world.getComponent(saved.carriedBy, Inventory);
+        if (inventory) this.removeInventory(inventory, saved.kind, saved.quantity);
+      }
+
       const stack: ItemStack = {
         ...saved,
         state: saved.state === 'stockpiled' ? 'stockpiled' : 'ground',
