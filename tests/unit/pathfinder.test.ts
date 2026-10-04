@@ -75,7 +75,7 @@ describe('Pathfinder — Obstacles', () => {
 
   it('should respect a fine construction wall edge without blocking the whole terrain tile', () => {
     // A horizontal wall segment across the middle of local tile (2,2).
-    navigation.addConstructionEdge(25, 25, 'horizontal', 10, 'fine-wall');
+    navigation.addConstructionEdge(25, 30, 'horizontal', 10, 'fine-wall');
     pf.invalidateCache();
 
     const result = pf.findPath(2, 2, 2, 3);
