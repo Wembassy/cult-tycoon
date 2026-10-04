@@ -15,6 +15,7 @@ import { Inventory } from '../components/Inventory';
 import { FollowerAI } from '../components/FollowerAI';
 import { QualityTier, ALL_TIERS, TIER_SKILL_RANGE } from '../components/CultistTier';
 import { WorkPreferences } from '../components/WorkPreferences';
+import { SocialState } from '../components/SocialState';
 
 const NAMES = [
   'Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank', 'Grace', 'Henry',
@@ -136,6 +137,9 @@ export class FollowerFactory {
     const inventory = new Inventory(entity);
     inventory.capacity = 10;
     world.addComponent(entity, inventory);
+
+    // Social state — memories, relationships, explainable mood.
+    world.addComponent(entity, new SocialState(entity));
 
     // FollowerAI — start idle
     const ai = new FollowerAI(entity);
