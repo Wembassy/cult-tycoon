@@ -3097,8 +3097,19 @@ class CultTycoonGame {
             clean: Math.max(1, Math.round((skills.construction + skills.social) / 2)),
             haul: skills.construction,
             harvest: skills.construction,
+            grow: skills.growing,
           },
           priorities: { ...prefs.priorities },
+          passions: {
+            cook: skills.passions.cooking,
+            research: skills.passions.research,
+            pray: skills.passions.faith,
+            build: skills.passions.construction,
+            clean: skills.passions.social,
+            haul: skills.passions.construction,
+            harvest: skills.passions.construction,
+            grow: skills.passions.growing,
+          },
         };
       }),
     });
