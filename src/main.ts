@@ -452,6 +452,12 @@ class CultTycoonGame {
     // Spawn initial followers at map center
     this.spawnFollowers(6);
 
+    // The legacy 50 starting Materials are now represented by real loose
+    // resources. They can be hauled to a stockpile or directly to blueprints.
+    this.logisticsSystem.addStack('wood', 25, mapCenterX + 2, mapCenterY);
+    this.logisticsSystem.addStack('stone', 25, mapCenterX + 3, mapCenterY);
+    this.refreshLogisticsVisuals();
+
     // Set up HUD
     this.updateHUD();
     this.hud.setTimeMode('speed1');
@@ -3639,6 +3645,9 @@ class CultTycoonGame {
     let highestConstructionId = 0;
     for (const savedBlueprint of data.construction ?? []) {
       const blueprint: ConstructionBlueprint = { ...savedBlueprint };
+      blueprint.materialKind ??= this.getBuildMaterialKind(blueprint.objectId ?? blueprint.kind);
+      blueprint.requiredMaterials ??= blueprint.materialCost ?? 0;
+      blueprint.deliveredMaterials ??= 0;
       this.constructionBlueprints.set(blueprint.id, blueprint);
       const numericId = Number.parseInt(blueprint.id.split(':')[1] ?? '0', 10);
       if (Number.isFinite(numericId)) highestConstructionId = Math.max(highestConstructionId, numericId);
@@ -3667,7 +3676,7 @@ class CultTycoonGame {
       if (!ai.needTarget) ai.state = 'idle';
     }
     for (const blueprint of this.constructionBlueprints.values()) {
-      this.postConstructionJob(blueprint);
+      this.ensureBlueprintMaterialRequest(blueprint);
     }
     for (const order of this.harvestOrders.values()) {
       this.postHarvestJob(order);
