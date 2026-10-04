@@ -2010,6 +2010,7 @@ class CultTycoonGame {
 
     if (blueprint.kind === 'object' && blueprint.objectId) {
       this.registerWorkstationJob(local.x, local.y, blueprint.objectId);
+      this.inferAutomaticRoomAt(blueprint.x, blueprint.y);
       this.refreshRoomRequirementAt(local.x, local.y);
       if (blueprint.objectId.startsWith('decor_')) {
         this.handleDecorPlacement(local.x, local.y, blueprint.objectId.replace('decor_', ''));
@@ -2129,21 +2130,7 @@ class CultTycoonGame {
     this.queueConstructionSelection(item, tiles);
   }
 
-  private designateRoom(startX: number, startY: number, endX: number, endY: number, roomDefinitionId: string): void {
-    const def = DataManager.getRoom(roomDefinitionId);
-    if (!def) {
-      this.hud.logEvent('Unknown room type.', 'warning');
-      return;
-    }
-
-    const width = Math.abs(endX - startX) + 1;
-    const height = Math.abs(endY - startY) + 1;
-    const area = width * height;
-    if (area < def.minSize) {
-      this.hud.logEvent(`${def.name} needs at least ${def.minSize} tiles; selected area is ${area}.`, 'warning');
-      return;
-    }
-
+  private roomTypeForDefinition(roomDefinitionId: string): RoomType {
     const typeMap: Record<string, RoomType> = {
       dormitory: 'bedroom',
       mess_hall: 'canteen',
@@ -2154,13 +2141,135 @@ class CultTycoonGame {
       storage: 'generic',
       meditation_room: 'recreation_room',
     };
+    return typeMap[roomDefinitionId] ?? 'generic';
+  }
+
+  private getObjectsInRoom(roomId: number): string[] {
+    const room = this.buildingSystem.getRoom(roomId);
+    if (!room) return [];
+
+    if (room.constructionCells?.length) {
+      return this.buildingSystem.getAllObjects()
+        .filter(obj => this.buildingSystem.getRoomAtConstructionCell(obj.x, obj.y)?.id === roomId)
+        .map(obj => obj.objectId);
+    }
+
+    const tileKeys = new Set(room.tiles.map(tile => `${tile.x},${tile.y}`));
+    return this.buildingSystem.getAllObjects()
+      .filter(obj => {
+        const terrain = this.buildingSystem.toTerrainTile(obj.x, obj.y);
+        return tileKeys.has(`${terrain.x},${terrain.y}`);
+      })
+      .map(obj => obj.objectId);
+  }
+
+  private inferAutomaticRoomAt(constructionX: number, constructionY: number): void {
+    const room = this.buildingSystem.getRoomAtConstructionCell(constructionX, constructionY);
+    if (!room || room.source !== 'automatic') return;
+
+    const placed = new Set(this.getObjectsInRoom(room.id));
+    const candidates = DataManager.getRooms()
+      .filter(def =>
+        room.area >= def.minSize &&
+        def.requiredObjects.length > 0 &&
+        def.requiredObjects.every(required => placed.has(required)),
+      )
+      .sort((a, b) =>
+        b.requiredObjects.length - a.requiredObjects.length ||
+        b.minSize - a.minSize,
+      );
+
+    const inferred = candidates[0];
+    if (!inferred) return;
+
+    const changed = room.roomDefinitionId !== inferred.id;
+    this.buildingSystem.setRoomDefinition(
+      room.id,
+      inferred.id,
+      this.roomTypeForDefinition(inferred.id),
+    );
+    if (changed) {
+      this.hud.logEvent(
+        `${inferred.name} recognized automatically from its enclosure and furnishings.`,
+        'success',
+      );
+    }
+  }
+
+  private designateRoom(startX: number, startY: number, endX: number, endY: number, roomDefinitionId: string): void {
+    const def = DataManager.getRoom(roomDefinitionId);
+    if (!def) {
+      this.hud.logEvent('Unknown room type.', 'warning');
+      return;
+    }
+
+    // Fine-grid Alpha rooms are created by physical enclosure. The legacy room
+    // tool now acts only as an optional purpose override for an enclosed room.
+    if (this.buildingSystem.subdivisions > 1) {
+      const minX = Math.min(startX, endX);
+      const maxX = Math.max(startX, endX);
+      const minY = Math.min(startY, endY);
+      const maxY = Math.max(startY, endY);
+
+      const candidates = this.buildingSystem.getAllRooms()
+        .filter(room => room.source === 'automatic')
+        .map(room => ({
+          room,
+          overlap: room.tiles.filter(tile =>
+            tile.x >= minX && tile.x <= maxX && tile.y >= minY && tile.y <= maxY,
+          ).length,
+        }))
+        .filter(entry => entry.overlap > 0)
+        .sort((a, b) => b.overlap - a.overlap);
+
+      const room = candidates[0]?.room;
+      if (!room) {
+        this.hud.logEvent(
+          `Enclose a room with walls/doors before assigning it as ${def.name}.`,
+          'warning',
+        );
+        return;
+      }
+      if (room.area < def.minSize) {
+        this.hud.logEvent(
+          `${def.name} needs at least ${def.minSize} square units; this room is ${room.area.toFixed(1)}.`,
+          'warning',
+        );
+        return;
+      }
+
+      this.buildingSystem.setRoomDefinition(
+        room.id,
+        roomDefinitionId,
+        this.roomTypeForDefinition(roomDefinitionId),
+      );
+      const status = this.getRoomRequirementStatus(room.id);
+      this.hud.logEvent(
+        status.missing.length
+          ? `${def.name} assigned. Add: ${status.missing.join(', ')}.`
+          : `${def.name} assigned and complete.`,
+        status.missing.length ? 'info' : 'success',
+      );
+      this.sceneMgr.syncBuildings(this.buildingSystem);
+      this.updateHUD();
+      return;
+    }
+
+    // Legacy 1:1 fallback retained for old saves/tests.
+    const width = Math.abs(endX - startX) + 1;
+    const height = Math.abs(endY - startY) + 1;
+    const area = width * height;
+    if (area < def.minSize) {
+      this.hud.logEvent(`${def.name} needs at least ${def.minSize} tiles; selected area is ${area}.`, 'warning');
+      return;
+    }
 
     const room = this.buildingSystem.designateRoomArea(
       startX,
       startY,
       endX,
       endY,
-      typeMap[roomDefinitionId] ?? 'generic',
+      this.roomTypeForDefinition(roomDefinitionId),
       roomDefinitionId,
     );
 
@@ -2171,14 +2280,12 @@ class CultTycoonGame {
 
     this.sceneMgr.buildTiles();
     const status = this.getRoomRequirementStatus(room.id);
-    if (status.missing.length > 0) {
-      this.hud.logEvent(
-        `${def.name} designated (${room.area} tiles). Add: ${status.missing.join(', ')}.`,
-        'info',
-      );
-    } else {
-      this.hud.logEvent(`${def.name} designated and complete.`, 'success');
-    }
+    this.hud.logEvent(
+      status.missing.length
+        ? `${def.name} designated (${room.area} tiles). Add: ${status.missing.join(', ')}.`
+        : `${def.name} designated and complete.`,
+      status.missing.length ? 'info' : 'success',
+    );
     this.updateHUD();
   }
 
@@ -2189,13 +2296,7 @@ class CultTycoonGame {
     const def = DataManager.getRoom(room.roomDefinitionId);
     if (!def) return { complete: true, missing: [] };
 
-    const tileKeys = new Set(room.tiles.map(tile => `${tile.x},${tile.y}`));
-    const placedIds = new Set(
-      this.buildingSystem.getAllObjects()
-        .filter(obj => tileKeys.has(`${obj.x},${obj.y}`))
-        .map(obj => obj.objectId),
-    );
-
+    const placedIds = new Set(this.getObjectsInRoom(roomId));
     const missing = def.requiredObjects.filter(required => !placedIds.has(required));
     return { complete: room.area >= def.minSize && missing.length === 0, missing };
   }
