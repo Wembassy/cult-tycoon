@@ -46,8 +46,14 @@ export interface Room {
   id: number;
   type: RoomType;
   roomDefinitionId?: string;
+  /** Coarse terrain footprint kept for compatibility with existing systems. */
   tiles: { x: number; y: number }[];
+  /** Fine Construction Space cells enclosed by wall/door boundaries. */
+  constructionCells?: { x: number; y: number }[];
+  /** Area measured in local-world square units, not fine-cell count. */
   area: number;
+  roofed?: boolean;
+  source?: 'automatic' | 'designation';
 }
 
 export interface BuildingSnapshot {
@@ -84,6 +90,8 @@ export class BuildingSystem {
   private _doorEdges: Map<string, ConstructionEdge> = new Map();
   private _floorTiles: Set<string> = new Set();
   private _dirty = false;
+  private roomTopologyDirty = true;
+  private constructionCellToRoom: Map<string, number> = new Map();
   private readonly constructionSubdivisions: number;
   private readonly navigation: NavigationGrid | null;
 
@@ -156,6 +164,7 @@ export class BuildingSystem {
     }
 
     this._wallEdges.set(key, { x, y, orientation });
+    this.roomTopologyDirty = true;
     this.navigation?.addConstructionEdge(
       x,
       y,
@@ -182,6 +191,7 @@ export class BuildingSystem {
       this.edgeNavigationSource(x, y, orientation),
     );
     this._doorEdges.set(key, { x, y, orientation });
+    this.roomTopologyDirty = true;
     this._dirty = true;
     return { success: true, message: 'Door edge placed', tilesAffected: [{ x, y }], cost: COSTS.door };
   }
@@ -194,6 +204,7 @@ export class BuildingSystem {
     if (!removed) {
       return { success: false, message: 'Nothing to demolish on edge', tilesAffected: [], cost: 0 };
     }
+    this.roomTopologyDirty = true;
     if (removedWall) {
       this.navigation?.removeConstructionEdge(
         x,
@@ -518,6 +529,8 @@ export class BuildingSystem {
       roomDefinitionId,
       tiles,
       area: tiles.length,
+      roofed: false,
+      source: 'designation',
     };
     this.rooms.set(roomId, room);
 
@@ -615,6 +628,7 @@ export class BuildingSystem {
    * Get a room by ID
    */
   getRoom(roomId: number): Room | null {
+    this.ensureAutomaticRooms();
     return this.rooms.get(roomId) ?? null;
   }
 
@@ -622,7 +636,14 @@ export class BuildingSystem {
    * Get all rooms
    */
   getAllRooms(): Room[] {
+    this.ensureAutomaticRooms();
     return Array.from(this.rooms.values());
+  }
+
+  getRoomAtConstructionCell(x: number, y: number): Room | null {
+    this.ensureAutomaticRooms();
+    const id = this.constructionCellToRoom.get(`${x},${y}`);
+    return id === undefined ? null : this.rooms.get(id) ?? null;
   }
 
   /**
@@ -654,6 +675,7 @@ export class BuildingSystem {
   clearDirty(): void { this._dirty = false; }
 
   getSnapshot(): BuildingSnapshot {
+    this.ensureAutomaticRooms();
     return {
       objects: this.getAllObjects().map(obj => ({ ...obj })),
       rooms: this.getAllRooms().map(room => ({
@@ -679,6 +701,8 @@ export class BuildingSystem {
     this._wallEdges.clear();
     this._doorEdges.clear();
     this._floorTiles.clear();
+    this.constructionCellToRoom.clear();
+    this.roomTopologyDirty = true;
 
     if (!snapshot) {
       this.nextRoomId = 1;
@@ -694,6 +718,7 @@ export class BuildingSystem {
       this.rooms.set(room.id, {
         ...room,
         tiles: room.tiles.map(tile => ({ ...tile })),
+        constructionCells: room.constructionCells?.map(cell => ({ ...cell })),
       });
     }
     for (const tile of snapshot.wallTiles ?? []) this._wallTiles.add(tile);
@@ -733,6 +758,200 @@ export class BuildingSystem {
     this.nextRoomId = snapshot.nextRoomId ?? 1;
     this.nextObjectId = snapshot.nextObjectId ?? 1;
     this._dirty = true;
+  }
+
+  private ensureAutomaticRooms(): void {
+    if (this.constructionSubdivisions <= 1 || !this.roomTopologyDirty) return;
+    // Do not erase legacy/designated rooms until edge architecture actually exists.
+    if (this._wallEdges.size === 0 && this._doorEdges.size === 0) {
+      this.roomTopologyDirty = false;
+      return;
+    }
+    this.recomputeAutomaticRooms();
+  }
+
+  /**
+   * Flood-fill fine Construction Space using wall/door edges as boundaries.
+   * Any region that can leak to the map boundary or non-buildable terrain is
+   * exterior. Remaining regions become automatically roofed rooms.
+   */
+  private recomputeAutomaticRooms(): void {
+    const s = this.constructionSubdivisions;
+    const width = this.map.width * s;
+    const height = this.map.height * s;
+    const visited = new Uint8Array(width * height);
+    const previousRooms = Array.from(this.rooms.values()).map(room => ({
+      room,
+      cells: new Set(
+        (room.constructionCells ?? this.expandCoarseTiles(room.tiles))
+          .map(cell => `${cell.x},${cell.y}`),
+      ),
+    }));
+
+    const detected: Array<{ cells: { x: number; y: number }[]; keys: Set<string> }> = [];
+    const index = (x: number, y: number) => y * width + x;
+    const minRoomCells = s * s; // Ignore enclosures smaller than one local square unit.
+
+    for (let startY = 0; startY < height; startY++) {
+      for (let startX = 0; startX < width; startX++) {
+        const startIndex = index(startX, startY);
+        if (visited[startIndex]) continue;
+        if (!this.isConstructionCellBuildable(startX, startY)) {
+          visited[startIndex] = 1;
+          continue;
+        }
+
+        const queueX: number[] = [startX];
+        const queueY: number[] = [startY];
+        let head = 0;
+        visited[startIndex] = 1;
+        const cells: { x: number; y: number }[] = [];
+        let leaksOutside = false;
+
+        while (head < queueX.length) {
+          const x = queueX[head];
+          const y = queueY[head];
+          head++;
+          cells.push({ x, y });
+
+          const neighbors = [
+            { x: x + 1, y },
+            { x: x - 1, y },
+            { x, y: y + 1 },
+            { x, y: y - 1 },
+          ];
+
+          for (const next of neighbors) {
+            if (this.hasBoundaryBetweenConstructionCells(x, y, next.x, next.y)) continue;
+            if (next.x < 0 || next.x >= width || next.y < 0 || next.y >= height) {
+              leaksOutside = true;
+              continue;
+            }
+            if (!this.isConstructionCellBuildable(next.x, next.y)) {
+              leaksOutside = true;
+              continue;
+            }
+
+            const nextIndex = index(next.x, next.y);
+            if (visited[nextIndex]) continue;
+            visited[nextIndex] = 1;
+            queueX.push(next.x);
+            queueY.push(next.y);
+          }
+        }
+
+        if (!leaksOutside && cells.length >= minRoomCells) {
+          detected.push({ cells, keys: new Set(cells.map(cell => `${cell.x},${cell.y}`)) });
+        }
+      }
+    }
+
+    // Clear old coarse compatibility room IDs before assigning the new topology.
+    for (const tile of this.map.getAllTiles()) this.map.setRoomId(tile.x, tile.y, null);
+    this.rooms.clear();
+    this.constructionCellToRoom.clear();
+
+    const claimedPreviousIds = new Set<number>();
+    for (const region of detected) {
+      let bestPrevious: typeof previousRooms[number] | null = null;
+      let bestOverlap = 0;
+      for (const previous of previousRooms) {
+        if (claimedPreviousIds.has(previous.room.id)) continue;
+        let overlap = 0;
+        for (const key of region.keys) {
+          if (previous.cells.has(key)) overlap++;
+        }
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap;
+          bestPrevious = previous;
+        }
+      }
+
+      const id = bestPrevious && bestOverlap > 0
+        ? bestPrevious.room.id
+        : this.nextRoomId++;
+      if (bestPrevious) claimedPreviousIds.add(bestPrevious.room.id);
+      this.nextRoomId = Math.max(this.nextRoomId, id + 1);
+
+      const coarseMap = new Map<string, { x: number; y: number }>();
+      for (const cell of region.cells) {
+        const coarse = this.toTerrainTile(cell.x, cell.y);
+        coarseMap.set(`${coarse.x},${coarse.y}`, coarse);
+        this.constructionCellToRoom.set(`${cell.x},${cell.y}`, id);
+      }
+      const coarseTiles = Array.from(coarseMap.values());
+      const previous = bestPrevious?.room;
+      const room: Room = {
+        id,
+        type: previous?.type ?? 'generic',
+        roomDefinitionId: previous?.roomDefinitionId,
+        tiles: coarseTiles,
+        constructionCells: region.cells,
+        area: region.cells.length / (s * s),
+        roofed: true,
+        source: 'automatic',
+      };
+      this.rooms.set(id, room);
+
+      // Legacy systems can only store one room per coarse tile. Assign the
+      // compatibility footprint without changing fine room ownership.
+      for (const tile of coarseTiles) {
+        if (this.map.getTile(tile.x, tile.y)?.roomId === null) {
+          this.map.setRoomId(tile.x, tile.y, id);
+        }
+      }
+    }
+
+    this.roomTopologyDirty = false;
+    this._dirty = true;
+  }
+
+  private expandCoarseTiles(tiles: { x: number; y: number }[]): { x: number; y: number }[] {
+    const result: { x: number; y: number }[] = [];
+    const s = this.constructionSubdivisions;
+    for (const tile of tiles) {
+      for (let dy = 0; dy < s; dy++) {
+        for (let dx = 0; dx < s; dx++) {
+          result.push({ x: tile.x * s + dx, y: tile.y * s + dy });
+        }
+      }
+    }
+    return result;
+  }
+
+  private isConstructionCellBuildable(x: number, y: number): boolean {
+    const tile = this.getTerrainTileForBuild(x, y);
+    return !!tile?.buildable;
+  }
+
+  private hasBoundaryBetweenConstructionCells(
+    x: number,
+    y: number,
+    nx: number,
+    ny: number,
+  ): boolean {
+    if (nx === x + 1 && ny === y) {
+      return this.hasAnyBoundaryEdge(x + 1, y, 'vertical');
+    }
+    if (nx === x - 1 && ny === y) {
+      return this.hasAnyBoundaryEdge(x, y, 'vertical');
+    }
+    if (ny === y + 1 && nx === x) {
+      return this.hasAnyBoundaryEdge(x, y + 1, 'horizontal');
+    }
+    if (ny === y - 1 && nx === x) {
+      return this.hasAnyBoundaryEdge(x, y, 'horizontal');
+    }
+    return false;
+  }
+
+  private hasAnyBoundaryEdge(
+    x: number,
+    y: number,
+    orientation: ConstructionOrientation,
+  ): boolean {
+    const key = this.edgeKey(x, y, orientation);
+    return this._wallEdges.has(key) || this._doorEdges.has(key);
   }
 
   /**
