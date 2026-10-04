@@ -158,7 +158,7 @@ export class SaveSystem {
       if (job) components.Job = { jobId: job.jobId, type: job.type, priority: job.priority, targetTile: job.targetTile, workProgress: job.workProgress };
 
       const skills = world.getComponent(entityId, Skills);
-      if (skills) components.Skills = { cooking: skills.cooking, research: skills.research, construction: skills.construction, growing: skills.growing, faith: skills.faith, combat: skills.combat, social: skills.social };
+      if (skills) components.Skills = { cooking: skills.cooking, research: skills.research, construction: skills.construction, growing: skills.growing, faith: skills.faith, combat: skills.combat, social: skills.social, xp: { ...skills.xp }, passions: { ...skills.passions } };
 
       const traits = world.getComponent(entityId, Traits);
       if (traits) components.Traits = { traits: traits.traits };
