@@ -1513,8 +1513,7 @@ class CultTycoonGame {
       { x: x + 1, y, orientation: 'vertical', space: 'construction' },
     ];
     return candidates.find(edge =>
-      this.buildingSystem.hasWallEdge(edge.x, edge.y, edge.orientation!) ||
-      this.hasPlannedWall(edge.x, edge.y, edge.orientation!)
+      this.buildingSystem.hasWallEdge(edge.x, edge.y, edge.orientation!)
     ) ?? null;
   }
 
@@ -1650,8 +1649,7 @@ class CultTycoonGame {
 
     if (item === 'door') {
       if (!orientation) return false;
-      return this.buildingSystem.hasWallEdge(x, y, orientation) ||
-        this.hasPlannedWall(x, y, orientation);
+      return this.buildingSystem.hasWallEdge(x, y, orientation);
     }
 
     if (item === 'floor') {
@@ -1811,7 +1809,7 @@ class CultTycoonGame {
     space: 'local' | 'construction' = 'construction',
   ): boolean {
     const existing = this.getConstructionBlueprintAt(x, y, orientation);
-    if (existing && !(kind === 'door' && existing.kind === 'wall')) return false;
+    if (existing) return false;
 
     const id = `construct:${this.nextConstructionBlueprintId++}`;
     const materialCost = this.getBuildMaterialCost(objectId ?? kind);
@@ -2079,19 +2077,16 @@ class CultTycoonGame {
     }
 
     if (!result.success) {
-      if (blueprint.kind === 'door' && blueprint.orientation &&
-          this.hasPlannedWall(blueprint.x, blueprint.y, blueprint.orientation)) {
-        this.postConstructionJob(blueprint, 6);
-        return;
-      }
-
-      this.constructionBlueprints.delete(blueprint.id);
-      this.refreshConstructionBlueprintVisuals();
-      this.hud.logEvent(`Construction failed at (${blueprint.x}, ${blueprint.y}): ${result.message}`, 'warning');
+      this.cancelConstructionBlueprintById(blueprint.id);
+      this.hud.logEvent(
+        `Construction failed at (${blueprint.x}, ${blueprint.y}): ${result.message}. Delivered materials were returned.`,
+        'warning',
+      );
       return;
     }
 
     this.constructionBlueprints.delete(blueprint.id);
+    this.cultWealth = Math.max(0, this.cultWealth - blueprint.cost);
     this.refreshConstructionBlueprintVisuals();
     this.gameInstanceState.resources.materials = Math.max(
       0,
