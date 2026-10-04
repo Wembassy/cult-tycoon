@@ -2423,9 +2423,49 @@ class CultTycoonGame {
     }
   }
 
+  private findConstructionBlueprintAtScreen(event: MouseEvent): ConstructionBlueprint | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const cell = this.renderer.camera.screenToGrid(
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+      this.buildingSystem.subdivisions,
+    );
+
+    const exact = this.getConstructionBlueprintAt(cell.x, cell.y);
+    if (exact) return exact;
+
+    for (const edge of this.getEdgesAroundConstructionCell(cell.x, cell.y)) {
+      const blueprint = this.getConstructionBlueprintAt(edge.x, edge.y, edge.orientation);
+      if (blueprint) return blueprint;
+    }
+    return null;
+  }
+
+  private tryDirectConstructionOrder(event: MouseEvent): boolean {
+    if (!event.shiftKey || this.selectedEntity === null) return false;
+    const blueprint = this.findConstructionBlueprintAtScreen(event);
+    if (!blueprint) return false;
+
+    const assigned = this.jobSystem.forceAssignQueuedJob(blueprint.id, this.selectedEntity, this.world);
+    const name = this.followerNames.get(this.selectedEntity) ?? 'Follower';
+    if (assigned) {
+      this.hud.logEvent(`${name} ordered to prioritize this construction.`, 'success');
+    } else {
+      this.hud.logEvent(
+        `${name} cannot take that construction order yet (finish the current finite job first).`,
+        'warning',
+      );
+    }
+    return true;
+  }
+
   private onTileClick(x: number, y: number, event?: MouseEvent): void {
     const tile = this.map.getTile(x, y);
     if (!tile) return;
+
+    if (event && this.input.getMode() === 'select' && this.tryDirectConstructionOrder(event)) {
+      return;
+    }
 
     if (this.input.getMode() === 'build' && this.selectedBuildItem) {
       this.handleBuild(x, y);
