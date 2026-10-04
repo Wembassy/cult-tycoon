@@ -285,3 +285,55 @@ describe('BuildingSystem — Room Designation', () => {
     expect(restored.getRoom(room.id)?.area).toBe(9);
   });
 });
+
+
+describe('BuildingSystem — Edge Architecture', () => {
+  it('stores walls on edges without occupying their adjacent floor cell', () => {
+    const map = new TileMap(8, 8);
+    const bs = new BuildingSystem(map, 10);
+
+    const result = bs.placeWallEdge(20, 30, 'horizontal');
+
+    expect(result.success).toBe(true);
+    expect(bs.hasWallEdge(20, 30, 'horizontal')).toBe(true);
+    expect(bs.floorTiles.has('20,30')).toBe(false);
+    expect(map.getTile(2, 3)?.occupied).toBe(false);
+  });
+
+  it('replaces an existing wall edge with a door edge', () => {
+    const map = new TileMap(8, 8);
+    const bs = new BuildingSystem(map, 10);
+
+    expect(bs.placeWallEdge(20, 30, 'vertical').success).toBe(true);
+    expect(bs.placeDoorEdge(20, 30, 'vertical').success).toBe(true);
+
+    expect(bs.hasWallEdge(20, 30, 'vertical')).toBe(false);
+    expect(bs.hasDoorEdge(20, 30, 'vertical')).toBe(true);
+  });
+
+  it('does not place a door where no wall edge exists', () => {
+    const map = new TileMap(8, 8);
+    const bs = new BuildingSystem(map, 10);
+
+    const result = bs.placeDoorEdge(20, 30, 'horizontal');
+
+    expect(result.success).toBe(false);
+    expect(bs.hasDoorEdge(20, 30, 'horizontal')).toBe(false);
+  });
+
+  it('round-trips edge architecture through snapshots', () => {
+    const map = new TileMap(8, 8);
+    const source = new BuildingSystem(map, 10);
+    source.placeWallEdge(20, 30, 'horizontal');
+    source.placeWallEdge(21, 30, 'horizontal');
+    source.placeWallEdge(25, 30, 'vertical');
+    source.placeDoorEdge(25, 30, 'vertical');
+
+    const restored = new BuildingSystem(new TileMap(8, 8), 10);
+    restored.restoreSnapshot(source.getSnapshot());
+
+    expect(restored.hasWallEdge(20, 30, 'horizontal')).toBe(true);
+    expect(restored.hasWallEdge(21, 30, 'horizontal')).toBe(true);
+    expect(restored.hasDoorEdge(25, 30, 'vertical')).toBe(true);
+  });
+});
