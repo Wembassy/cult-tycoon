@@ -4273,6 +4273,7 @@ class CultTycoonGame {
       globalSeed: data.worldStart.globalSeed,
       region: { ...data.worldStart.region },
       settlementPoint: { ...data.worldStart.settlementPoint },
+      ideologyFoundation: data.worldStart.ideologyFoundation,
     } : null;
 
     // Restore cult stats
