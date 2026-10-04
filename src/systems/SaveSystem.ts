@@ -38,11 +38,18 @@ export interface SerializedHarvestOrder {
   y: number;
 }
 
+export type ConstructionOrientation = 'horizontal' | 'vertical';
+export type ConstructionCoordinateSpace = 'local' | 'construction';
+
 export interface SerializedConstructionBlueprint {
   id: string;
   kind: 'wall' | 'floor' | 'door' | 'object';
   x: number;
   y: number;
+  /** Architecture uses the fine construction lattice; legacy/free objects use local tiles. */
+  space?: ConstructionCoordinateSpace;
+  /** Required for edge-based walls/doors. */
+  orientation?: ConstructionOrientation;
   objectId?: string;
   rotation?: number;
   cost: number;
@@ -87,7 +94,7 @@ export interface GameSettings {
   showTutorial: boolean;
 }
 
-const SAVE_VERSION = '0.6.0';
+const SAVE_VERSION = '0.7.0';
 const SAVE_KEY_PREFIX = 'cult_tycoon_save_';
 const AUTOSAVE_KEY = 'cult_tycoon_autosave';
 const MAX_SLOTS = 6;
