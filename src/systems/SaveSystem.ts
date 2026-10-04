@@ -18,6 +18,7 @@ import { WorkPreferences } from '../components/WorkPreferences';
 import type { TileMap } from '../world/TileMap';
 import type { BuildingSnapshot } from './BuildingSystem';
 import type { LogisticsSnapshot } from './LogisticsSystem';
+import { ALPHA_SPATIAL_CONFIG } from '../world/Spatial';
 
 export interface SaveData {
   version: string;
@@ -31,6 +32,10 @@ export interface SaveData {
   construction?: SerializedConstructionBlueprint[];
   harvestOrders?: SerializedHarvestOrder[];
   logistics?: LogisticsSnapshot;
+  spatial?: {
+    constructionSubdivisions: number;
+    navigationSubdivisions: number;
+  };
 }
 
 export interface SerializedHarvestOrder {
@@ -216,6 +221,10 @@ export class SaveSystem {
       construction: construction.map(blueprint => ({ ...blueprint })),
       harvestOrders: harvestOrders.map(order => ({ ...order })),
       logistics,
+      spatial: {
+        constructionSubdivisions: ALPHA_SPATIAL_CONFIG.constructionSubdivisions,
+        navigationSubdivisions: ALPHA_SPATIAL_CONFIG.navigationSubdivisions,
+      },
     };
   }
 
@@ -244,8 +253,23 @@ export class SaveSystem {
       if (!json) return null;
       const data = JSON.parse(json) as SaveData;
       if (data.version !== SAVE_VERSION) {
-        console.warn(`Save version mismatch: ${data.version} vs ${SAVE_VERSION}`);
+        // Alpha 8 introduced fine Construction/Navigation Space. Pre-0.8 saves
+        // contain ambiguous building coordinates and are unsafe to migrate
+        // implicitly; reject them rather than loading corrupted settlements.
+        console.warn(`Incompatible save version: ${data.version} vs ${SAVE_VERSION}`);
+        return null;
       }
+
+      const spatial = data.spatial;
+      if (
+        !spatial ||
+        spatial.constructionSubdivisions !== ALPHA_SPATIAL_CONFIG.constructionSubdivisions ||
+        spatial.navigationSubdivisions !== ALPHA_SPATIAL_CONFIG.navigationSubdivisions
+      ) {
+        console.warn('Incompatible save spatial configuration; refusing to load.');
+        return null;
+      }
+
       return data;
     } catch (e) {
       console.error('Load failed:', e);
