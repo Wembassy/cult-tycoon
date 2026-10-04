@@ -112,6 +112,10 @@ export class BuildingSystem {
     return `${x},${y},${orientation}`;
   }
 
+  private edgeNavigationSource(x: number, y: number, orientation: ConstructionOrientation): string {
+    return `building-edge:${this.edgeKey(x, y, orientation)}`;
+  }
+
   hasWallEdge(x: number, y: number, orientation: ConstructionOrientation): boolean {
     return this._wallEdges.has(this.edgeKey(x, y, orientation));
   }
@@ -152,6 +156,13 @@ export class BuildingSystem {
     }
 
     this._wallEdges.set(key, { x, y, orientation });
+    this.navigation?.addConstructionEdge(
+      x,
+      y,
+      orientation,
+      this.constructionSubdivisions,
+      this.edgeNavigationSource(x, y, orientation),
+    );
     this._dirty = true;
     return { success: true, message: 'Wall edge placed', tilesAffected: [{ x, y }], cost: COSTS.wall };
   }
@@ -163,6 +174,13 @@ export class BuildingSystem {
     }
 
     this._wallEdges.delete(key);
+    this.navigation?.removeConstructionEdge(
+      x,
+      y,
+      orientation,
+      this.constructionSubdivisions,
+      this.edgeNavigationSource(x, y, orientation),
+    );
     this._doorEdges.set(key, { x, y, orientation });
     this._dirty = true;
     return { success: true, message: 'Door edge placed', tilesAffected: [{ x, y }], cost: COSTS.door };
@@ -170,9 +188,20 @@ export class BuildingSystem {
 
   demolishEdge(x: number, y: number, orientation: ConstructionOrientation): BuildResult {
     const key = this.edgeKey(x, y, orientation);
-    const removed = this._wallEdges.delete(key) || this._doorEdges.delete(key);
+    const removedWall = this._wallEdges.delete(key);
+    const removedDoor = this._doorEdges.delete(key);
+    const removed = removedWall || removedDoor;
     if (!removed) {
       return { success: false, message: 'Nothing to demolish on edge', tilesAffected: [], cost: 0 };
+    }
+    if (removedWall) {
+      this.navigation?.removeConstructionEdge(
+        x,
+        y,
+        orientation,
+        this.constructionSubdivisions,
+        this.edgeNavigationSource(x, y, orientation),
+      );
     }
     this._dirty = true;
     return { success: true, message: 'Edge demolished', tilesAffected: [{ x, y }], cost: 1 };
@@ -669,7 +698,16 @@ export class BuildingSystem {
     }
     for (const tile of snapshot.wallTiles ?? []) this._wallTiles.add(tile);
     for (const tile of snapshot.doorTiles ?? []) this._doorTiles.add(tile);
-    for (const edge of snapshot.wallEdges ?? []) this._wallEdges.set(this.edgeKey(edge.x, edge.y, edge.orientation), { ...edge });
+    for (const edge of snapshot.wallEdges ?? []) {
+      this._wallEdges.set(this.edgeKey(edge.x, edge.y, edge.orientation), { ...edge });
+      this.navigation?.addConstructionEdge(
+        edge.x,
+        edge.y,
+        edge.orientation,
+        this.constructionSubdivisions,
+        this.edgeNavigationSource(edge.x, edge.y, edge.orientation),
+      );
+    }
     for (const edge of snapshot.doorEdges ?? []) this._doorEdges.set(this.edgeKey(edge.x, edge.y, edge.orientation), { ...edge });
     for (const tile of snapshot.floorTiles ?? []) this._floorTiles.add(tile);
 
