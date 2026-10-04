@@ -170,6 +170,9 @@ export class ResourceSystem extends System {
         case 'harvest':
           // Harvest yield is awarded when the finite map resource job completes.
           break;
+        case 'grow':
+          // FarmingSystem owns crop growth and physical crop yield.
+          break;
         // 'idle' / 'wander' generate nothing
       }
     }
