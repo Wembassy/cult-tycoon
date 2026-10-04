@@ -98,6 +98,33 @@ describe('SaveSystem — Serialization', () => {
     expect(data.cult.food).toBe(17);
   });
 
+  it('should serialize physical logistics state', () => {
+    const logistics = {
+      stacks: [
+        { id: 'stack:1', kind: 'wood' as const, quantity: 10, x: 2, y: 3, state: 'ground' as const },
+      ],
+      stockpiles: [
+        { id: 'stockpile:1', cells: [{ x: 20, y: 20 }], filters: ['wood' as const], priority: 1 },
+      ],
+      nextStackId: 2,
+      nextStockpileId: 2,
+    };
+
+    const data = save.serialize(
+      world,
+      map,
+      TEST_CULT,
+      { hour: 8, day: 2 },
+      undefined,
+      [],
+      [],
+      logistics,
+    );
+
+    expect(data.logistics).toEqual(logistics);
+    expect(data.version).toBe('0.8.0');
+  });
+
   it('should serialize cult stats', () => {
     const data = save.serialize(world, map, TEST_CULT, { hour: 14, day: 3 });
     expect(data.cult.influence).toBe(150);
