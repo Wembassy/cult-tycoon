@@ -110,8 +110,8 @@ export class AISystem {
         const targetY = Math.round(transform.y) + Math.floor((Math.random() - 0.5) * wanderRange * 2);
 
         const path = this.pathfinder.findPath(
-          Math.round(transform.x),
-          Math.round(transform.y),
+        transform.x,
+        transform.y,
           targetX,
           targetY,
         );
@@ -144,8 +144,8 @@ export class AISystem {
     // If no path, compute one
     if (ai.path.length === 0 && job?.targetTile) {
       const path = this.pathfinder.findPath(
-        Math.round(transform.x),
-        Math.round(transform.y),
+        transform.x,
+        transform.y,
         job.targetTile.x,
         job.targetTile.y
       );
@@ -242,8 +242,8 @@ export class AISystem {
       }
 
       const path = this.pathfinder.findPath(
-        Math.round(transform.x),
-        Math.round(transform.y),
+        transform.x,
+        transform.y,
         facility.x,
         facility.y,
       );
@@ -289,8 +289,8 @@ export class AISystem {
     if (job?.targetTile) {
       // Try finding path to nearest accessible tile near the target
       const path = this.pathfinder.findPath(
-        Math.round(transform.x),
-        Math.round(transform.y),
+        transform.x,
+        transform.y,
         job.targetTile.x,
         job.targetTile.y
       );
