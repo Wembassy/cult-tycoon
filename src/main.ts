@@ -1470,6 +1470,10 @@ class CultTycoonGame {
     return moneyCost > 0 ? Math.max(1, Math.ceil(moneyCost / 5)) : 0;
   }
 
+  private getBuildMaterialKind(item: string): 'wood' | 'stone' {
+    return item === 'wall' ? 'stone' : 'wood';
+  }
+
   private getReservedConstructionCost(): number {
     let total = 0;
     for (const blueprint of this.constructionBlueprints.values()) total += blueprint.cost;
@@ -1478,7 +1482,9 @@ class CultTycoonGame {
 
   private getReservedConstructionMaterials(): number {
     let total = 0;
-    for (const blueprint of this.constructionBlueprints.values()) total += blueprint.materialCost ?? 0;
+    for (const blueprint of this.constructionBlueprints.values()) {
+      total += blueprint.requiredMaterials ?? blueprint.materialCost ?? 0;
+    }
     return total;
   }
 
@@ -1487,7 +1493,7 @@ class CultTycoonGame {
   }
 
   private getAvailableMaterials(): number {
-    return this.gameInstanceState.resources.materials - this.getReservedConstructionMaterials();
+    return Math.max(0, this.gameInstanceState.resources.materials - this.getReservedConstructionMaterials());
   }
 
   private getConstructionBlueprintAt(
@@ -1539,10 +1545,7 @@ class CultTycoonGame {
       if (blueprint) ids.add(blueprint.id);
     }
 
-    for (const id of ids) {
-      this.jobSystem.cancelJob(id);
-      this.constructionBlueprints.delete(id);
-    }
+    for (const id of ids) this.cancelConstructionBlueprintById(id);
     if (ids.size > 0) {
       this.refreshConstructionBlueprintVisuals();
       this.updateHUD();
@@ -1697,7 +1700,7 @@ class CultTycoonGame {
     const unitMaterials = item.startsWith('room:') || isHarvest || isZone ? 0 : this.getBuildMaterialCost(item);
     const totalCost = validCount * unitCost;
     const totalMaterials = validCount * unitMaterials;
-    const affordable = totalCost <= this.getSpendableWealth() && totalMaterials <= this.getAvailableMaterials();
+    const affordable = totalCost <= this.getSpendableWealth();
     const label =
       item === 'room:clear' ? 'Clear Room' :
       item.startsWith('room:') ? DataManager.getRoom(item.slice(5))?.name ?? 'Room' :
@@ -1713,10 +1716,10 @@ class CultTycoonGame {
     const noun = item === 'wall' || item === 'door' ? 'segment' : 'cell';
     const parts = [label, `${validCount} ${noun}${validCount === 1 ? '' : 's'}`];
     if (unitCost > 0) parts.push(`${totalCost}g reserved`);
-    if (unitMaterials > 0) parts.push(`${totalMaterials} Materials reserved`);
+    if (unitMaterials > 0) parts.push(`${totalMaterials} physical materials required`);
     if (invalidCount > 0) parts.push(`${invalidCount} blocked`);
     if (totalCost > this.getSpendableWealth()) parts.push('not enough wealth');
-    if (totalMaterials > this.getAvailableMaterials()) parts.push('not enough Materials');
+    if (totalMaterials > this.getAvailableMaterials()) parts.push('will wait for harvesting/hauling');
 
     this.hud.setBuildStatus(
       parts.join(' · '),
@@ -1736,6 +1739,50 @@ class CultTycoonGame {
         rotation: blueprint.rotation,
       })),
     );
+  }
+
+  private getBlueprintDeliveryTarget(blueprint: ConstructionBlueprint): { x: number; y: number } {
+    if (blueprint.space !== 'construction') return { x: blueprint.x, y: blueprint.y };
+    const s = this.buildingSystem.subdivisions;
+    if (blueprint.kind === 'wall' || blueprint.kind === 'door') {
+      if (blueprint.orientation === 'horizontal') {
+        return { x: (blueprint.x + 0.5) / s - 0.5, y: blueprint.y / s - 0.5 };
+      }
+      return { x: blueprint.x / s - 0.5, y: (blueprint.y + 0.5) / s - 0.5 };
+    }
+    return { x: (blueprint.x + 0.5) / s - 0.5, y: (blueprint.y + 0.5) / s - 0.5 };
+  }
+
+  private isConstructionJobScheduled(blueprintId: string): boolean {
+    return this.jobSystem.getPostedJobs().some(job => job.id === blueprintId) ||
+      this.jobSystem.getAssignedJobs().some(job => job.posting.id === blueprintId);
+  }
+
+  private ensureBlueprintMaterialRequest(blueprint: ConstructionBlueprint): void {
+    const required = blueprint.requiredMaterials ?? blueprint.materialCost ?? 0;
+    const delivered = blueprint.deliveredMaterials ?? 0;
+    if (required <= delivered) {
+      if (!this.isConstructionJobScheduled(blueprint.id)) this.postConstructionJob(blueprint);
+      return;
+    }
+
+    const kind = blueprint.materialKind ?? this.getBuildMaterialKind(blueprint.objectId ?? blueprint.kind);
+    blueprint.materialKind = kind;
+    blueprint.requiredMaterials = required;
+    blueprint.deliveredMaterials = delivered;
+    this.logisticsSystem.ensureMaterialDelivery(
+      blueprint.id,
+      kind,
+      required - delivered,
+      this.getBlueprintDeliveryTarget(blueprint),
+    );
+  }
+
+  private refreshConstructionMaterialRequests(): void {
+    for (const blueprint of this.constructionBlueprints.values()) {
+      this.ensureBlueprintMaterialRequest(blueprint);
+    }
+    this.refreshConstructionBlueprintVisuals();
   }
 
   private postConstructionJob(blueprint: ConstructionBlueprint, priority: number = 9): void {
@@ -1788,9 +1835,12 @@ class CultTycoonGame {
       rotation,
       cost,
       materialCost,
+      materialKind: this.getBuildMaterialKind(objectId ?? kind),
+      requiredMaterials: materialCost,
+      deliveredMaterials: 0,
     };
     this.constructionBlueprints.set(id, blueprint);
-    this.postConstructionJob(blueprint);
+    this.ensureBlueprintMaterialRequest(blueprint);
     return true;
   }
 
@@ -1812,14 +1862,6 @@ class CultTycoonGame {
       );
       return;
     }
-    if (totalMaterials > this.getAvailableMaterials()) {
-      this.hud.logEvent(
-        `Not enough Materials. Need ${totalMaterials}, have ${Math.floor(this.getAvailableMaterials())} after reservations. Designate trees/rocks in Harvest.`,
-        'warning',
-      );
-      return;
-    }
-
     const kind: ConstructionKind =
       item === 'wall' ? 'wall' :
       item === 'floor' ? 'floor' :
@@ -1844,12 +1886,32 @@ class CultTycoonGame {
     if (queued > 0) {
       const label = item === 'wall' ? 'wall segment' : item === 'floor' ? 'floor cell' : item === 'door' ? 'door' : DataManager.getObject(item)?.name ?? item;
       this.hud.logEvent(
-        `Queued ${queued} ${label}${queued === 1 ? '' : 's'} for construction (${queued * cost}g + ${queued * materialCost} Materials reserved).`,
+        `Queued ${queued} ${label}${queued === 1 ? '' : 's'} for construction (${queued * cost}g; ${queued * materialCost} physical materials required).`,
         'info',
       );
       this.refreshConstructionBlueprintVisuals();
       this.updateHUD();
     }
+  }
+
+  private cancelConstructionBlueprintById(id: string): boolean {
+    const blueprint = this.constructionBlueprints.get(id);
+    if (!blueprint) return false;
+
+    this.logisticsSystem.cancelMaterialRequest(id, this.world);
+    this.jobSystem.cancelJob(id, this.world);
+
+    const delivered = blueprint.deliveredMaterials ?? 0;
+    if (delivered > 0 && blueprint.materialKind) {
+      const target = this.getBlueprintDeliveryTarget(blueprint);
+      this.logisticsSystem.addStack(blueprint.materialKind, delivered, target.x, target.y);
+    }
+
+    this.constructionBlueprints.delete(id);
+    this.refreshConstructionBlueprintVisuals();
+    this.refreshLogisticsVisuals();
+    this.updateHUD();
+    return true;
   }
 
   private cancelConstructionBlueprintAt(
@@ -1859,12 +1921,9 @@ class CultTycoonGame {
   ): boolean {
     const blueprint = this.getConstructionBlueprintAt(x, y, orientation);
     if (!blueprint) return false;
-    this.jobSystem.cancelJob(blueprint.id);
-    this.constructionBlueprints.delete(blueprint.id);
-    this.refreshConstructionBlueprintVisuals();
-    this.updateHUD();
-    this.hud.logEvent(`Cancelled construction blueprint at (${x}, ${y}).`, 'info');
-    return true;
+    const cancelled = this.cancelConstructionBlueprintById(blueprint.id);
+    if (cancelled) this.hud.logEvent(`Cancelled construction blueprint at (${x}, ${y}).`, 'info');
+    return cancelled;
   }
 
   private refreshHarvestDesignationVisuals(): void {
@@ -1955,6 +2014,10 @@ class CultTycoonGame {
     const kind: ItemKind = order.kind === 'food' ? 'food' : order.kind === 'rock' ? 'stone' : 'wood';
     const yieldAmount = order.kind === 'food' ? 8 : order.kind === 'rock' ? 14 : 10;
     this.logisticsSystem.addStack(kind, yieldAmount, order.x, order.y);
+    if (kind === 'wood' || kind === 'stone') {
+      this.gameInstanceState.resources.materials += yieldAmount;
+      this.refreshConstructionMaterialRequests();
+    }
     this.showFloatingText(`+${yieldAmount} ${kind}`, order.x, order.y, order.kind === 'food' ? '#84cc16' : '#cbd5e1');
     this.hud.logEvent(
       `${order.kind === 'rock' ? 'Mined rock' : order.kind === 'tree' ? 'Chopped tree' : 'Gathered food'}: ${yieldAmount} ${kind} dropped for hauling.`,
@@ -1974,8 +2037,25 @@ class CultTycoonGame {
       this.gameInstanceState.resources,
     );
     if (logisticsResult.handled) {
+      if (logisticsResult.materialDelivery) {
+        const delivery = logisticsResult.materialDelivery;
+        const blueprint = this.constructionBlueprints.get(delivery.requestId);
+        if (blueprint) {
+          blueprint.deliveredMaterials = Math.min(
+            blueprint.requiredMaterials ?? blueprint.materialCost ?? 0,
+            (blueprint.deliveredMaterials ?? 0) + delivery.quantity,
+          );
+          this.ensureBlueprintMaterialRequest(blueprint);
+        } else {
+          // The blueprint disappeared between pickup and delivery; preserve the
+          // physical resource instead of silently deleting it.
+          const transform = this.world.getComponent(entity, Transform);
+          if (transform) this.logisticsSystem.addStack(delivery.kind, delivery.quantity, transform.x, transform.y);
+        }
+      }
       if (logisticsResult.message) this.hud.logEvent(logisticsResult.message, 'success');
       if (logisticsResult.changed) {
+        this.refreshConstructionMaterialRequests();
         this.refreshLogisticsVisuals();
         this.updateHUD();
       }
@@ -2025,7 +2105,8 @@ class CultTycoonGame {
     this.refreshConstructionBlueprintVisuals();
     this.gameInstanceState.resources.materials = Math.max(
       0,
-      this.gameInstanceState.resources.materials - (blueprint.materialCost ?? 0),
+      this.gameInstanceState.resources.materials -
+        (blueprint.requiredMaterials ?? blueprint.materialCost ?? 0),
     );
 
     const local = blueprint.space === 'construction'
