@@ -2702,8 +2702,29 @@ class CultTycoonGame {
 
     if (need === 'energy') {
       const needs = this.world.getComponent(entity, Needs);
-      if (needs) needs.comfort = Math.min(100, needs.comfort + 7 * dt);
-      return 24 * dt;
+
+      // Find the bed associated with this sleep destination and reward proper
+      // enclosed shelter. This is the Alpha room-quality baseline; later room
+      // beauty/temperature/precepts can add richer modifiers.
+      let sheltered = false;
+      if (target) {
+        let nearestDistance = Infinity;
+        for (const obj of this.buildingSystem.getAllObjects()) {
+          if (obj.objectId !== 'bed' && obj.objectId !== 'bunk_bed') continue;
+          const local = this.buildingSystem.toTerrainTile(obj.x, obj.y);
+          const workTile = this.findAdjacentWorkTile(local.x, local.y) ?? local;
+          const distance = Math.abs(workTile.x - target.x) + Math.abs(workTile.y - target.y);
+          if (distance >= nearestDistance) continue;
+          nearestDistance = distance;
+          const room = this.buildingSystem.getRoomAtConstructionCell(obj.x, obj.y);
+          sheltered = !!room?.roofed;
+        }
+      }
+
+      if (needs) {
+        needs.comfort = Math.min(100, needs.comfort + (sheltered ? 10 : 5) * dt);
+      }
+      return (sheltered ? 28 : 22) * dt;
     }
 
     return null;
