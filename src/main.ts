@@ -12,6 +12,7 @@ import { InputManager } from './engine/InputManager';
 import { AssetLoader } from './engine/AssetLoader';
 import { TileMap } from './world/TileMap';
 import { WorldGen } from './world/WorldGen';
+import { localParametersForRegion } from './world/GlobalWorld';
 import { Pathfinder } from './world/Pathfinder';
 import { NavigationGrid } from './world/NavigationGrid';
 import { ALPHA_SPATIAL_CONFIG } from './world/Spatial';
@@ -1549,10 +1550,9 @@ class CultTycoonGame {
     });
   }
 
-  private spawnFollowers(count: number): void {
-    // Spawn near map center
-    const centerX = Math.floor(this.map.width / 2);
-    const centerY = Math.floor(this.map.height / 2);
+  private spawnFollowers(count: number, preferredX?: number, preferredY?: number): void {
+    const centerX = preferredX ?? Math.floor(this.map.width / 2);
+    const centerY = preferredY ?? Math.floor(this.map.height / 2);
     let spawnX = centerX, spawnY = centerY;
     for (let y = centerY - 2; y <= centerY + 2; y++) {
       for (let x = centerX - 2; x <= centerX + 2; x++) {
@@ -3710,7 +3710,7 @@ class CultTycoonGame {
     });
     document.getElementById('ov-newgame')?.addEventListener('click', () => {
       overlay.remove();
-      this.resetForNewGame();
+      this.openWorldStartSelection();
     });
   }
 
@@ -3751,7 +3751,7 @@ class CultTycoonGame {
 
     document.getElementById('ov-newgame')?.addEventListener('click', () => {
       overlay.remove();
-      this.resetForNewGame();
+      this.openWorldStartSelection();
     });
   }
 
@@ -3815,11 +3815,16 @@ class CultTycoonGame {
   /**
    * Reset game state for a new game (from win/lose overlay).
    */
-  private resetForNewGame(): void {
-    // Clear all entities
-    this.world.clear();
+  private resetForNewGame(selection: WorldStartSelection): void {
+    this.worldStartSelection = {
+      globalSeed: selection.globalSeed,
+      region: { ...selection.region },
+      settlementPoint: { ...selection.settlementPoint },
+    };
 
-    // Reset game state
+    // Clear entity/simulation state while keeping the same map object so every
+    // map-dependent system retains a valid reference.
+    this.world.clear();
     this.gameEnded = false;
     this._popZeroTimer = 0;
     this.cultWealth = 200;
@@ -3834,25 +3839,62 @@ class CultTycoonGame {
     this.constructionBlueprints.clear();
     this.harvestOrders.clear();
     this.nextConstructionBlueprintId = 1;
+
     this.jobSystem.clear();
+    this.buildingSystem.restoreSnapshot(undefined);
+    this.logisticsSystem.restoreSnapshot(undefined, this.world);
+    this.farmingSystem.restoreSnapshot(undefined);
+    this.navigation.clearDynamicBlockers();
     this.sceneMgr.setConstructionBlueprints([]);
     this.sceneMgr.setHarvestDesignations([]);
     this.sceneMgr.setSelectedFollower(null);
+    this.sceneMgr.setLogisticsVisuals([], [], this.buildingSystem.subdivisions);
+    this.sceneMgr.setFarmingVisuals([], this.buildingSystem.subdivisions);
 
-    // Reset systems
+    // Generate the selected local map deterministically, then copy it into the
+    // active TileMap object rather than replacing that object.
+    const params = localParametersForRegion(selection.region);
+    const generated = new WorldGen(params.seed).generate(params);
+    this.copyGeneratedMapIntoActiveMap(generated);
+
+    this.pathfinder.invalidateCache();
+    this.pathfindSystem.invalidateCache();
+    this.roomGraph.invalidate();
+
+    // Reset systems with per-run mutable state.
     this.investigatorSystem.reset();
     this.combatSystem.reset();
-    this.resourceSystem.reset();
     this.heatSystem.reset();
+    this.socialSystem = new SocialSystem();
+    this.ideologySystem = new IdeologySystem();
+    this.farmingSystem.setTemperatureC(selection.region.temperatureC);
+
+    this.gameInstanceState = new GameInstanceState({
+      faith: 100,
+      funds: this.cultWealth,
+      materials: 50,
+      food: 0,
+      influence: this.cultInfluence,
+      notoriety: this.cultNotoriety,
+    });
+    this.resourceSystem = new ResourceSystem(
+      this.gameInstanceState,
+      {
+        cookFoodRate: 0,
+        foodConsumptionPerFollower: 0,
+      },
+      (event) => {
+        const logType = event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
+        this.hud.logEvent(event.message, logType as any);
+      },
+    );
+
+    // Reset mission state by recreating the mission system.
     this.missionSystem = new MissionSystem(
       (missionId, event, choices) => {
         this.hud.logEvent(`Mission event: ${event.text}`, 'warning');
-
-        // Mission events are player decisions. Pause simulation while the modal is open
-        // so the mission cannot advance or resolve behind the player's choice.
         const previousTimeMode = this.timeMode;
         this.setTimeMode('pause');
-
         this.dialog.show({
           title: 'Mission Decision',
           icon: '🎯',
@@ -3886,61 +3928,91 @@ class CultTycoonGame {
         );
       },
     );
+
     this.prestigeSystem = new PrestigeSystem();
     this.roomEntities.clear();
-    this.gameInstanceState = new GameInstanceState({
-      faith: 100,
-      funds: this.cultWealth,
-      materials: 50,
-      food: 100,
-      influence: this.cultInfluence,
-      notoriety: this.cultNotoriety,
-    });
-    this.resourceSystem = new ResourceSystem(
-      this.gameInstanceState,
-      {},
-      (event) => {
-        const logType = event.type === 'shortage' ? 'danger' : event.type === 'milestone' ? 'success' : 'info';
-        this.hud.logEvent(event.message, logType as any);
-      },
-    );
-    this.systems = [this.needsSystem, this.schedulingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
-    // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
-    // in simulate() because they don't extend the System base class.
-    // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
-    //        Ritual → Investigator → Combat → Fog, then Prestige → Heat → Mission
 
-    // Rebuild map — 64x64 with fog of war
-    const worldGen = new WorldGen(12345);
-    this.map = worldGen.generate({ width: 64, height: 64, waterPools: 8, stonePatches: 10, dirtPatches: 12 });
-    this.pathfinder = new Pathfinder(this.map);
-    this.renderer.camera.setMapOffset(-this.map.width / 2, -this.map.height / 2);
-    this.renderer.camera.setMapBounds(this.map.width, this.map.height);
-    this.pathfindSystem = new PathfindSystem(this.map, this.pathfinder);
-    this.pathfindSystem.bindWorld(this.world);
+    // Rebuild the active system order with the reset stateful systems.
+    this.systems = [
+      this.needsSystem,
+      this.schedulingSystem,
+      this.socialSystem,
+      this.ideologySystem,
+      this.farmingSystem,
+      this.jobSystem,
+      this.aiSystem,
+      this.pathfindSystem,
+      this.resourceSystem,
+      this.eventSystem,
+      this.ritualSystem,
+      this.investigatorSystem,
+      this.combatSystem,
+      this.fogSystem,
+    ];
 
-    // Rebuild room graph for new map
-    this.roomGraph = new RoomGraph(this.map);
-
-    // Reset fog of war
+    // Fog/camera begin at the exact player-selected settlement point.
     this.fogOfWar = new FogOfWar(10);
-    this.fogOfWar.revealArea(Math.floor(this.map.width / 2), Math.floor(this.map.height / 2), 15);
+    this.fogOfWar.revealArea(selection.settlementPoint.x, selection.settlementPoint.y, 15);
     this.fogSystem = new FogSystem(this.fogOfWar, 0.33);
     this.sceneMgr.setFog(this.fogOfWar);
+
+    // fogSystem was recreated after the array above; replace its slot.
+    this.systems[this.systems.length - 1] = this.fogSystem;
+
+    this.renderer.camera.setTarget(
+      selection.settlementPoint.x - this.map.width / 2,
+      selection.settlementPoint.y - this.map.height / 2,
+    );
+
     this.sceneMgr.buildTiles();
 
-    // Spawn initial followers at map center
-    this.spawnFollowers(6);
+    this.spawnFollowers(
+      6,
+      selection.settlementPoint.x,
+      selection.settlementPoint.y,
+    );
+    const initialFollowers = this.world.query([FollowerAI, BeliefState]);
+    if (initialFollowers.length > 0) {
+      this.ideologySystem.assignRole('leader', initialFollowers[0], this.world);
+    }
 
-    // Update HUD
+    // Starter supplies are physical and placed near the chosen camp.
+    const sx = selection.settlementPoint.x;
+    const sy = selection.settlementPoint.y;
+    this.logisticsSystem.addStack('wood', 25, sx + 2, sy);
+    this.logisticsSystem.addStack('stone', 25, sx + 3, sy);
+    this.logisticsSystem.addStack('food', 18, sx + 1, sy + 1);
+    this.refreshLogisticsVisuals();
+
     this.updateHUD();
     this.hud.updateTime(6, 1);
-    this.hud.logEvent('New game started!', 'success');
-    this.hud.logEvent('Your cult begins with 6 followers in a vast unexplored land.', 'info');
-
+    this.hud.logEvent(
+      `New cult founded in ${selection.region.biome.replaceAll('_', ' ')} · ${selection.region.temperatureC}°C · outsider traffic ${selection.region.outsiderTraffic}/100.`,
+      'success',
+    );
     this.setTimeMode('speed1');
   }
 
+  private copyGeneratedMapIntoActiveMap(generated: TileMap): void {
+    if (generated.width !== this.map.width || generated.height !== this.map.height) {
+      throw new Error(
+        `Generated local map size ${generated.width}x${generated.height} does not match active map ${this.map.width}x${this.map.height}.`,
+      );
+    }
+
+    for (let y = 0; y < this.map.height; y++) {
+      for (let x = 0; x < this.map.width; x++) {
+        const source = generated.getTile(x, y);
+        const target = this.map.getTile(x, y);
+        if (!source || !target) continue;
+        this.map.setTerrain(x, y, source.terrain);
+        this.map.setOccupied(x, y, source.occupied);
+        this.map.setDecor(x, y, source.decor);
+        target.buildable = source.buildable;
+        target.roomId = null;
+      }
+    }
+  }
   dispose(): void {
     this.running = false;
     window.removeEventListener('resize', this.onResize);
