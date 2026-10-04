@@ -52,7 +52,7 @@ describe('LogisticsSystem', () => {
 
     const delivered = logistics.handleJobCompleted(delivery, entity, world, game.resources);
     expect(delivered.handled).toBe(true);
-    expect(game.resources.materials).toBe(10);
+    expect(game.resources.materials).toBe(0);
     expect(world.getComponent(entity, Inventory)!.items).toHaveLength(0);
 
     const finalStack = logistics.getStacks().find(item => item.id === stack.id)!;
@@ -75,3 +75,41 @@ describe('LogisticsSystem', () => {
     expect(restoredJobs.getPostedJobs()).toHaveLength(1);
   });
 });
+
+
+  it('delivers an exact material quantity to a construction request and leaves excess physical', () => {
+    const jobs = new JobSystem();
+    const logistics = new LogisticsSystem(10, jobs);
+    logistics.addStack('stone', 10, 2, 2);
+
+    const world = new World();
+    const entity = world.createEntity();
+    world.addComponent(entity, new Inventory(entity));
+
+    const game = new GameState({ materials: 10, food: 0 });
+    const scheduled = logistics.ensureMaterialDelivery(
+      'construct:1',
+      'stone',
+      3,
+      { x: 4, y: 4 },
+    );
+    expect(scheduled).toBe(3);
+
+    const pickup = jobs.getPostedJobs().find(job => job.metadata?.stage === 'material-pickup')!;
+    logistics.handleJobCompleted(pickup, entity, world, game.resources);
+
+    const source = logistics.getStacks()[0];
+    expect(source.quantity).toBe(7);
+    expect(world.getComponent(entity, Inventory)!.items).toEqual([{ id: 'stone', quantity: 3 }]);
+
+    const delivery = jobs.getPostedJobs().find(job => job.metadata?.stage === 'material-deliver')!;
+    const result = logistics.handleJobCompleted(delivery, entity, world, game.resources);
+
+    expect(result.materialDelivery).toEqual({
+      requestId: 'construct:1',
+      kind: 'stone',
+      quantity: 3,
+    });
+    expect(world.getComponent(entity, Inventory)!.items).toHaveLength(0);
+    expect(game.resources.materials).toBe(10);
+  });
