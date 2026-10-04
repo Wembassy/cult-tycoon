@@ -20,6 +20,24 @@ export class World {
   }
 
   /**
+   * Restore a specific stable entity ID from save data.
+   * Relationship graphs, ideology roles, and reservations refer to entity IDs,
+   * so load must preserve them rather than compacting gaps.
+   */
+  createEntityWithId(id: Entity): Entity {
+    if (this.entitySet.has(id)) {
+      throw new Error(`Entity ${id} already exists`);
+    }
+    this.entitySet.add(id);
+    this.nextEntityId = Math.max(this.nextEntityId, id + 1);
+    return id;
+  }
+
+  get nextId(): number {
+    return this.nextEntityId;
+  }
+
+  /**
    * Remove an entity and all its components
    */
   destroyEntity(entity: Entity): void {
