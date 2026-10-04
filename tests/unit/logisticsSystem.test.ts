@@ -98,7 +98,7 @@ describe('LogisticsSystem', () => {
     const pickup = jobs.getPostedJobs().find(job => job.metadata?.stage === 'material-pickup')!;
     logistics.handleJobCompleted(pickup, entity, world, game.resources);
 
-    const source = logistics.getStacks()[0];
+    const source = logistics.getStacks().find(item => item.state !== 'carried')!;
     expect(source.quantity).toBe(7);
     expect(world.getComponent(entity, Inventory)!.items).toEqual([{ id: 'stone', quantity: 3 }]);
 
@@ -112,4 +112,30 @@ describe('LogisticsSystem', () => {
     });
     expect(world.getComponent(entity, Inventory)!.items).toHaveLength(0);
     expect(game.resources.materials).toBe(10);
+  });
+
+
+  it('normalizes carried construction material back to ground on restore', () => {
+    const jobs = new JobSystem();
+    const logistics = new LogisticsSystem(10, jobs);
+    logistics.addStack('wood', 5, 2, 2);
+
+    const world = new World();
+    const entity = world.createEntity();
+    world.addComponent(entity, new Inventory(entity));
+
+    logistics.ensureMaterialDelivery('construct:save', 'wood', 3, { x: 4, y: 4 });
+    const pickup = jobs.getPostedJobs().find(job => job.metadata?.stage === 'material-pickup')!;
+    logistics.handleJobCompleted(pickup, entity, world, new GameState({ materials: 5 }).resources);
+
+    expect(world.getComponent(entity, Inventory)!.items).toEqual([{ id: 'wood', quantity: 3 }]);
+    expect(logistics.getStacks().some(stack => stack.state === 'carried')).toBe(true);
+
+    const restoredJobs = new JobSystem();
+    const restored = new LogisticsSystem(10, restoredJobs);
+    restored.restoreSnapshot(logistics.getSnapshot(), world);
+
+    expect(world.getComponent(entity, Inventory)!.items).toHaveLength(0);
+    expect(restored.getStacks().every(stack => stack.state !== 'carried')).toBe(true);
+    expect(restored.getStacks().reduce((sum, stack) => sum + stack.quantity, 0)).toBe(5);
   });
