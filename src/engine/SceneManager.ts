@@ -1218,7 +1218,8 @@ export class SceneManager {
         job?.type === 'build' ||
         job?.type === 'clean' ||
         job?.type === 'haul' ||
-        job?.type === 'harvest'
+        job?.type === 'harvest' ||
+        job?.type === 'grow'
       ) return 'work';
     }
 
