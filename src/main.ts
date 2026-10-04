@@ -28,6 +28,7 @@ import { Inventory } from './components/Inventory';
 import { Skills } from './components/Skills';
 import { Schedule } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
+import { SocialState } from './components/SocialState';
 import type { WorkJobKey } from './ui/WorkPanel';
 import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem, type JobPosting } from './systems/JobSystem';
@@ -46,6 +47,7 @@ import { LogisticsSystem, type ItemKind } from './systems/LogisticsSystem';
 import { FarmingSystem, type CropType } from './systems/FarmingSystem';
 import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
+import { SocialSystem } from './systems/SocialSystem';
 import { MissionSystem } from './systems/MissionSystem';
 import { PrestigeSystem } from './systems/PrestigeSystem';
 import { HeatSystem } from './systems/HeatSystem';
@@ -101,6 +103,7 @@ class CultTycoonGame {
   private fogOfWar: FogOfWar;
   private fogSystem: FogSystem;
   private schedulingSystem: SchedulingSystem;
+  private socialSystem: SocialSystem;
   private missionSystem: MissionSystem;
   private prestigeSystem: PrestigeSystem;
   private heatSystem: HeatSystem;
@@ -319,6 +322,7 @@ class CultTycoonGame {
 
     // Scheduling system — manages shifts and daily activities
     this.schedulingSystem = new SchedulingSystem();
+    this.socialSystem = new SocialSystem();
 
     // Mission system — sends cultists on external missions for rewards
     this.missionSystem = new MissionSystem(
@@ -390,7 +394,7 @@ class CultTycoonGame {
     // Room graph for room detection (used by prestige system)
     this.roomGraph = new RoomGraph(this.map);
 
-    this.systems = [this.needsSystem, this.schedulingSystem, this.farmingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
+    this.systems = [this.needsSystem, this.schedulingSystem, this.socialSystem, this.farmingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
     // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
     // in simulate() because they don't extend the System base class.
     // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
@@ -2981,6 +2985,7 @@ class CultTycoonGame {
     const schedule = this.world.getComponent(entity, Schedule);
     const work = this.world.getComponent(entity, WorkPreferences);
     const inventory = this.world.getComponent(entity, Inventory);
+    const social = this.world.getComponent(entity, SocialState);
     const name = this.followerNames.get(entity) ?? 'Unknown';
 
     if (!needs) return;
@@ -3016,6 +3021,27 @@ class CultTycoonGame {
       } : undefined,
       priorities: work ? { ...work.priorities } : undefined,
       inventory: inventory?.items ?? [],
+      mood: social?.mood,
+      memories: social?.memories
+        .slice()
+        .sort((a, b) => Math.abs(b.mood) - Math.abs(a.mood))
+        .map(memory => ({
+          label: memory.label,
+          mood: memory.mood * Math.max(1, memory.stacks ?? 1),
+          remaining: memory.remaining,
+          stacks: memory.stacks,
+        })),
+      relationships: social
+        ? Object.values(social.relationships)
+            .sort((a, b) => Math.abs(b.opinion) - Math.abs(a.opinion))
+            .map(rel => ({
+              name: this.followerNames.get(rel.targetEntity) ?? `Follower ${rel.targetEntity}`,
+              opinion: rel.opinion,
+              familiarity: rel.familiarity,
+              romantic: rel.romantic,
+              family: rel.family,
+            }))
+        : undefined,
     });
   }
 
@@ -3947,6 +3973,11 @@ class CultTycoonGame {
     for (const entityId of this.world.query([WorkPreferences])) {
       const prefs = this.world.getComponent(entityId, WorkPreferences)!;
       if (prefs.priorities.grow === undefined) prefs.priorities.grow = 2;
+    }
+    for (const entityId of this.world.query([FollowerAI, Needs])) {
+      if (!this.world.getComponent(entityId, SocialState)) {
+        this.world.addComponent(entityId, new SocialState(entityId));
+      }
     }
 
     // Restore BuildingSystem's internal object/room collections after tile occupancy.
