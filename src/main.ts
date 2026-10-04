@@ -29,6 +29,7 @@ import { Skills } from './components/Skills';
 import { Schedule } from './components/Schedule';
 import { WorkPreferences, type WorkPriority, type WorkRole } from './components/WorkPreferences';
 import { SocialState } from './components/SocialState';
+import { BeliefState } from './components/BeliefState';
 import type { WorkJobKey } from './ui/WorkPanel';
 import { NeedsSystem } from './systems/NeedsSystem';
 import { JobSystem, type JobPosting } from './systems/JobSystem';
@@ -48,6 +49,7 @@ import { FarmingSystem, type CropType } from './systems/FarmingSystem';
 import { FogSystem } from './systems/FogSystem';
 import { SchedulingSystem } from './systems/SchedulingSystem';
 import { SocialSystem } from './systems/SocialSystem';
+import { IdeologySystem } from './systems/IdeologySystem';
 import { MissionSystem } from './systems/MissionSystem';
 import { PrestigeSystem } from './systems/PrestigeSystem';
 import { HeatSystem } from './systems/HeatSystem';
@@ -104,6 +106,7 @@ class CultTycoonGame {
   private fogSystem: FogSystem;
   private schedulingSystem: SchedulingSystem;
   private socialSystem: SocialSystem;
+  private ideologySystem: IdeologySystem;
   private missionSystem: MissionSystem;
   private prestigeSystem: PrestigeSystem;
   private heatSystem: HeatSystem;
@@ -323,6 +326,7 @@ class CultTycoonGame {
     // Scheduling system — manages shifts and daily activities
     this.schedulingSystem = new SchedulingSystem();
     this.socialSystem = new SocialSystem();
+    this.ideologySystem = new IdeologySystem();
 
     // Mission system — sends cultists on external missions for rewards
     this.missionSystem = new MissionSystem(
@@ -394,7 +398,7 @@ class CultTycoonGame {
     // Room graph for room detection (used by prestige system)
     this.roomGraph = new RoomGraph(this.map);
 
-    this.systems = [this.needsSystem, this.schedulingSystem, this.socialSystem, this.farmingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
+    this.systems = [this.needsSystem, this.schedulingSystem, this.socialSystem, this.ideologySystem, this.farmingSystem, this.jobSystem, this.aiSystem, this.pathfindSystem, this.resourceSystem, this.eventSystem, this.ritualSystem, this.investigatorSystem, this.combatSystem, this.fogSystem];
     // Note: PrestigeSystem, HeatSystem, and MissionSystem are updated manually
     // in simulate() because they don't extend the System base class.
     // Order: Needs → Scheduling → Job → AI → Pathfind → Resource → Event →
@@ -467,6 +471,10 @@ class CultTycoonGame {
 
     // Spawn initial followers at map center
     this.spawnFollowers(6);
+    const initialFollowers = this.world.query([FollowerAI, BeliefState]);
+    if (initialFollowers.length > 0) {
+      this.ideologySystem.assignRole('leader', initialFollowers[0], this.world);
+    }
 
     // The legacy 50 starting Materials are now represented by real loose
     // resources. They can be hauled to a stockpile or directly to blueprints.
@@ -3014,6 +3022,7 @@ class CultTycoonGame {
     const work = this.world.getComponent(entity, WorkPreferences);
     const inventory = this.world.getComponent(entity, Inventory);
     const social = this.world.getComponent(entity, SocialState);
+    const belief = this.world.getComponent(entity, BeliefState);
     const name = this.followerNames.get(entity) ?? 'Unknown';
 
     if (!needs) return;
@@ -3051,6 +3060,8 @@ class CultTycoonGame {
       inventory: inventory?.items ?? [],
       mood: social?.mood,
       mentalBreak: social?.activeBreak?.type,
+      beliefStrength: belief?.strength,
+      cultRole: belief?.assignedRole ?? undefined,
       memories: social?.memories
         .slice()
         .sort((a, b) => Math.abs(b.mood) - Math.abs(a.mood))
@@ -3476,6 +3487,7 @@ class CultTycoonGame {
     const ticksPerHour = 900 / 24; // 37.5 ticks per hour
     this.currentHour = (6 + this.tickCount / ticksPerHour) % 24;
     this.schedulingSystem.setHour(this.currentHour);
+    this.ideologySystem.setHour(this.currentHour);
     const newDay = Math.floor(this.tickCount / 900) + 1;
     if (newDay !== this.currentDay) {
       this.currentDay = newDay;
@@ -4008,12 +4020,18 @@ class CultTycoonGame {
         this.world.addComponent(entityId, new SocialState(entityId));
       }
     }
+    for (const entityId of this.world.query([FollowerAI, Needs])) {
+      if (!this.world.getComponent(entityId, BeliefState)) {
+        this.world.addComponent(entityId, new BeliefState(entityId));
+      }
+    }
 
     // Restore BuildingSystem's internal object/room collections after tile occupancy.
     this.buildingSystem.restoreSnapshot(data.building);
     this.jobSystem.clear();
     this.logisticsSystem.restoreSnapshot(data.logistics, this.world);
     this.farmingSystem.restoreSnapshot(data.farming);
+    this.ideologySystem.restoreSnapshot(data.ideology);
     this.refreshLogisticsVisuals();
     this.refreshFarmingVisuals();
 
@@ -4196,6 +4214,7 @@ class CultTycoonGame {
       Array.from(this.harvestOrders.values()),
       this.logisticsSystem.getSnapshot(),
       this.farmingSystem.getSnapshot(),
+      this.ideologySystem.getSnapshot(),
     );
 
     const success = this.saveSystem.save(data);
