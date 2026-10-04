@@ -21,6 +21,9 @@ import { Traits } from '@components/Traits';
 import { Health } from '@components/Health';
 import { OutsiderSystem } from '@systems/OutsiderSystem';
 import { createIdeologyFoundation } from '@game/Ideology';
+import { EventSystem } from '@systems/EventSystem';
+import { RitualSystem } from '@systems/RitualSystem';
+import { TechTreeSystem } from '@systems/TechTreeSystem';
 import { Job } from '@components/Job';
 import { Inventory } from '@components/Inventory';
 import { WorkPreferences } from '@components/WorkPreferences';
@@ -259,5 +262,28 @@ describe('Alpha outsider recruitment', () => {
     expect(world.getComponent(visitor, Inventory)).toBeDefined();
     expect(world.getComponent(visitor, WorkPreferences)).toBeDefined();
     expect(world.getComponent(visitor, Schedule)).toBeDefined();
+  });
+});
+
+
+describe('Alpha new-game reset primitives', () => {
+  it('clears event, ritual, and research progression', () => {
+    const world = new World();
+
+    const events = new EventSystem([], 1);
+    events.update(world, 10);
+    expect(events.tick).toBeGreaterThan(0);
+    events.reset();
+    expect(events.tick).toBe(0);
+    expect(events.day).toBe(1);
+
+    const rituals = new RitualSystem(['basic_rituals', 'advanced']);
+    rituals.reset();
+    expect(rituals.getActiveRituals()).toHaveLength(0);
+    expect(rituals.getCompletedRituals()).toHaveLength(0);
+
+    const tech = new TechTreeSystem();
+    tech.reset();
+    expect(tech.getUnlocked()).toHaveLength(0);
   });
 });
