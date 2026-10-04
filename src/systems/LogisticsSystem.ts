@@ -297,7 +297,9 @@ export class LogisticsSystem {
     world: World,
     resources: GameState['resources'],
   ): LogisticsJobResult {
-    if (!posting.id.startsWith('haul:')) return { handled: false, changed: false };
+    if (!posting.id.startsWith('haul:') && !posting.id.startsWith('material:')) {
+      return { handled: false, changed: false };
+    }
 
     const stackId = String(posting.metadata?.stackId ?? '');
     const stack = this.stacks.get(stackId);
