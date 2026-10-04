@@ -3,17 +3,20 @@ import { World } from '@ecs/World';
 import { Path } from '@components/Path';
 import { TileMap } from '@world/TileMap';
 import { Pathfinder } from '@world/Pathfinder';
+import { NavigationGrid } from '@world/NavigationGrid';
 import { PathfindSystem } from '@systems/PathfindSystem';
 
 describe('PathfindSystem', () => {
   let map: TileMap;
   let pathfinder: Pathfinder;
+  let navigation: NavigationGrid;
   let world: World;
   let system: PathfindSystem;
 
   beforeEach(() => {
     map = new TileMap(16, 16);
-    pathfinder = new Pathfinder(map);
+    navigation = new NavigationGrid(map);
+    pathfinder = new Pathfinder(map, navigation);
     world = new World();
     system = new PathfindSystem(map, pathfinder, { maxPathsPerTick: 2 });
     system.bindWorld(world);
@@ -153,12 +156,12 @@ describe('PathfindSystem', () => {
     it('should set empty waypoints for failed paths', () => {
       // Block the entire map border to make pathing fail
       for (let x = 0; x < 16; x++) {
-        map.setOccupied(x, 8, true);
+        navigation.addBlocker(x, 8, 'failed-path');
       }
       // Also block the fallback search by filling more
       for (let i = 0; i < 16; i++) {
-        map.setOccupied(i, 7, true);
-        map.setOccupied(i, 9, true);
+        navigation.addBlocker(i, 7, 'failed-path');
+        navigation.addBlocker(i, 9, 'failed-path');
       }
 
       const entity = world.createEntity();
@@ -248,9 +251,9 @@ describe('PathfindSystem', () => {
 
       // Add a wall that changes the path
       for (let y = 0; y < 16; y++) {
-        map.setOccupied(5, y, true);
+        navigation.addBlocker(5, y, 'cache-wall');
       }
-      map.setOccupied(5, 8, false); // gap at y=8
+      navigation.removeBlocker(5, 8, 'cache-wall'); // gap at y=8
 
       system.invalidateCache();
 
